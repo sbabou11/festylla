@@ -1,0 +1,27 @@
+rules_version = '2';
+
+// Règles Firestore pour YllaCash — état actuel (avant Firebase Auth)
+//
+// Étant donné que l'app n'implémente pas encore signInWithEmailAndPassword
+// ou signInAnonymously, request.auth est toujours null. Des règles
+// exigeant request.auth bloqueraient toute l'app.
+//
+// Les règles ci-dessous sont permissives : lecture/écriture libre. La
+// version "cible" avec rôles + custom claims est conservée dans
+// `firestore.rules.future_with_auth` pour le jour où l'auth Firebase
+// sera intégrée à l'app.
+//
+// Sécurité actuelle assurée par :
+//   - Obscurité de l'ID événement (UUID non énumérable)
+//   - Audit log de toutes les opérations sensibles
+//   - Logique métier dans le code client (vérif rôles via Firestore staff/)
+//
+// À durcir dès que possible.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

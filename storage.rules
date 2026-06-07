@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// Règles Firebase Storage pour YllaCash — état actuel (avant Firebase Auth)
+//
+// Même logique que pour firestore.rules : l'app n'utilise pas Firebase
+// Auth pour le moment, donc request.auth est null. Des règles exigeant
+// l'authentification bloqueraient tous les uploads (photos d'articles,
+// justificatifs de finances, etc.).
+//
+// À durcir avec l'auth Firebase + check de rôle dans un lot futur.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

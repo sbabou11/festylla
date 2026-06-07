@@ -1,0 +1,565 @@
+/* ============================================================
+   YllaCash — Design System Maison Ylla 2026
+   Charte : palette extraite du logo (teal + marine + coral + or + brique)
+            ambiance festival chaleureux, lisible en jour comme en nuit
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* ── Tokens — LIGHT ──────────────────────────────────────────── */
+:root {
+  /* Couleur signature (teal du logo) — actions, navigation active, brand */
+  --brand:        #009090;
+  --brand-dark:   #006666;
+  --brand-light:  #E0F4F4;
+
+  /* Marine (texte/structure du logo) */
+  --marine:       #003048;
+  --marine-soft:  #4A6580;
+
+  /* Coral (mains du logo) — actions chaleureuses, ventes, débits */
+  --coral:        #F07848;
+  --coral-dark:   #B8470F;
+  --coral-light:  #FDE4D4;
+
+  /* Or (maison/rayons du logo) — avantages, alertes douces, stand */
+  --gold:         #D89030;
+  --gold-dark:    #6B4500;
+  --gold-light:   #FAEED4;
+
+  /* Brique (toit du logo) — alertes critiques, suppressions */
+  --red:          #D83030;
+  --red-dark:     #A01818;
+  --red-light:    #FCE2E2;
+
+  /* Vert teal — succès (recharge réussie, état "prêt") */
+  --green:        #0E8D7A;
+  --green-dark:   #04504A;
+  --green-light:  #D7EFE9;
+
+  /* Alias compatibilité avec l'existant */
+  --purple:       #6B3FA0;
+  --purple-light: #EFE6F8;
+  --amber:        #D89030;
+  --amber-light:  #FAEED4;
+
+  /* Surfaces — fond crème chaud au lieu du blanc clinique */
+  --bg:   #FFFCF8;
+  --bg2:  #FFF8F2;
+  --bg3:  #F5EBDC;
+
+  /* Texte */
+  --text:   #003048;
+  --muted:  #4A6580;
+
+  /* Bordures */
+  --border:  rgba(0,48,72,0.10);
+  --border2: rgba(0,48,72,0.18);
+
+  /* Typo */
+  --font:      'Inter', system-ui, -apple-system, sans-serif;
+  --font-size: 14px;
+
+  /* Espaces & arrondis (rectangulaires, jamais ovales) */
+  --radius:    8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Touch targets */
+  --touch: 44px;
+
+  /* Dégradés signature Maison Ylla */
+  --grad-signature: linear-gradient(135deg, #003048 0%, #007878 55%, #F07848 100%);
+  --grad-marine-teal: linear-gradient(135deg, #003048 0%, #007878 100%);
+  --grad-marine-gold: linear-gradient(135deg, #003048 0%, #886020 100%);
+}
+
+/* ── Tokens — DARK ──────────────────────────────────────────── */
+.dark {
+  --brand:        #14B5B5;
+  --brand-dark:   #009090;
+  --brand-light:  rgba(20,181,181,0.15);
+
+  --marine:       #FFF8F2;
+  --marine-soft:  rgba(255,248,242,0.60);
+
+  --coral:        #FF8A5C;
+  --coral-dark:   #FFB89B;
+  --coral-light:  rgba(255,138,92,0.15);
+
+  --gold:         #F0B040;
+  --gold-dark:    #F5C870;
+  --gold-light:   rgba(240,176,64,0.15);
+
+  --red:          #FF5050;
+  --red-dark:     #FF8080;
+  --red-light:    rgba(255,80,80,0.15);
+
+  --green:        #14B58C;
+  --green-dark:   #5FD4B0;
+  --green-light:  rgba(20,181,140,0.15);
+
+  --purple:       #B89AE6;
+  --purple-light: rgba(184,154,230,0.15);
+  --amber:        #F0B040;
+  --amber-light:  rgba(240,176,64,0.15);
+
+  --bg:    #001824;
+  --bg2:   #002438;
+  --bg3:   #003048;
+
+  --text:  #FFF8F2;
+  --muted: rgba(255,248,242,0.60);
+
+  --border:  rgba(255,248,242,0.08);
+  --border2: rgba(255,248,242,0.18);
+
+  --grad-signature: linear-gradient(135deg, #000812 0%, #006060 55%, #B85020 100%);
+  --grad-marine-teal: linear-gradient(135deg, #000812 0%, #006060 100%);
+  --grad-marine-gold: linear-gradient(135deg, #000812 0%, #6B4500 100%);
+}
+
+/* ── Reset ──────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  font-size: var(--font-size);
+}
+
+body {
+  font-family: var(--font);
+  font-size: var(--font-size);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background .25s, color .25s;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+button, a, input, select, textarea {
+  font-family: var(--font);
+  font-size: var(--font-size);
+  line-height: 1.5;
+}
+button:not([style*="min-height"]):not(.nav-btn) { min-height: var(--touch); }
+input, select { min-height: var(--touch); }
+
+:focus-visible {
+  outline: 2.5px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ══════════════════════════════════════════════════════════
+   COMPOSANTS GLOBAUX
+   ══════════════════════════════════════════════════════════ */
+
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  margin-bottom: 14px;
+}
+
+.stat-card {
+  background: var(--bg2);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+}
+.stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+.stat-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* Bouton principal — teal signature */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch);
+  padding: 0 24px;
+  background: var(--brand);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: .01em;
+  transition: background .12s, transform .1s, box-shadow .12s;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,144,144,0.20);
+}
+.dark .btn-primary { color: #002438; box-shadow: 0 2px 8px rgba(20,181,181,0.30); }
+.btn-primary:hover  { background: var(--brand-dark); }
+.btn-primary:active { transform: scale(0.97); }
+.btn-primary:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* Bouton secondaire */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch);
+  padding: 0 18px;
+  background: var(--bg2);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s, transform .1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-secondary:hover  { background: var(--bg3); }
+.btn-secondary:active { transform: scale(0.97); }
+
+/* Bouton danger — brique */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch);
+  padding: 0 18px;
+  background: var(--red-light);
+  color: var(--red-dark);
+  border: 1px solid rgba(216,48,48,.25);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.dark .btn-danger { color: var(--red); border-color: rgba(255,80,80,.30); }
+.btn-danger:hover { background: rgba(216,48,48,.20); }
+
+/* Bouton action chaude — coral */
+.btn-coral {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch);
+  padding: 0 24px;
+  background: var(--coral);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .12s, transform .1s;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(240,120,72,0.25);
+}
+.dark .btn-coral { color: #2A1810; box-shadow: 0 2px 8px rgba(255,138,92,0.30); }
+.btn-coral:hover  { background: var(--coral-dark); color: #fff; }
+.btn-coral:active { transform: scale(0.97); }
+
+/* Bouton icon-only */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch);
+  height: var(--touch);
+  border-radius: var(--radius);
+  background: var(--bg2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  flex-shrink: 0;
+}
+.btn-icon:hover { background: var(--bg3); color: var(--text); }
+
+/* Input */
+.inp {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0 14px;
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  transition: border-color .15s, box-shadow .15s;
+  -webkit-appearance: none;
+}
+.inp:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0,144,144,.15);
+}
+.dark .inp:focus { box-shadow: 0 0 0 3px rgba(20,181,181,.20); }
+.inp::placeholder { color: var(--muted); }
+
+/* Badge — rectangulaire (radius 6px), jamais ovale */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.table-wrap table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table-wrap th {
+  background: var(--bg2);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.table-wrap td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.table-wrap tr:last-child td { border-bottom: none; }
+.table-wrap tr:hover td { background: var(--bg2); }
+
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.alert-info    { background: var(--brand-light);  color: var(--brand-dark); }
+.alert-warning { background: var(--gold-light);   color: var(--gold-dark); }
+.alert-error   { background: var(--red-light);    color: var(--red-dark); }
+.alert-success { background: var(--green-light);  color: var(--green-dark); }
+.dark .alert-info    { color: #5FD4D4; border: 0.5px solid rgba(20,181,181,0.30); }
+.dark .alert-warning { color: var(--gold-dark); border: 0.5px solid rgba(240,176,64,0.30); }
+.dark .alert-error   { color: var(--red-dark); border: 0.5px solid rgba(255,80,80,0.30); }
+.dark .alert-success { color: var(--green-dark); border: 0.5px solid rgba(20,181,140,0.30); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.nav-btn { min-height: 36px; }
+
+@media print { .no-print { display: none !important; } }
+
+/* Animations réutilisables */
+@keyframes yc-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50%      { transform: scale(1.4); opacity: 0; }
+}
+@keyframes yc-bar {
+  0%, 100% { transform: scaleY(0.6); }
+  50%      { transform: scaleY(1.2); }
+}
+/* Bottom sheet : glisse depuis le bas */
+@keyframes ycSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+/* Modale centrée — animation d'apparition (scale + fade) */
+@keyframes ycScaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Overlay de modale — fade-in du fond sombre */
+@keyframes ycFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Pulsation légère pour signaler une commande en retard (> 10 min) en cuisine.
+   Effet subtil : la bordure rouge ne disparaît pas, on module juste l'opacité de fond. */
+@keyframes ycPulseUrgent {
+  0%, 100% { background-color: var(--bg); }
+  50%      { background-color: var(--red-light); }
+}
+
+/* Pulsation rapide pour le niveau panique (> 15 min) — utilisé sur fond déjà rouge intense.
+   Module l'opacité pour effet "alerte". */
+@keyframes ycPulseUrgentFast {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
+}
+
+/* ─── Settings : ligne d'édition de thématique d'exposition ─────────
+   Sur les écrans étroits (mobile), on bascule la grille en 2 lignes :
+   label en haut, tarif + bouton supprimer en bas. Évite la troncature. */
+@media (max-width: 520px) {
+  .yc-thematique-row {
+    grid-template-columns: 1fr 36px !important;
+    grid-template-areas: "label trash" "tarif trash" !important;
+  }
+  .yc-thematique-row > input[type="text"]:first-child {
+    grid-area: label;
+  }
+  .yc-thematique-row > div {
+    grid-area: tarif;
+  }
+  .yc-thematique-row > button {
+    grid-area: trash;
+    align-self: start;
+    height: auto !important;
+    min-height: 36px;
+  }
+}
+
+/* ─── Settings : disposition multi-colonnes sur grand écran ──────────
+   Les cartes simples se répartissent en 2 colonnes (masonry CSS columns,
+   hauteurs indépendantes). Les sections larges (.yc-settings-wide)
+   occupent toute la largeur. Sur écran étroit → 1 colonne (responsive). */
+.yc-settings-grid {
+  column-count: 1;
+  column-gap: 16px;
+}
+.yc-settings-grid > * {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+}
+.yc-settings-grid > .yc-settings-wide {
+  column-span: all;
+  -webkit-column-span: all;
+}
+@media (min-width: 900px) {
+  .yc-settings-grid {
+    column-count: 2;
+  }
+}
+   Sur mobile, on masque l'en-tête colonne et on bascule les inputs sur 2 lignes :
+   description sur sa propre ligne, puis qté + PU + total + delete sur ligne suivante. */
+@media (max-width: 520px) {
+  .yc-lignes-header {
+    display: none !important;
+  }
+  .yc-ligne-row {
+    grid-template-columns: 1fr 32px !important;
+    grid-template-areas: "desc del" "qty del" "pu del" "tot del" !important;
+    gap: 4px !important;
+    padding: 8px;
+    background: var(--bg);
+    border-radius: 6px;
+    margin-bottom: 8px !important;
+  }
+  .yc-ligne-row > input:nth-child(1) { grid-area: desc; }
+  .yc-ligne-row > input:nth-child(2) { grid-area: qty; }
+  .yc-ligne-row > input:nth-child(3) { grid-area: pu; }
+  .yc-ligne-row > div:nth-child(4)   { grid-area: tot; text-align: left !important; }
+  .yc-ligne-row > button             { grid-area: del; align-self: start; }
+}
+
+/* Spin (utilisé par RefreshCw pendant la mise à jour) */
+@keyframes ycSpin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: ycSpin 1s linear infinite;
+}
+
+/* Animation de changement de page (fade + slide vertical léger)
+   Utilisée par le composant <PageTransition> partout dans l'app */
+@keyframes ycPageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-transition {
+  animation: ycPageEnter 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* will-change pour optimiser le rendu GPU et éviter le clignotement */
+  will-change: opacity, transform;
+}
+
+/* Respect des préférences d'accessibilité : pas d'animation pour les utilisateurs
+   qui demandent à réduire le mouvement (vestibulaires, photosensibles…) */
+@media (prefers-reduced-motion: reduce) {
+  .page-transition {
+    animation: none;
+  }
+}
+
+/* Spinner utilisé dans la modale de génération de décharge signée */
+@keyframes ycSpin {
+  to { transform: rotate(360deg); }
+}
+.yc-spin {
+  animation: ycSpin 0.8s linear infinite;
+}
