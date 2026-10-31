@@ -8,7 +8,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import useAuthStore  from '../store/useAuthStore'
 
 const VAPID_KEY    = 'BIWPnTVnzojV9EQHpD584iIpp9F4uE3cGrv9ofEC01z6pSSFqJPxKidcYg4Fq28msKgOYR7z9lL8UjUT4YCYn-k'
-const FCM_STOR_KEY = 'yllatok-fcm-token'
+const FCM_STOR_KEY = 'yllacash-fcm-token'
 
 export function useFCM() {
   const { user } = useAuthStore()

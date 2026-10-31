@@ -1,0 +1,42 @@
+.viewport {
+  position: fixed;
+  z-index: 300;
+  left: 50%;
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  display: grid;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--marine);
+  color: var(--bg);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  animation: rise var(--dur-slow) var(--ease);
+}
+.icon { flex-shrink: 0; }
+.success .icon { color: var(--green); }
+.error   .icon { color: var(--coral); }
+.info    .icon { color: var(--brand); }
+.msg { flex: 1; min-width: 0; }
+.action, .close {
+  min-height: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--font);
+}
+.action { font-weight: 800; font-size: var(--fs-13); padding: 4px 8px; border-radius: 6px; color: var(--brand); }
+.close { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; opacity: .7; }
+.action:hover, .close:hover { background: rgba(127,127,127,.18); opacity: 1; }
+@keyframes rise { from { transform: translateY(16px); opacity: 0; } }

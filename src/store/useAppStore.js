@@ -169,7 +169,7 @@ const useAppStore = create(
       syncOfflineQueue:()=>set({offlineQueue:[],offline:false}),
     }),
     {
-      name:'yllatok-store-v3',
+      name:'yllacash-store-v3',
       onRehydrateStorage: () => (state) => {
         // Migration YllaTok → YllaCash dans le thème persisté
         if (state?.theme?.festName === 'YllaTok') {
@@ -185,6 +185,6 @@ export default useAppStore
 
 // Registre global pour accès inter-stores sans import circulaire
 if (typeof window !== 'undefined') {
-  window.__yllatok_stores__ = window.__yllatok_stores__ || {}
-  window.__yllatok_stores__.appStore = useAppStore
+  window.__yllacash_stores__ = window.__yllacash_stores__ || {}
+  window.__yllacash_stores__.appStore = useAppStore
 }

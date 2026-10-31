@@ -4,7 +4,7 @@
             ambiance festival chaleureux, lisible en jour comme en nuit
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600;700;800&display=swap');
 
 /* ── Tokens — LIGHT ──────────────────────────────────────────── */
 :root {
@@ -56,9 +56,45 @@
   --border:  rgba(0,48,72,0.10);
   --border2: rgba(0,48,72,0.18);
 
-  /* Typo */
-  --font:      'Inter', system-ui, -apple-system, sans-serif;
-  --font-size: 14px;
+  /* Texte posé sur une couleur pleine (bouton teal, coral…) */
+  --on-brand:  #FFFFFF;
+  --on-coral:  #FFFFFF;
+  --overlay:   rgba(0,24,36,0.45);
+
+  /* Typo — Inter pour l'interface (modifiable dans le Studio),
+     Bricolage Grotesque pour les titres et les gros montants */
+  --font:         'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Inter', system-ui, sans-serif;
+  --font-size:    14px;
+
+  /* Échelle typographique fixe */
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --fs-18: 18px;
+  --fs-24: 24px;
+  --fs-32: 32px;
+
+  /* Espacements (base 4px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Ombres */
+  --shadow-sm: 0 1px 2px rgba(0,48,72,0.06);
+  --shadow-md: 0 4px 14px rgba(0,48,72,0.10);
+  --shadow-lg: 0 20px 50px rgba(0,48,72,0.18);
+
+  /* Mouvement — transformations uniquement, durées courtes */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 350ms;
+  --ease:     cubic-bezier(.2,.7,.3,1);
 
   /* Espaces & arrondis (rectangulaires, jamais ovales) */
   --radius:    8px;
@@ -115,6 +151,14 @@
   --border:  rgba(255,248,242,0.08);
   --border2: rgba(255,248,242,0.18);
 
+  --on-brand:  #002438;
+  --on-coral:  #2A1810;
+  --overlay:   rgba(0,8,18,0.60);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.30);
+  --shadow-md: 0 4px 14px rgba(0,0,0,0.35);
+  --shadow-lg: 0 20px 50px rgba(0,0,0,0.50);
+
   --grad-signature: linear-gradient(135deg, #000812 0%, #006060 55%, #B85020 100%);
   --grad-marine-teal: linear-gradient(135deg, #000812 0%, #006060 100%);
   --grad-marine-gold: linear-gradient(135deg, #000812 0%, #6B4500 100%);
@@ -149,7 +193,8 @@ button, a, input, select, textarea {
   font-size: var(--font-size);
   line-height: 1.5;
 }
-button:not([style*="min-height"]):not(.nav-btn) { min-height: var(--touch); }
+/* :where() = spécificité nulle, pour que les composants src/ui puissent fixer leur propre hauteur */
+:where(button:not([style*="min-height"]):not(.nav-btn)) { min-height: var(--touch); }
 input, select { min-height: var(--touch); }
 
 :focus-visible {
@@ -190,8 +235,10 @@ input, select { min-height: var(--touch); }
   margin-bottom: 6px;
 }
 .stat-value {
+  font-family: var(--font-display);
   font-size: 26px;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
   color: var(--text);
   line-height: 1;
 }

@@ -53,13 +53,12 @@ const ROLE_COLOR = {
   directeur_artistique: '#5EB8E4',  // Bleu clair
 }
 
-const LS_KEY = 'yllatok-sidebar-v2'
+const LS_KEY = 'yllacash-sidebar-v2'
 
 try {
   const saved = localStorage.getItem(LS_KEY)
   if (saved !== 'true' && saved !== 'false') {
     localStorage.removeItem(LS_KEY)
-    localStorage.removeItem('yllatok-sidebar-collapsed')
   }
 } catch {}
 

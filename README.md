@@ -1,4 +1,4 @@
-# YllaTok — Système de paiement festival
+# YllaCash — Système de paiement festival
 
 Application PWA (Progressive Web App) de paiement cashless pour festivals,
 avec QR codes, réservations, gestion du staff et Studio de personnalisation.
@@ -10,8 +10,9 @@ avec QR codes, réservations, gestion du staff et Studio de personnalisation.
 | Couche        | Technologie                                  |
 |---------------|----------------------------------------------|
 | Frontend      | React 18 + Vite                              |
+| Navigation    | React Router 6 (une URL par page staff)      |
 | État global   | Zustand (avec persistence locale)            |
-| Styles        | CSS variables custom + Tailwind utilitaires  |
+| Styles        | Tokens CSS (`src/index.css`) + CSS Modules (`src/ui`) |
 | QR Code       | qrcode.react (génération) + html5-qrcode (scan) |
 | Offline       | PWA (Vite PWA plugin) + Service Worker       |
 | Base locale   | Dexie.js (IndexedDB) pour queue offline      |
@@ -23,8 +24,8 @@ avec QR codes, réservations, gestion du staff et Studio de personnalisation.
 
 ```bash
 # Cloner le repo
-git clone https://github.com/votre-org/yllatok.git
-cd yllatok
+git clone https://github.com/votre-org/yllacash.git
+cd yllacash
 
 # Installer les dépendances
 npm install
@@ -45,7 +46,11 @@ npm run preview
 
 ```
 src/
-├── components/          # Composants réutilisables
+├── ui/                  # Design system : Button, Card, Stat, Badge, Tabs,
+│                        # Table, Dialog/Sheet, Toast, Skeleton, Empty, Sparkline
+│                        # (aperçu en dev : http://localhost:5173/ui)
+│
+├── components/          # Composants métier
 │   ├── Avatar.jsx       # Photo de profil avec upload
 │   ├── QrCode.jsx       # QR code thémé avec logo optionnel
 │   ├── Sidebar.jsx      # Navigation latérale
@@ -188,4 +193,7 @@ EXPOSE 80
 
 ## Licence
 
-MIT — YllaTok 2026
+MIT — YllaCash 2026
+
+> Le projet Firebase s'appelle toujours `yllatok` (identifiant technique) :
+> ne pas le renommer dans les scripts de déploiement ni dans les service workers.

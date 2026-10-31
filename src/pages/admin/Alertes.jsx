@@ -159,7 +159,7 @@ export default function Alertes() {
   const [son, setSon]             = useState(true)
   const [acquittees, setAcquittees] = useState(() => {
     try {
-      const stored = localStorage.getItem('yllatok-alertes-acquittees')
+      const stored = localStorage.getItem('yllacash-alertes-acquittees')
       return stored ? new Set(JSON.parse(stored)) : new Set()
     } catch { return new Set() }
   })
@@ -168,7 +168,7 @@ export default function Alertes() {
   const acquitterPersist = (newSet) => {
     setAcquittees(newSet)
     try {
-      localStorage.setItem('yllatok-alertes-acquittees', JSON.stringify([...newSet]))
+      localStorage.setItem('yllacash-alertes-acquittees', JSON.stringify([...newSet]))
     } catch {}
   }
   const prevCountRef              = useRef(0)

@@ -1,0 +1,78 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--overlay);
+  display: flex;
+  animation: fade var(--dur-base) var(--ease);
+}
+.dialog { align-items: center; justify-content: center; padding: var(--space-4); }
+.sheet  { align-items: stretch; }
+
+.panel {
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  box-shadow: var(--shadow-lg);
+  outline: none;
+}
+.dialogPanel {
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - 32px);
+  border-radius: var(--radius-xl);
+  animation: pop var(--dur-base) var(--ease);
+}
+.sheetPanel { width: 100%; max-width: 420px; }
+.right { margin-left: auto; animation: fromRight var(--dur-slow) var(--ease); }
+.left  { margin-right: auto; animation: fromLeft var(--dur-slow) var(--ease); }
+
+/* Mobile : le panneau latéral devient une feuille qui monte du bas */
+@media (max-width: 640px) {
+  .sheet { align-items: flex-end; }
+  .sheetPanel {
+    max-width: none;
+    max-height: 88vh;
+    margin: 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    animation: ycSlideUp var(--dur-slow) var(--ease);
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.title { flex: 1; font-family: var(--font-display); font-size: var(--fs-18); font-weight: 800; }
+.close {
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.close:hover { background: var(--bg2); color: var(--text); }
+.body { padding: var(--space-5); overflow-y: auto; flex: 1; }
+.foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+@keyframes fade      { from { opacity: 0; } }
+@keyframes pop       { from { transform: scale(.96); opacity: 0; } }
+@keyframes fromRight { from { transform: translateX(100%); } }
+@keyframes fromLeft  { from { transform: translateX(-100%); } }

@@ -128,7 +128,7 @@ const useEventStore = create(
       },
     }),
     {
-      name: 'yllatok-event',
+      name: 'yllacash-event',
       partialize: (s) => ({ currentEventId: s.currentEventId }),
     }
   )
@@ -138,6 +138,6 @@ export default useEventStore
 
 // Registre global pour accès inter-modules sans import circulaire
 if (typeof window !== 'undefined') {
-  window.__yllatok_stores__ = window.__yllatok_stores__ || {}
-  window.__yllatok_stores__.eventStore = useEventStore
+  window.__yllacash_stores__ = window.__yllacash_stores__ || {}
+  window.__yllacash_stores__.eventStore = useEventStore
 }

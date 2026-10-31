@@ -21,7 +21,7 @@ import {
 // ── Helper pour écrire une notif depuis n'importe où ─────────────
 const getEventIdFromStorage = () => {
   try {
-    const raw = localStorage.getItem('yllatok-event')
+    const raw = localStorage.getItem('yllacash-event')
     return raw ? JSON.parse(raw)?.state?.currentEventId || null : null
   } catch { return null }
 }
@@ -116,7 +116,7 @@ export function useNotifications({ specId = null, isStaff = false, staffId = nul
     try {
       const n = new Notification(titre, {
         body, icon: '/logo-192.png', badge: '/logo-192.png',
-        vibrate: [200, 100, 200], tag: 'yllatok', renotify: true,
+        vibrate: [200, 100, 200], tag: 'yllacash', renotify: true,
       })
       n.onclick = () => { window.focus(); n.close() }
     } catch {}

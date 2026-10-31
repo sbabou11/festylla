@@ -1,6 +1,6 @@
 {
-  "name": "yllatok-functions",
-  "description": "Cloud Functions YllaTok",
+  "name": "yllacash-functions",
+  "description": "Cloud Functions YllaCash",
   "scripts": { "deploy": "firebase deploy --only functions" },
   "engines": { "node": "22" },
   "main": "index.js",

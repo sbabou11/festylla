@@ -24,11 +24,11 @@ const SEUIL_STOCK = 10
 const getEventId = () => {
   try {
     // 1. Lire depuis le store Zustand en mémoire (le plus fiable)
-    const storeId = window.__yllatok_stores__?.eventStore?.getState?.()?.currentEventId
+    const storeId = window.__yllacash_stores__?.eventStore?.getState?.()?.currentEventId
     if (storeId) return storeId
 
     // 2. Fallback : lire depuis le localStorage
-    const raw = localStorage.getItem('yllatok-event')
+    const raw = localStorage.getItem('yllacash-event')
     if (!raw) return null
     return JSON.parse(raw)?.state?.currentEventId || null
   } catch { return null }
@@ -66,7 +66,7 @@ export const getCurrentEventId  = () => getEventId()
 // ── Helpers internes ─────────────────────────────────────────────────
 const audit = async (action, details = {}) => {
   try {
-    const authStore   = window.__yllatok_stores__?.authStore
+    const authStore   = window.__yllacash_stores__?.authStore
     const currentUser = authStore?.getState?.()?.user
     const staffEmail  = currentUser?.email || details.staffEmail || null
 

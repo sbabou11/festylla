@@ -12,7 +12,7 @@ import { persist } from 'zustand/middleware'
 // Helper audit local (évite circular dep avec service.js)
 const writeAudit = async (action, details = {}) => {
   try {
-    const evRaw = localStorage.getItem('yllatok-event')
+    const evRaw = localStorage.getItem('yllacash-event')
     const evId  = evRaw ? JSON.parse(evRaw)?.state?.currentEventId : null
     const col   = evId
       ? collection(db, 'events', evId, 'audit')
@@ -136,7 +136,7 @@ const useAuthStore = create(
             // Auto-sélectionner l'événement du staff si défini
             if (data.eventId) {
               try {
-                const evStore = window.__yllatok_stores__?.eventStore
+                const evStore = window.__yllacash_stores__?.eventStore
                 if (evStore) evStore.getState().selectEvent(data.eventId)
               } catch {}
             }
@@ -267,7 +267,7 @@ const useAuthStore = create(
         // Rôles personnalisés — lire depuis le store via le registre global
         try {
           // Accès indirect pour éviter les imports circulaires
-          const stores = window.__yllatok_stores__ || {}
+          const stores = window.__yllacash_stores__ || {}
           const roles  = stores.appStore?.getState?.()?.roles || []
           const customRole = roles.find(r => r.id === user.role)
           if (customRole) return (customRole.pages || []).includes(pageId)
@@ -278,7 +278,7 @@ const useAuthStore = create(
       setAvatar: (src) => set(s => ({ user: s.user ? { ...s.user, avatar:src } : null })),
       setNom:    (nom) => set(s => ({ user: s.user ? { ...s.user, nom } : null })),
     }),
-    { name:'yllatok-auth', partialize:(s) => ({ user:s.user, token:s.token }) }
+    { name:'yllacash-auth', partialize:(s) => ({ user:s.user, token:s.token }) }
   )
 )
 

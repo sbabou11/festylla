@@ -3,6 +3,7 @@
  * Mobile : boutons studio/offline/rôle déplacés dans la sidebar
  */
 import React, { useState, useEffect, Suspense, lazy } from 'react'
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { Sun, Moon, Palette, WifiOff, Menu } from 'lucide-react'
 import NotifBell from './components/NotifBell'
 import EventSelector from './components/EventSelector'
@@ -17,7 +18,7 @@ import { useOffline }    from './hooks/useOffline'
 import { useFirestore }  from './hooks/useFirestore'
 import { useBreakpoint } from './hooks/useBreakpoint'
 import TeamChat from './components/TeamChat'
-import useAuthStore, { ROLE_HOME, ROLE_PAGES } from './store/useAuthStore'
+import useAuthStore, { ROLE_HOME } from './store/useAuthStore'
 import useAppStore from './store/useAppStore'
 import { setCurrentEvent } from './firebase/service'
 import useEventStore from './store/useEventStore'
@@ -197,36 +198,47 @@ const Inscription  = lazy(() => import('./pages/public/Inscription'))
 const DemoLogin    = lazy(() => import('./pages/auth/DemoLogin'))
 const LivePlanning = lazy(() => import('./pages/public/LivePlanning'))
 const EspaceArtiste = lazy(() => import('./pages/public/EspaceArtiste'))
+const UiGallery     = import.meta.env.DEV ? lazy(() => import('./pages/dev/UiGallery')) : null
+
+const page = (el) => <Suspense fallback={<Loader />}>{el}</Suspense>
 
 export default function App() {
-  const path = window.location.pathname
-  // Page inscription spectateur
-  if (path === '/live') {
-    return <Suspense fallback={<Loader />}><LivePlanning /></Suspense>
-  }
-  if (path === '/artiste') {
-    return <Suspense fallback={<Loader />}><EspaceArtiste /></Suspense>
-  }
-  if (path === '/demo') {
-    return <Suspense fallback={<Loader />}><DemoLogin /></Suspense>
-  }
+  return (
+    <Routes>
+      {/* Pages publiques (sans connexion staff) */}
+      <Route path="/live"        element={page(<LivePlanning />)} />
+      <Route path="/artiste"     element={page(<EspaceArtiste />)} />
+      <Route path="/demo"        element={page(<DemoLogin />)} />
+      <Route path="/benevole"    element={page(<BenevoleApp />)} />
+      <Route path="/inscription" element={page(<Inscription />)} />
+      <Route path="/register"    element={page(<Inscription />)} />
+      <Route path="/solde"       element={page(<SoldePage />)} />
+      <Route path="/balance"     element={page(<SoldePage />)} />
+      <Route path="/spectateur"  element={page(<SoldePage />)} />
+      {UiGallery && <Route path="/ui" element={page(<UiGallery />)} />}
+      {/* Toutes les autres URLs → app staff (affiche Login si non connecté).
+          Chaque page staff a son adresse : /dashboard, /debit, /spectateurs… */}
+      <Route path="*" element={<ErrorBoundary><StaffApp /></ErrorBoundary>} />
+    </Routes>
+  )
+}
 
-  if (path === '/benevole') {
-    return <Suspense fallback={<Loader />}><BenevoleApp /></Suspense>
-  }
-  if (path === '/inscription' || path === '/register') {
-    return <Suspense fallback={<Loader />}><Inscription /></Suspense>
-  }
-  if (path === '/solde' || path === '/balance' || path === '/spectateur') {
-    return <Suspense fallback={<Loader />}><SoldePage /></Suspense>
-  }
-  // Toutes les autres URLs → app staff (affiche Login si non connecté)
-  // /connexion-staff et / sont gérés par StaffApp → if (!user) → Login
-  return <ErrorBoundary><StaffApp /></ErrorBoundary>
+// Remet l'URL en accord avec la page affichée (adresse inconnue, page non autorisée, "/")
+function UrlSync({ pageId }) {
+  const location = useLocation()
+  const routerNavigate = useNavigate()
+  useEffect(() => {
+    if (location.pathname !== `/${pageId}`) {
+      routerNavigate({ pathname: `/${pageId}`, search: location.search }, { replace: true })
+    }
+  }, [pageId, location.pathname])
+  return null
 }
 
 function StaffApp() {
-  const { user, logout, checkSession, espaceChoisi, setEspaceChoisi: setEspaceStore } = useAuthStore()
+  const { user, logout, checkSession, espaceChoisi, setEspaceChoisi: setEspaceStore, canAccessPage } = useAuthStore()
+  const location       = useLocation()
+  const routerNavigate = useNavigate()
   const { theme, toggleDark }          = useTheme()
   const { isOffline, syncNow, toggleSimulate } = useOffline()
   const { loading, error }             = useFirestore()
@@ -237,7 +249,6 @@ function StaffApp() {
   const { notifications, nonLuCount, marquerToutLu } = useNotifications({ isStaff: true, staffId: user?.id, staffRole: user?.role, eventId: notifEventId })
   useFCM() // Push notifications natives
 
-  const [page, setPage]                     = useState(null)
   const [studioOpen, setStudioOpen]         = useState(false)
   const [auditOpen, setAuditOpen]           = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -252,7 +263,6 @@ function StaffApp() {
   useEffect(() => {
     if (evId) setCurrentEvent(evId)
   }, [evId])
-  useEffect(() => { if (user && !page) setPage(ROLE_HOME[user.role] || 'dashboard') }, [user])
   useEffect(() => { if (!isMobile) setMobileMenuOpen(false) }, [isMobile])
 
   if (!user) {
@@ -289,13 +299,17 @@ function StaffApp() {
   if (needsEvent) return <EventSelector onSelect={() => window.location.reload()}/>
   if (loading) return <Loader msg="Connexion à Firebase…" />
 
+  // La page affichée vient de l'URL (/dashboard, /debit…) ; sinon page d'accueil du rôle
+  const homePage = ROLE_HOME[user.role] || 'dashboard'
+  const urlPage  = decodeURIComponent(location.pathname.split('/')[1] || '')
+  const currentPage = (PAGES[urlPage] && canAccessPage(urlPage)) ? urlPage : homePage
+
   const navigate = (pid) => {
-    if (!ROLE_PAGES[user.role]?.includes(pid)) return
-    setPage(pid)
+    if (!canAccessPage(pid)) return
+    routerNavigate(`/${pid}`)
     setStudioOpen(false)
   }
 
-  const currentPage   = page || ROLE_HOME[user.role]
   const PageComponent = PAGES[currentPage]
   const staffPerson   = staff.find(s => s.id === user.id)
   const roleColor     = ROLE_COLOR[user.role] || '#888'
@@ -304,7 +318,7 @@ function StaffApp() {
     // Récupérer les alertes acquittées depuis localStorage (IDs définis dans Alertes.jsx)
     let acquittees = new Set()
     try {
-      const stored = localStorage.getItem('yllatok-alertes-acquittees')
+      const stored = localStorage.getItem('yllacash-alertes-acquittees')
       if (stored) acquittees = new Set(JSON.parse(stored))
     } catch {}
 
@@ -335,6 +349,7 @@ function StaffApp() {
 
   return (
     <div style={{ fontFamily: 'var(--font)', minHeight: '100vh' }}>
+      <UrlSync pageId={currentPage} />
 
       {/* Offline bar */}
       {isOffline && (
