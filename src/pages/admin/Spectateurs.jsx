@@ -2,7 +2,8 @@
  * pages/admin/Spectateurs.jsx — v2
  * Super admin : voir, modifier (nom, solde), supprimer des spectateurs
  */
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
 import QrCode from '../../components/QrCode'
@@ -12,7 +13,10 @@ import { doc, deleteDoc, updateDoc } from 'firebase/firestore'
 
 export default function Spectateurs() {
   const { spectateurs } = useAppStore()
-  const [search, setSearch]     = useState('')
+  const [params] = useSearchParams()
+  const [search, setSearch]     = useState(() => params.get('q') || '')
+  // ?q=… vient de la recherche globale (Ctrl K)
+  useEffect(() => { const q = params.get('q'); if (q !== null) setSearch(q) }, [params])
   const [editing, setEditing]   = useState(null)  // { _docId, id, nom, solde }
   const [editNom, setEditNom]   = useState('')
   const [editSolde, setEditSolde] = useState(0)

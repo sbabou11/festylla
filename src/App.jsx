@@ -4,7 +4,10 @@
  */
 import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
-import { Sun, Moon, Palette, WifiOff, Menu } from 'lucide-react'
+import { Sun, Moon, Palette, WifiOff, Menu, Search, X, HandHeart } from 'lucide-react'
+import CommandPalette from './components/CommandPalette'
+import { ToastViewport } from './ui'
+import shell from './App.module.css'
 import NotifBell from './components/NotifBell'
 import EventSelector from './components/EventSelector'
 import AuditPanel from './components/AuditPanel'
@@ -199,6 +202,7 @@ const DemoLogin    = lazy(() => import('./pages/auth/DemoLogin'))
 const LivePlanning = lazy(() => import('./pages/public/LivePlanning'))
 const EspaceArtiste = lazy(() => import('./pages/public/EspaceArtiste'))
 const UiGallery     = import.meta.env.DEV ? lazy(() => import('./pages/dev/UiGallery')) : null
+const DevDashboard  = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevDashboard')) : null
 
 const page = (el) => <Suspense fallback={<Loader />}>{el}</Suspense>
 
@@ -216,6 +220,7 @@ export default function App() {
       <Route path="/balance"     element={page(<SoldePage />)} />
       <Route path="/spectateur"  element={page(<SoldePage />)} />
       {UiGallery && <Route path="/ui" element={page(<UiGallery />)} />}
+      {DevDashboard && <Route path="/ui/dashboard" element={page(<DevDashboard />)} />}
       {/* Toutes les autres URLs → app staff (affiche Login si non connecté).
           Chaque page staff a son adresse : /dashboard, /debit, /spectateurs… */}
       <Route path="*" element={<ErrorBoundary><StaffApp /></ErrorBoundary>} />
@@ -265,6 +270,19 @@ function StaffApp() {
   }, [evId])
   useEffect(() => { if (!isMobile) setMobileMenuOpen(false) }, [isMobile])
 
+  // Recherche globale : Ctrl K (Windows) ou ⌘ K (Mac)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen(o => !o)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   if (!user) {
     return <Suspense fallback={<Loader />}><LoginPage /></Suspense>
   }
@@ -304,9 +322,9 @@ function StaffApp() {
   const urlPage  = decodeURIComponent(location.pathname.split('/')[1] || '')
   const currentPage = (PAGES[urlPage] && canAccessPage(urlPage)) ? urlPage : homePage
 
-  const navigate = (pid) => {
+  const navigate = (pid, search = '') => {
     if (!canAccessPage(pid)) return
-    routerNavigate(`/${pid}`)
+    routerNavigate(`/${pid}${search}`)
     setStudioOpen(false)
   }
 
@@ -335,43 +353,22 @@ function StaffApp() {
     return n
   })() : 0
 
-  const btn = (extra = {}) => ({
-    display: 'flex', alignItems: 'center', gap: 5,
-    padding: '5px 9px',
-    border: '0.5px solid var(--border2)',
-    borderRadius: 8,
-    background: 'var(--bg2)',
-    color: 'var(--muted)',
-    fontSize: 12, cursor: 'pointer',
-    fontFamily: 'var(--font)',
-    ...extra,
-  })
+  const isAdmin     = user.role === 'admin' || user.role === 'super_admin'
+  const currentEv   = evStore.events?.find(e => e.id === evStore.currentEventId)
 
   return (
-    <div style={{ fontFamily: 'var(--font)', minHeight: '100vh' }}>
+    <div className={shell.app}>
       <UrlSync pageId={currentPage} />
 
-      {/* Offline bar */}
+      {/* Bandeau hors-ligne */}
       {isOffline && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: '#FAEEDA', borderBottom: '0.5px solid #EF9F27', fontSize: 12, color: '#854F0B' }}>
-          <WifiOff size={13} /> Hors-ligne — synchronisation au retour du réseau
-          <button onClick={syncNow} style={{ marginLeft: 'auto', padding: '3px 8px', border: '0.5px solid #EF9F27', borderRadius: 6, background: '#fff', color: '#854F0B', fontSize: 11, cursor: 'pointer' }}>
-            Forcer sync
-          </button>
+        <div className={shell.offline} role="status">
+          <WifiOff size={14} aria-hidden="true" /> Hors ligne : les opérations sont gardées et seront envoyées au retour du réseau.
+          <button type="button" onClick={syncNow} className={shell.offlineBtn}>Forcer la synchro</button>
         </div>
       )}
 
-      {/* Shell */}
-      <div style={{
-        display: 'flex',
-        border: isMobile ? 'none' : '0.5px solid var(--border2)',
-        borderRadius: isMobile ? 0 : 16,
-        overflow: isMobile ? 'visible' : 'hidden',
-        minHeight: '100vh',
-        position: 'relative',
-      }}>
-
-        {/* Sidebar — reçoit toutes les props nécessaires pour le mode mobile */}
+      <div className={shell.shell}>
         <Sidebar
           view={user.role}
           currentPage={currentPage}
@@ -382,163 +379,112 @@ function StaffApp() {
           onLogout={logout}
           isDark={theme.isDark}
           onToggleDark={toggleDark}
-          isOffline={isOffline}
-          onToggleOffline={toggleSimulate}
-          isAdmin={user.role === 'admin' || user.role === 'super_admin'}
+          isAdmin={isAdmin}
           onStudio={() => setStudioOpen(o => !o)}
           studioOpen={studioOpen}
           onAudit={() => setAuditOpen(true)}
           auditOpen={auditOpen}
         />
 
-        {/* Main */}
-        <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
-          minWidth: 0, background: 'var(--bg)', transition: 'background .25s',
-        }}>
-
-          {/* Topbar — épurée, essentiel uniquement */}
-          <div style={{
-            height: 56,
-            padding: '0 16px',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: 'var(--bg)',
-            gap: 8, flexShrink: 0,
-          }}>
-            {/* Gauche : hamburger (mobile) + titre page */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              {isMobile && (
-                <button onClick={() => setMobileMenuOpen(true)}
-                  className="btn-icon nav-btn" style={{ width: 36, height: 36 }}>
-                  <Menu size={18}/>
-                </button>
-              )}
-              <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
-                <span style={{
-                  fontSize: 16, fontWeight: 700, color: 'var(--text)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {PAGE_TITLES[currentPage] || currentPage}
-                </span>
-                {/* Badge événement actif */}
-                {(() => {
-                  const evStore = useEventStore.getState()
-                  const ev = evStore.events?.find(e => e.id === evStore.currentEventId)
-                  if (!ev) return null
-                  const c = ev.couleur || '#1a6b7a'
-                  return (
-                    <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20, background:c+'22', color:c, border:`1px solid ${c}44`, whiteSpace:'nowrap', flexShrink:0, display: isMobile ? 'none' : 'inline-flex', alignItems:'center', gap:5 }}>
-                      {ev.logoSrc
-                        ? <img src={ev.logoSrc} alt="" style={{ width:14, height:14, borderRadius:3, objectFit:'cover' }}/>
-                        : ev.emoji
-                      } {ev.nom}
-                    </span>
-                  )
-                })()}
-              </div>
-            </div>
-
-            {/* Droite — 3 boutons max */}
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-
-              {/* Cloche notifications */}
-              <NotifBell
-                notifications={notifications}
-                nonLuCount={nonLuCount}
-                onMarkAllRead={marquerToutLu}
-              />
-
-              {/* Dark mode — desktop uniquement (mobile : dans le menu gauche) */}
-              {!isMobile && (
-                <button onClick={toggleDark} className="btn-icon nav-btn"
-                  style={{ width: 36, height: 36 }} title={theme.isDark ? 'Mode clair' : 'Mode sombre'}>
-                  {theme.isDark ? <Sun size={16}/> : <Moon size={16}/>}
-                </button>
-              )}
-
-              {/* Studio — admin desktop uniquement (mobile : dans la sidebar) */}
-              {(user.role === 'admin' || user.role === 'super_admin') && !isMobile && (
-                <button onClick={() => setStudioOpen(o => !o)}
-                  className="btn-icon nav-btn"
-                  style={{ width: 36, height: 36,
-                    background: studioOpen ? 'var(--brand)' : undefined,
-                    color: studioOpen ? '#fff' : undefined,
-                    borderColor: studioOpen ? 'var(--brand)' : undefined,
-                  }} title="Studio">
-                  <Palette size={16}/>
-                </button>
-              )}
-
-              {/* Switch espace bénévole — si double profil */}
-              {user.benevoleDocId && (
-                <button onClick={() => setEspaceChoisi('benev')}
-                  title="Basculer vers mon espace bénévole"
-                  className="btn-icon nav-btn"
-                  style={{ width:36, height:36, fontSize:18 }}>
-                  🙋
-                </button>
-              )}
-
-              {/* Avatar → Mon profil */}
-              <button onClick={() => navigate('mon-profil')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-                  display: 'flex', minHeight: 'auto' }}>
-                <Avatar nom={user.nom} src={staffPerson?.avatar || user.avatar} size={32}/>
+        <div className={shell.main}>
+          {/* Barre du haut : titre, événement, état, recherche, actions */}
+          <header className={shell.bar}>
+            {isMobile && (
+              <button type="button" onClick={() => setMobileMenuOpen(true)} className={shell.iconBtn} aria-label="Ouvrir le menu">
+                <Menu size={18} />
               </button>
+            )}
+            <h1 className={shell.title}>{PAGE_TITLES[currentPage] || currentPage}</h1>
+            {currentEv && !isMobile && (
+              <span className={shell.event}>
+                {currentEv.logoSrc && <img src={currentEv.logoSrc} alt="" />}
+                {currentEv.nom}
+              </span>
+            )}
+            {!isMobile && (
+              <span className={isOffline ? shell.stateOff : shell.stateOn}>
+                {isOffline ? 'Hors ligne' : 'En direct'}
+              </span>
+            )}
 
+            <button type="button" className={isMobile ? `${shell.iconBtn} ${shell.pushRight}` : shell.search} onClick={() => setPaletteOpen(true)} aria-label="Rechercher (Ctrl K)">
+              <Search size={16} aria-hidden="true" />
+              {!isMobile && <span className={shell.searchText}>Chercher un spectateur, un article…</span>}
+              {!isMobile && <kbd className={shell.kbd}>Ctrl K</kbd>}
+            </button>
+
+            <div className={shell.actions}>
+              <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu} />
+              {!isMobile && (
+                <button type="button" onClick={toggleDark} className={shell.iconBtn} title={theme.isDark ? 'Mode clair' : 'Mode sombre'} aria-label={theme.isDark ? 'Mode clair' : 'Mode sombre'}>
+                  {theme.isDark ? <Sun size={16} /> : <Moon size={16} />}
+                </button>
+              )}
+              {isAdmin && !isMobile && (
+                <button type="button" onClick={() => setStudioOpen(o => !o)} className={studioOpen ? shell.iconBtnOn : shell.iconBtn} title="Studio" aria-label="Studio" aria-pressed={studioOpen}>
+                  <Palette size={16} />
+                </button>
+              )}
+              {user.benevoleDocId && (
+                <button type="button" onClick={() => setEspaceChoisi('benev')} className={shell.iconBtn} title="Basculer vers mon espace bénévole" aria-label="Basculer vers mon espace bénévole">
+                  <HandHeart size={16} />
+                </button>
+              )}
+              <button type="button" onClick={() => navigate('mon-profil')} className={shell.avatarBtn} aria-label="Mon profil">
+                <Avatar nom={user.nom} src={staffPerson?.avatar || user.avatar} size={32} />
+              </button>
             </div>
-          </div>
+          </header>
 
-          {/* Contenu page */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? 10 : 16 }}>
-            <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Chargement…</div>}>
+          {/* Contenu de la page */}
+          <main className={shell.content}>
+            <Suspense fallback={<div className={shell.pageLoading}>Chargement…</div>}>
               {PageComponent
                 ? <PageComponent onNavigate={navigate} view={user.role} />
-                : <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', padding: 40 }}>
-                    Page non disponible pour le rôle «{user.role}»
-                  </div>
-              }
+                : <div className={shell.pageLoading}>Page non disponible pour le rôle « {user.role} »</div>}
             </Suspense>
-          </div>
+          </main>
         </div>
 
         {/* Journal d'audit */}
         <AuditPanel open={auditOpen} onClose={() => setAuditOpen(false)} />
 
-        {/* Studio panel — desktop : dans le shell | mobile : overlay plein écran */}
-        {/* Chat équipe (v7) — pour tous les staff connectés avec un événement actif */}
+        {/* Chat équipe — pour tous les staff connectés avec un événement actif */}
         {evStore.currentEventId && (
           <TeamChat
             eventId={evStore.currentEventId}
             currentUser={{ uid: user.id, id: user.id, nom: user.nom, role: user.role }}
             brandColor={roleColor}
-            isAdmin={user.role === 'admin' || user.role === 'super_admin'}
+            isAdmin={isAdmin}
           />
         )}
 
-        {studioOpen && (user.role === 'admin' || user.role === 'super_admin') && !isMobile && (
+        {/* Studio — ordinateur : panneau dans le shell | mobile : plein écran */}
+        {studioOpen && isAdmin && !isMobile && (
           <Studio onClose={() => setStudioOpen(false)} />
         )}
-        {studioOpen && (user.role === 'admin' || user.role === 'super_admin') && isMobile && (
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 110,
-            background: 'var(--bg)',
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 16px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
-              <button onClick={() => setStudioOpen(false)}
-                style={{ border:'none', background:'none', cursor:'pointer', color:'var(--text)', fontSize:18, lineHeight:1, padding:'2px 6px' }}>
-                ✕
+        {studioOpen && isAdmin && isMobile && (
+          <div className={shell.studioMobile}>
+            <div className={shell.studioHead}>
+              <button type="button" onClick={() => setStudioOpen(false)} className={shell.iconBtn} aria-label="Fermer le Studio">
+                <X size={18} />
               </button>
-              <span style={{ fontWeight:700, fontSize:15, color:'var(--text)' }}>Studio</span>
+              <span>Studio</span>
             </div>
-            <div style={{ flex:1, overflowY:'auto' }}>
+            <div className={shell.studioBody}>
               <Studio onClose={() => setStudioOpen(false)} />
             </div>
           </div>
         )}
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={navigate}
+        canAccessPage={canAccessPage}
+      />
+      <ToastViewport />
     </div>
   )
 }

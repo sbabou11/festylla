@@ -1,233 +1,243 @@
 /**
- * pages/admin/Dashboard.jsx — refonte Maison Ylla
- * KPI cards colorées par catégorie, transactions avec icônes circulaires
+ * pages/admin/Dashboard.jsx — v3 tableau de bord en direct (lot 1)
+ * Indicateurs comparés à la veille, flux de caisse par heure, objectif du jour,
+ * alertes, kanban des réservations et dernières transactions.
  */
-import React from 'react'
-import useAppStore from '../../store/useAppStore'
+import React, { useEffect, useMemo, useState } from 'react'
+import { Users, Wallet, ShoppingCart, Bookmark, Target, ChevronRight, Receipt } from 'lucide-react'
+import clsx from 'clsx'
+import useAppStore   from '../../store/useAppStore'
+import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
 import { computeKPIs } from '../../utils/kpis'
-import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { Users, Wallet, ShoppingCart, Bookmark } from 'lucide-react'
+import { dayStats, hourlyFlow, topSellers, dashboardAlerts, txTime } from '../../utils/dashboardData'
+import { Stat, Card, Tabs, Button, Empty, Dialog, toast } from '../../ui'
+import FlowChart  from './dashboard/FlowChart'
+import GoalRing   from './dashboard/GoalRing'
+import ResaKanban from './dashboard/ResaKanban'
+import s from './dashboard/Dashboard.module.css'
 
-export default function Dashboard({ onNavigate }) {
+// Rafraîchit "maintenant" chaque minute (ligne de l'heure, comparaisons)
+function useNow(intervalMs = 60_000) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(t)
+  }, [intervalMs])
+  return now
+}
+
+const signed = (n) => (n > 0 ? `+${n}` : `${n}`)
+
+const TX_STYLE = {
+  credit:             { tone: 'success', sign: '+' },
+  debit:              { tone: 'coral',   sign: '−' },
+  retrait:            { tone: 'brand',   sign: '−' },
+  'benev-retrait':    { tone: 'brand',   sign: ''  },
+  reservation:        { tone: 'warning', sign: ''  },
+  'benev-reservation':{ tone: 'warning', sign: ''  },
+}
+
+export default function Dashboard({ onNavigate, view }) {
   const { spectateurs, reservations, logs, menu, theme } = useAppStore()
-  const { isMobile } = useBreakpoint()
+  const { events, currentEventId, updateEvent } = useEventStore()
+  const now = useNow()
+  const [period, setPeriod] = useState('today')
+  const [goalOpen, setGoalOpen] = useState(false)
 
-  const allTx = logs || []
-  const {
-    totalSoldes, totalVentes, resaPending, resaReady, activeResas,
-  } = computeKPIs({ spectateurs, reservations, logs: allTx, menu })
-  const specMap     = Object.fromEntries(spectateurs.map(s => [s.id, s.nom]))
-  const recentTx    = [...allTx]
-    .sort((a,b) => {
-      const ta = a.createdAt?.seconds || new Date(a.timestamp||0).getTime()/1000
-      const tb = b.createdAt?.seconds || new Date(b.timestamp||0).getTime()/1000
-      return tb - ta
-    })
-    .filter(t => t.type !== 'annulation' || (t.montant||0) > 0)
-    .slice(0, 8)
-    .map(t => ({ ...t, snom: t.benevoleNom || specMap[t.specId] || t.specNom || '—' }))
+  const allTx   = logs || []
+  const event   = events.find(e => e.id === currentEventId)
+  const goal    = event?.objectifJour || 0
+  const canEditGoal = view === 'admin' || view === 'super_admin'
 
-  // KPI cards — chaque catégorie a sa couleur Maison Ylla
-  const stats = [
-    {
-      label: 'Spectateurs',
-      value: spectateurs.length,
-      icon: Users,
-      bg: 'var(--brand-light)',
-      iconBg: 'var(--brand)',
-      iconColor: theme.isDark ? '#002438' : '#fff',
-      textColor: theme.isDark ? '#5FD4D4' : 'var(--brand-dark)',
-      borderColor: theme.isDark ? 'rgba(20,181,181,0.30)' : 'transparent',
-    },
-    {
-      label: 'Soldes',
-      value: fmt(totalSoldes),
-      icon: Wallet,
-      bg: 'var(--green-light)',
-      iconBg: 'var(--green)',
-      iconColor: theme.isDark ? '#002438' : '#fff',
-      textColor: theme.isDark ? 'var(--green-dark)' : 'var(--green-dark)',
-      borderColor: theme.isDark ? 'rgba(20,181,140,0.30)' : 'transparent',
-    },
-    {
-      label: 'Ventes',
-      value: fmt(totalVentes),
-      icon: ShoppingCart,
-      bg: 'var(--coral-light)',
-      iconBg: 'var(--coral)',
-      iconColor: theme.isDark ? '#2A1810' : '#fff',
-      textColor: theme.isDark ? 'var(--coral-dark)' : 'var(--coral-dark)',
-      borderColor: theme.isDark ? 'rgba(255,138,92,0.30)' : 'transparent',
-    },
-    {
-      label: 'Réservations',
-      value: resaPending + resaReady,
-      icon: Bookmark,
-      bg: 'var(--gold-light)',
-      iconBg: 'var(--gold)',
-      iconColor: theme.isDark ? '#2A1810' : '#fff',
-      textColor: theme.isDark ? 'var(--gold-dark)' : 'var(--gold-dark)',
-      borderColor: theme.isDark ? 'rgba(240,176,64,0.30)' : 'transparent',
-      sub: resaReady > 0 ? `${resaReady} prête${resaReady>1?'s':''}` : resaPending>0 ? `${resaPending} en attente` : null,
-    },
-  ]
+  const kpis   = useMemo(() => computeKPIs({ spectateurs, reservations, logs: allTx, menu }), [spectateurs, reservations, allTx, menu])
+  const day    = useMemo(() => dayStats(allTx, now), [allTx, now])
+  const flow   = useMemo(() => hourlyFlow(allTx, now, period === 'today' ? 0 : 1), [allTx, now, period])
+  const best   = useMemo(() => topSellers(allTx, now)[0], [allTx, now])
+  const alerts = useMemo(() => dashboardAlerts({ spectateurs, logs: allTx, menu }), [spectateurs, allTx, menu])
 
-  const txStyle = (type) => {
-    if (type === 'credit')                                       return { bg: 'var(--green-light)',  color: 'var(--green-dark)',  icon: '€', sign: '+' }
-    if (type === 'reservation' || type === 'benev-reservation')  return { bg: 'var(--gold-light)',   color: 'var(--gold-dark)',   icon: '⏳', sign: ''  }
-    if (type === 'retrait'     || type === 'benev-retrait')      return { bg: 'var(--brand-light)',  color: 'var(--brand-dark)',  icon: '🎁', sign: ''  }
-    if (type === 'benev-annulation')                             return { bg: 'var(--purple-light)', color: 'var(--purple)',      icon: '↩', sign: ''  }
-    if (type === 'debit')                                        return { bg: 'var(--coral-light)',  color: 'var(--coral-dark)',  icon: '€', sign: '−' }
-    return { bg: 'var(--red-light)', color: 'var(--red-dark)', icon: '€', sign: '−' }
+  const wallets = spectateurs.filter(sp => (sp.solde || 0) > 0).length
+  const specMap = useMemo(() => Object.fromEntries(spectateurs.map(sp => [sp.id, sp.nom])), [spectateurs])
+  const recentTx = useMemo(() => [...allTx]
+    .filter(t => t.type !== 'annulation' || (t.montant || 0) > 0)
+    .sort((a, b) => (txTime(b) || 0) - (txTime(a) || 0))
+    .slice(0, 7), [allTx])
+
+  const vsYesterday = day.hasYesterday ? 'vs hier même heure' : null
+
+  return (
+    <div className={s.page}>
+      {theme.bannerSrc && (
+        <div className={s.banner}><img src={theme.bannerSrc} alt="" /></div>
+      )}
+
+      {/* Indicateurs */}
+      <div className={s.stats}>
+        <Stat
+          label="Recettes du jour" value={fmt(day.revenue)} icon={ShoppingCart} tone="coral" trend={day.trend}
+          delta={day.revenueDelta != null
+            ? { value: `${signed(day.revenueDelta)} %`, direction: day.revenueDelta > 0 ? 'up' : day.revenueDelta < 0 ? 'down' : 'flat', label: vsYesterday }
+            : undefined}
+          sub={day.revenueDelta == null ? `${day.salesCount} vente${day.salesCount > 1 ? 's' : ''} depuis 6h` : undefined}
+        />
+        <Stat
+          label="Soldes en circulation" value={fmt(kpis.totalSoldes)} icon={Wallet} tone="success"
+          sub={`${wallets} portefeuille${wallets > 1 ? 's' : ''} actif${wallets > 1 ? 's' : ''} · ${fmt(day.credits)} rechargés aujourd'hui`}
+        />
+        <Stat
+          label="Panier moyen du jour" value={fmt(Math.round(day.basket))} icon={Users} tone="brand"
+          delta={day.basketDiff != null
+            ? { value: `${day.basketDiff >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(day.basketDiff)))}`, direction: day.basketDiff > 0 ? 'up' : day.basketDiff < 0 ? 'down' : 'flat', label: vsYesterday }
+            : undefined}
+          sub={day.basketDiff == null ? `${day.salesCount} encaissement${day.salesCount > 1 ? 's' : ''}` : undefined}
+        />
+        <Stat
+          label="Réservations" value={kpis.activeResas.length} icon={Bookmark} tone="warning"
+          sub={kpis.resaReady > 0 ? `${kpis.resaReady} prête${kpis.resaReady > 1 ? 's' : ''} à retirer` : kpis.resaPending > 0 ? `${kpis.resaPending} en attente` : 'Aucune en cours'}
+        />
+      </div>
+
+      {/* Flux + objectif / alertes */}
+      <div className={s.rowWide}>
+        <Card
+          title="Flux de caisse par heure"
+          subtitle={`${fmt(flow.total.credits)} rechargés · ${fmt(flow.total.sales)} dépensés`}
+          actions={<Tabs size="sm" label="Journée" value={period} onChange={setPeriod}
+            items={[{ value: 'today', label: "Aujourd'hui" }, { value: 'yesterday', label: 'Hier' }]} />}
+        >
+          <div className={s.legend}>
+            <span><i className={s.keyIn} />Recharges</span>
+            <span><i className={s.keyOut} />Dépenses</span>
+            <span className={s.legendNote}>Journée de 6h à 6h</span>
+          </div>
+          <FlowChart flow={flow} />
+        </Card>
+
+        <div className={s.stack}>
+          <Card title="Objectif du jour"
+            actions={canEditGoal && goal > 0 && <Button size="sm" variant="ghost" onClick={() => setGoalOpen(true)}>Modifier</Button>}>
+            {goal > 0 ? (
+              <div className={s.goal}>
+                <GoalRing revenue={day.revenue} projected={day.projected} goal={goal} />
+                <dl className={s.goalFacts}>
+                  <div><dt>Encaissé</dt><dd>{fmt(day.revenue)} <span>sur {fmt(goal)}</span></dd></div>
+                  <div><dt>Projeté à {day.closingLabel}</dt><dd className={s.proj}>≈ {fmt(day.projected)}</dd></div>
+                  {best && <div><dt>Meilleure caisse</dt><dd>{best.staff} <span>· {fmt(best.total)}</span></dd></div>}
+                </dl>
+              </div>
+            ) : (
+              <Empty icon={Target} title="Aucun objectif fixé"
+                action={canEditGoal && <Button size="sm" onClick={() => setGoalOpen(true)}>Fixer un objectif</Button>}>
+                {`Projection à ${day.closingLabel} : ≈ ${fmt(day.projected)}`}
+              </Empty>
+            )}
+          </Card>
+
+          <Card title="Alertes" flush
+            actions={<Button size="sm" variant="ghost" onClick={() => onNavigate?.('alertes')}>Tout voir</Button>}>
+            {alerts.length === 0 ? (
+              <p className={s.allGood}>Rien à signaler</p>
+            ) : (
+              <ul className={s.alerts}>
+                {alerts.slice(0, 4).map(a => (
+                  <li key={a.id}>
+                    <button type="button" className={s.alert} onClick={() => onNavigate?.(a.page)}>
+                      <i className={clsx(s.stripe, s[a.tone])} />
+                      <span className={s.alertText}>
+                        <b>{a.title}</b>
+                        {a.detail != null && <span> · {fmt(a.detail)}</span>}
+                        {a.stock != null && a.stock > 0 && <span> · reste {a.stock}</span>}
+                      </span>
+                      <ChevronRight size={14} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+                {alerts.length > 4 && <li className={s.alertMore}>+ {alerts.length - 4} autres</li>}
+              </ul>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {/* Réservations + transactions */}
+      <div className={s.rowWide}>
+        <Card title="Réservations en cours"
+          subtitle={`${kpis.activeResas.filter(r => !r.isBenev).length} spectateurs · ${kpis.activeResas.filter(r => r.isBenev).length} bénévoles`}
+          actions={<Button size="sm" variant="ghost" onClick={() => onNavigate?.('reservations-admin')}>Tout voir</Button>}>
+          <ResaKanban reservations={kpis.activeResas} onSeeAll={() => onNavigate?.('reservations-admin')} />
+        </Card>
+
+        <Card title="Dernières transactions" subtitle={`${allTx.length} au total`} flush
+          actions={<Button size="sm" variant="ghost" onClick={() => onNavigate?.('transactions')}>Tout voir</Button>}>
+          {recentTx.length === 0 ? (
+            <Empty icon={Receipt} title="Aucune transaction">Les recharges et encaissements apparaîtront ici.</Empty>
+          ) : (
+            <ul className={s.txList}>
+              {recentTx.map((t, i) => {
+                const st = TX_STYLE[t.type] || { tone: 'danger', sign: '−' }
+                return (
+                  <li key={t.id || i} className={s.tx}>
+                    <span className={clsx(s.txIcon, s[st.tone])}>{st.sign || '•'}</span>
+                    <span className={s.txText}>
+                      <b>{t.label}</b>
+                      <span>{t.benevoleNom || specMap[t.specId] || t.specNom || '—'} · {t.heure || t.date}</span>
+                    </span>
+                    <span className={clsx(s.txAmount, s[`${st.tone}Text`])}>{st.sign}{fmt(t.montant || 0)}</span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      <GoalDialog
+        open={goalOpen}
+        onClose={() => setGoalOpen(false)}
+        initial={goal}
+        onSave={async (cents) => {
+          try {
+            await updateEvent(currentEventId, { objectifJour: cents })
+            toast.success(cents ? `Objectif fixé à ${fmt(cents)} par jour` : 'Objectif retiré')
+            setGoalOpen(false)
+          } catch (e) {
+            toast.error(`Objectif non enregistré : ${e?.message || 'erreur réseau'}`)
+          }
+        }}
+      />
+    </div>
+  )
+}
+
+function GoalDialog({ open, onClose, initial, onSave }) {
+  const [value, setValue]   = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { if (open) setValue(initial ? String(initial / 100) : '') }, [open, initial])
+
+  const euros = parseFloat(String(value).replace(',', '.'))
+  const valid = value === '' || (Number.isFinite(euros) && euros >= 0)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valid) return
+    setSaving(true)
+    await onSave(value === '' ? 0 : Math.round(euros * 100))
+    setSaving(false)
   }
 
   return (
-    <div>
-      {/* Bannière */}
-      {theme.bannerSrc && (
-        <div style={{ borderRadius: 'var(--radius-xl)', overflow: 'hidden', height: isMobile ? 60 : 100, marginBottom: 20 }}>
-          <img src={theme.bannerSrc} alt="Bannière" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
-        </div>
-      )}
-
-      {/* KPI cards */}
-      <div className="grid-4" style={{ marginBottom: 20 }}>
-        {stats.map(s => {
-          const Icon = s.icon
-          return (
-            <div key={s.label} style={{
-              background: s.bg,
-              borderRadius: 'var(--radius-lg)',
-              padding: '16px 18px',
-              border: `0.5px solid ${s.borderColor}`,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 700,
-                  color: s.textColor,
-                  textTransform: 'uppercase', letterSpacing: '0.05em',
-                }}>{s.label}</span>
-                <div style={{
-                  width: 28, height: 28, borderRadius: 8,
-                  background: s.iconBg,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Icon size={15} style={{ color: s.iconColor }}/>
-                </div>
-              </div>
-              <div style={{
-                fontSize: 24, fontWeight: 800,
-                color: theme.isDark ? 'var(--text)' : 'var(--marine)',
-                lineHeight: 1,
-              }}>{s.value}</div>
-              {s.sub && (
-                <div style={{
-                  fontSize: 11, fontWeight: 600,
-                  color: s.textColor,
-                  marginTop: 4,
-                }}>{s.sub}</div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Deux colonnes : réservations + transactions */}
-      <div className="grid-2">
-
-        {/* Réservations actives */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Réservations en cours</div>
-            {activeResas.length > 0 && (
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                {activeResas.filter(r=>!r.isBenev).length} spectateur{activeResas.filter(r=>!r.isBenev).length>1?'s':''}
-                {activeResas.filter(r=>r.isBenev).length>0 && ` · ${activeResas.filter(r=>r.isBenev).length} bénévole${activeResas.filter(r=>r.isBenev).length>1?'s':''}`}
-              </div>
-            )}
-          </div>
-          {activeResas.length === 0 ? (
-            <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>
-              Aucune réservation
-            </div>
-          ) : (
-            <div style={{ padding: '8px 10px' }}>
-              {activeResas.slice(0,6).map(r => {
-                const isReady = r.status === 'ready'
-                const bg = isReady ? 'var(--green-light)' : 'var(--gold-light)'
-                const statusColor = isReady ? 'var(--green-dark)' : r.status === 'processing' ? 'var(--purple)' : 'var(--gold-dark)'
-                return (
-                  <div key={r.id} style={{
-                    padding: '10px 12px', borderRadius: 8, marginBottom: 4,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    background: bg,
-                    border: theme.isDark ? `0.5px solid ${isReady ? 'rgba(20,181,140,0.30)' : 'rgba(240,176,64,0.30)'}` : 'none',
-                  }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {r.benevoleNom || r.specNom || '—'}
-                        {r.isBenev && <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: 'var(--brand-light)', color: 'var(--brand-dark)', fontWeight: 700 }}>Bénévole</span>}
-                      </div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {(r.items||[]).map(i=>`${i.nom}${i.qty>1?` ×${i.qty}`:''}`).join(' · ')}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: statusColor, marginBottom: 2 }}>
-                        {isReady ? '✓ Prête' : r.status === 'processing' ? 'En prépa.' : 'En attente'}
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{r.isBenev ? '—' : fmt(r.total||0)}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Dernières transactions */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Dernières transactions</div>
-            {recentTx.length > 0 && (
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{allTx.length} au total</div>
-            )}
-          </div>
-          {recentTx.length === 0 ? (
-            <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>
-              Aucune transaction
-            </div>
-          ) : (
-            <div style={{ padding: '8px 10px' }}>
-              {recentTx.map((t,i) => {
-                const s = txStyle(t.type)
-                return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px', borderRadius: 8, marginBottom: 2 }}>
-                    <div style={{
-                      width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: s.bg, fontSize: 13, fontWeight: 800, color: s.color,
-                    }}>
-                      {s.sign}{s.icon}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {t.label}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{t.snom} · {t.heure || t.date}</div>
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 700, flexShrink: 0, color: s.color }}>
-                      {s.sign}{fmt(t.montant||0)}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-      </div>
-    </div>
+    <Dialog open={open} onClose={onClose} title="Objectif de recettes par jour"
+      footer={<>
+        <Button variant="secondary" onClick={onClose}>Annuler</Button>
+        <Button type="submit" form="goal-form" loading={saving} disabled={!valid}>Enregistrer</Button>
+      </>}>
+      <form id="goal-form" onSubmit={submit} className={s.goalForm}>
+        <label htmlFor="goal-input">Montant visé pour une journée (6h–6h), en euros</label>
+        <input id="goal-input" className="inp" inputMode="decimal" value={value}
+          onChange={e => setValue(e.target.value)} placeholder="ex : 12000" autoFocus />
+        {!valid && <p className={s.formError}>Saisissez un montant positif, par exemple 12000.</p>}
+        <p className={s.formHint}>Laissez vide pour retirer l'objectif. Il s'applique à l'événement en cours, pour toute l'équipe.</p>
+      </form>
+    </Dialog>
   )
 }

@@ -1,0 +1,165 @@
+.side {
+  width: 232px;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 5;
+  transition: width var(--dur-slow) var(--ease);
+}
+.collapsed { width: 64px; }
+
+/* Mobile : tiroir */
+.mobile {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 100;
+  width: min(280px, 85vw);
+  transform: translateX(-100%);
+  transition: transform var(--dur-slow) var(--ease);
+  box-shadow: none;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.open { transform: none; box-shadow: var(--shadow-lg); }
+.scrim { position: fixed; inset: 0; z-index: 99; background: var(--overlay); }
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 14px;
+  min-height: 64px;
+}
+.collapsed .head { justify-content: center; padding: var(--space-3) 0; }
+.logo {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--grad-signature);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.logo img { width: 30px; height: 30px; object-fit: contain; }
+.brand { min-width: 0; flex: 1; display: grid; }
+.brandRow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.name { font-family: var(--font-display); font-size: var(--fs-15); font-weight: 800; color: var(--text); }
+.role { font-size: var(--fs-11); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; padding: 1px 5px; border-radius: 4px; }
+.pillRed { background: var(--red-light); color: var(--red-dark); }
+.pillGold { background: var(--gold-light); color: var(--gold-dark); }
+.close {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  min-height: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.offlineDot {
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  margin-bottom: var(--space-2);
+}
+
+.nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-1) 10px;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+.collapsed .nav { padding: var(--space-1) 12px; overflow: visible; }
+.foot {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) 10px var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.collapsed .foot { padding: var(--space-2) 12px var(--space-3); }
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+.collapsed .item { justify-content: center; padding: 0; width: 40px; }
+.item:hover { background: var(--bg3); color: var(--text); }
+.active, .active:hover { background: var(--brand-light); color: var(--brand-dark); }
+.danger { color: var(--red-dark); }
+.danger:hover { background: var(--red-light); color: var(--red-dark); }
+
+.icon { position: relative; display: grid; place-items: center; flex-shrink: 0; }
+.label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--coral);
+  box-shadow: 0 0 0 2px var(--bg2);
+}
+.dotAlert { background: var(--red); }
+.count {
+  font-size: var(--fs-11);
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--coral-light);
+  color: var(--coral-dark);
+}
+.countAlert { background: var(--red); color: #fff; }
+
+/* Infobulle du rail replié */
+.collapsed [data-tip]:hover::after,
+.collapsed [data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 120;
+  white-space: nowrap;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--marine);
+  color: var(--bg);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+}
+
+.about { font-size: var(--fs-11); color: var(--muted); padding: var(--space-2) 10px 0; }
