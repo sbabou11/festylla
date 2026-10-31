@@ -1,17 +1,33 @@
 @echo off
 chcp 65001 >nul 2>&1
-title YllaTok - Deploiement
+setlocal
+title YllaCash - Deploiement
 
 set LOGFILE=deploy-log.txt
-echo YllaTok - Deploiement > %LOGFILE%
+set REPO=https://github.com/sbabou11/festylla.git
+set BRANCH=main
+
+echo YllaCash - Deploiement > %LOGFILE%
 echo Date : %date% %time% >> %LOGFILE%
 echo. >> %LOGFILE%
 
 echo.
 echo  ==========================================
-echo   YllaTok - Script de deploiement
+echo   YllaCash - Script de deploiement
 echo  ==========================================
 echo.
+
+:: === 0. Verification du dossier ===
+:: Le build du service worker (Workbox) echoue si le chemin contient une apostrophe
+echo "%CD%" | "%SystemRoot%\System32\find.exe" "'" >nul
+if %errorlevel% equ 0 (
+    echo  ERREUR : le chemin du dossier contient une apostrophe :
+    echo    %CD%
+    echo  Le build echouera. Renommez le dossier, par exemple "YllaCash 2.0".
+    echo ERREUR apostrophe dans le chemin >> %LOGFILE%
+    pause
+    exit /b 1
+)
 
 :: === 1. .env.local ===
 echo [1/5] Creation .env.local...
@@ -45,56 +61,81 @@ if %errorlevel% neq 0 ( echo ERREUR build >> %LOGFILE% & type %LOGFILE% & pause 
 echo  OK
 echo  OK >> %LOGFILE%
 
-:: === 4. Git - methode simple et robuste ===
+:: === 4. Git - on garde l'historique, on ajoute un commit et on pousse ===
 echo.
 echo [4/5] Envoi sur GitHub...
 echo [4/5] Git >> %LOGFILE%
-
 git --version >> %LOGFILE% 2>&1
 
-:: Configurer identite git
-git config user.email "deploy@yllatok.fr" >> %LOGFILE% 2>&1
-git config user.name "YllaTok Deploy" >> %LOGFILE% 2>&1
+:: Premier lancement seulement : creer le depot
+if not exist .git (
+    echo  Creation du depot git... >> %LOGFILE%
+    git init -b %BRANCH% >> %LOGFILE% 2>&1
+)
 
-:: Supprimer le dossier .git et recommencer proprement
-echo  Suppression ancien .git et reinitialisation... >> %LOGFILE%
-rmdir /s /q .git >> %LOGFILE% 2>&1
-echo  Code rmdir : %errorlevel% >> %LOGFILE%
-
-:: Reinitialiser proprement
-git init >> %LOGFILE% 2>&1
-echo  Code init : %errorlevel% >> %LOGFILE%
-
-git config user.email "deploy@yllatok.fr" >> %LOGFILE% 2>&1
-git config user.name "YllaTok Deploy" >> %LOGFILE% 2>&1
-
-:: Ajouter le remote
-git remote add origin https://github.com/sbabou11/festylla.git >> %LOGFILE% 2>&1
-echo  Code remote add : %errorlevel% >> %LOGFILE%
-
-:: Verifier remote
-echo  Remote configure : >> %LOGFILE%
+:: Remote "origin" : l'ajouter s'il manque, sinon s'assurer de son adresse
+git remote get-url origin >nul 2>&1
+if %errorlevel% neq 0 (
+    git remote add origin %REPO% >> %LOGFILE% 2>&1
+) else (
+    git remote set-url origin %REPO% >> %LOGFILE% 2>&1
+)
 git remote -v >> %LOGFILE% 2>&1
 
-:: Ajouter tous les fichiers
+:: Identite git : seulement si aucune n'est configuree (ne pas ecraser la votre)
+git config user.email >nul 2>&1
+if %errorlevel% neq 0 git config user.email "deploy@yllatok.fr"
+git config user.name >nul 2>&1
+if %errorlevel% neq 0 git config user.name "YllaCash Deploy"
+
+:: Le deploiement part toujours de la branche main
+for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set CURRENT=%%b
+if /i not "%CURRENT%"=="%BRANCH%" (
+    echo  ERREUR : vous etes sur la branche "%CURRENT%", pas "%BRANCH%".
+    echo  Faites : git checkout %BRANCH%   puis relancez.
+    echo ERREUR branche %CURRENT% >> %LOGFILE%
+    pause
+    exit /b 1
+)
+
+:: Commit des changements en cours (s'il y en a)
 git add -A >> %LOGFILE% 2>&1
-echo  Code add : %errorlevel% >> %LOGFILE%
+git diff --cached --quiet
+if %errorlevel% neq 0 (
+    git commit -m "Deploiement YllaCash %date% %time:~0,5%" >> %LOGFILE% 2>&1
+    echo  Commit cree >> %LOGFILE%
+) else (
+    echo  Aucun changement a committer >> %LOGFILE%
+)
 
-:: Commit
-git commit -m "YllaTok deploiement %date%" >> %LOGFILE% 2>&1
-echo  Code commit : %errorlevel% >> %LOGFILE%
-
-:: Renommer en main
-git branch -M main >> %LOGFILE% 2>&1
-echo  Code branch : %errorlevel% >> %LOGFILE%
-
-:: Push
+:: Push normal (sans --force)
 echo  Push en cours... >> %LOGFILE%
-git push origin main --force >> %LOGFILE% 2>&1
-set PUSH_CODE=%errorlevel%
-echo  Code push : %PUSH_CODE% >> %LOGFILE%
+git push -u origin %BRANCH% >> %LOGFILE% 2>&1
+if %errorlevel% equ 0 goto pushok
 
-if %PUSH_CODE% neq 0 (
+:: Push refuse : en general parce que GitHub a encore l'ancien historique
+:: cree par l'ancienne version de ce script (qui repartait de zero a chaque fois)
+echo.
+echo  ==========================================
+echo   GitHub a refuse l'envoi.
+echo  ==========================================
+echo  Cause la plus probable : GitHub contient l'ancien historique
+echo  (l'ancien script effacait .git a chaque deploiement).
+echo  Pour le remplacer UNE FOIS par l'historique local, tapez O.
+echo  Sinon tapez N et consultez %LOGFILE%.
+echo.
+git fetch origin >> %LOGFILE% 2>&1
+set CONFIRM=N
+set /p CONFIRM= Remplacer l'historique GitHub par l'historique local ? (O/N) :
+if /i not "%CONFIRM%"=="O" (
+    echo  Push annule >> %LOGFILE%
+    type %LOGFILE%
+    pause
+    exit /b 1
+)
+echo  Push force (confirme par l'utilisateur) >> %LOGFILE%
+git push -u --force-with-lease origin %BRANCH% >> %LOGFILE% 2>&1
+if %errorlevel% neq 0 (
     echo.
     echo  ERREUR PUSH - Voici le log complet :
     echo  ==========================================
@@ -106,6 +147,7 @@ if %PUSH_CODE% neq 0 (
     exit /b 1
 )
 
+:pushok
 echo  PUSH REUSSI >> %LOGFILE%
 echo  OK
 
@@ -116,8 +158,8 @@ echo  ==========================================
 echo   Deploiement reussi !
 echo  ==========================================
 echo.
-echo   GitHub : mis a jour
+echo   GitHub : mis a jour (historique conserve)
 echo   Vercel : redeploiement en cours (2 min)
-echo   Log    : deploy-log.txt
+echo   Log    : %LOGFILE%
 echo.
 pause
