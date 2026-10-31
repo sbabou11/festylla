@@ -205,6 +205,7 @@ const EspaceArtiste = lazy(() => import('./pages/public/EspaceArtiste'))
 const UiGallery     = import.meta.env.DEV ? lazy(() => import('./pages/dev/UiGallery')) : null
 const DevDashboard  = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevDashboard')) : null
 const DevCaisse     = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevCaisse')) : null
+const DevSolde      = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevSolde')) : null
 
 const page = (el) => <Suspense fallback={<Loader />}>{el}</Suspense>
 
@@ -224,6 +225,7 @@ export default function App() {
       {UiGallery && <Route path="/ui" element={page(<UiGallery />)} />}
       {DevDashboard && <Route path="/ui/dashboard" element={page(<DevDashboard />)} />}
       {DevCaisse && <Route path="/ui/caisse" element={page(<DevCaisse />)} />}
+      {DevSolde && <Route path="/ui/spectateur" element={page(<DevSolde />)} />}
       {/* Toutes les autres URLs → app staff (affiche Login si non connecté).
           Chaque page staff a son adresse : /dashboard, /debit, /spectateurs… */}
       <Route path="*" element={<ErrorBoundary><StaffApp /></ErrorBoundary>} />
