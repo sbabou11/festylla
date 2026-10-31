@@ -6,6 +6,7 @@ import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { Sun, Moon, Palette, WifiOff, Menu, Search, X, HandHeart } from 'lucide-react'
 import CommandPalette from './components/CommandPalette'
+import './utils/pendingSales' // envoie au démarrage les encaissements restés en attente
 import { ToastViewport } from './ui'
 import shell from './App.module.css'
 import NotifBell from './components/NotifBell'
@@ -203,6 +204,7 @@ const LivePlanning = lazy(() => import('./pages/public/LivePlanning'))
 const EspaceArtiste = lazy(() => import('./pages/public/EspaceArtiste'))
 const UiGallery     = import.meta.env.DEV ? lazy(() => import('./pages/dev/UiGallery')) : null
 const DevDashboard  = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevDashboard')) : null
+const DevCaisse     = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevCaisse')) : null
 
 const page = (el) => <Suspense fallback={<Loader />}>{el}</Suspense>
 
@@ -221,6 +223,7 @@ export default function App() {
       <Route path="/spectateur"  element={page(<SoldePage />)} />
       {UiGallery && <Route path="/ui" element={page(<UiGallery />)} />}
       {DevDashboard && <Route path="/ui/dashboard" element={page(<DevDashboard />)} />}
+      {DevCaisse && <Route path="/ui/caisse" element={page(<DevCaisse />)} />}
       {/* Toutes les autres URLs → app staff (affiche Login si non connecté).
           Chaque page staff a son adresse : /dashboard, /debit, /spectateurs… */}
       <Route path="*" element={<ErrorBoundary><StaffApp /></ErrorBoundary>} />

@@ -196,15 +196,23 @@ export const crediter = async (specId, montantEuros, staffNom = 'Billetterie', e
 // DÉBITER
 // ════════════════════════════════════════════════════════════════════
 
-export const debiter = async (specId, items, staffNom = 'Stand', evId = null) => {
+// txId (optionnel) : identifiant fixe de la transaction. Si une transaction avec cet
+// identifiant existe déjà, rien n'est débité une seconde fois (encaissement rejoué
+// après un rechargement de page ou une coupure réseau).
+export const debiter = async (specId, items, staffNom = 'Stand', evId = null, { txId = null } = {}) => {
   const total = items.reduce((a, i) => a + i.prix * i.qty, 0)
   const label = items.map(i => i.nom + (i.qty > 1 ? ` ×${i.qty}` : '')).join(', ')
   const eid = evId || getEventId()
   const snap  = await getDocs(query(collection(db, 'events', eid, 'spectateurs'), where('id', '==', specId)))
   if (snap.empty) throw new Error('Spectateur introuvable')
   const specRef = snap.docs[0].ref
+  const txRef   = txId
+    ? doc(db, 'events', eid, 'transactions', txId)
+    : doc(collection(db, 'events', eid, 'transactions'))
+  let alreadyDone = false
 
   await runTransaction(db, async (txn) => {
+    if (txId && (await txn.get(txRef)).exists()) { alreadyDone = true; return }
     const specDoc     = await txn.get(specRef)
     const soldeBefore = specDoc.data().solde || 0
     if (soldeBefore < total) throw new Error('Solde insuffisant')
@@ -212,7 +220,7 @@ export const debiter = async (specId, items, staffNom = 'Stand', evId = null) =>
     await decrementStocks(txn, items)
     txn.update(specRef, { solde: increment(-total) })
     const now = new Date()
-    txn.set(doc(collection(db, 'events', eid, 'transactions')), {
+    txn.set(txRef, {
       specId, specNom: specDoc.data().nom || '—', type: 'debit', label,
       items: items.map(i => ({ nom: i.nom, qty: i.qty, prixUnit: i.prix, total: i.prix * i.qty })),
       montant: total, staff: staffNom, soldeBefore, soldeAfter,
@@ -220,6 +228,7 @@ export const debiter = async (specId, items, staffNom = 'Stand', evId = null) =>
       heure: now.toLocaleTimeString('fr-FR'), createdAt: serverTimestamp(),
     })
   })
+  if (alreadyDone) return total
   await audit('DEBIT', { specId, montant: total, staff: staffNom, label })
   await checkStockAlertes(items)
   // Vérifier solde bas après débit

@@ -53,9 +53,9 @@ const useAppStore = create(
         const id = evId || useEventStore.getState().currentEventId
         return svc.crediter(specId,euros,staff,id)
       },
-      debiter:(specId,items,staff,evId) => {
+      debiter:(specId,items,staff,evId,opts) => {
         const id = evId || useEventStore.getState().currentEventId
-        return svc.debiter(specId,items,staff,id)
+        return svc.debiter(specId,items,staff,id,opts)
       },
 
       // Réservations
