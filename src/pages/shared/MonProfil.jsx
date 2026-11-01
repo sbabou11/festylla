@@ -10,6 +10,7 @@ import { fmt }      from '../../utils/helpers'
 import { compressImage } from '../../utils/imageUtils'
 import Avatar from '../../components/Avatar'
 import { KeyRound, Save, Camera, User } from 'lucide-react'
+import { PasswordStrength } from '../../ui'
 
 export default function MonProfil({ view }) {
   const { spectateurs, staff, reservations, currentSpecId,
@@ -162,6 +163,7 @@ export default function MonProfil({ view }) {
               <div style={{ marginBottom: 10 }}>
                 <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>Nouveau mot de passe</label>
                 <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} style={inp} placeholder="minimum 6 caractères"/>
+                <PasswordStrength value={pwd}/>
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>Confirmer</label>

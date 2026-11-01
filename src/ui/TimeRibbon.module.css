@@ -1,0 +1,112 @@
+.ribbon { position: relative; min-width: 0; max-width: 100%; }
+.scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-bottom: var(--space-1);
+}
+.fit .scroll { overflow: visible; padding-bottom: 0; }
+.inner { position: relative; min-width: 100%; padding-top: 22px; }
+
+.ticks { position: absolute; top: 0; left: 0; right: 0; height: 18px; }
+.tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: var(--fs-11);
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lane + .lane { margin-top: var(--space-2); }
+.laneLabel {
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  max-width: 100%;
+  margin-bottom: 3px;
+  padding: 0 6px 0 0;
+  font-size: var(--fs-11);
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 3;
+}
+.track {
+  position: relative;
+  height: 44px;
+  border-radius: var(--radius);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+}
+.fit .track { height: 38px; }
+.grid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); }
+
+.item {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 8px;
+  border: none;
+  border-left: 3px solid var(--item-color);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--item-color) 16%, var(--bg));
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  cursor: default;
+}
+button.item { cursor: pointer; }
+button.item:hover { background: color-mix(in srgb, var(--item-color) 24%, var(--bg)); }
+.item b, .item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item b { font-size: var(--fs-12); font-weight: 700; }
+.item span { font-size: var(--fs-11); color: var(--muted); }
+.active { background: var(--item-color); color: #fff; box-shadow: var(--shadow-md); }
+.active span { color: color-mix(in srgb, #fff 80%, transparent); }
+button.active:hover { background: var(--item-color); filter: brightness(1.05); }
+.dim { opacity: .45; }
+
+.now {
+  position: absolute;
+  top: 16px;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--coral);
+  z-index: 4;
+  pointer-events: none;
+}
+.now::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--coral);
+}
+.now span {
+  position: absolute;
+  top: -17px;
+  left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--coral);
+  color: var(--on-coral);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 14px;
+  white-space: nowrap;
+}

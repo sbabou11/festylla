@@ -4,7 +4,7 @@
  */
 import React, { useState } from 'react'
 import { Users, Wallet, ShoppingCart, Bookmark, Plus, Trash2, Inbox, Moon, Sun } from 'lucide-react'
-import { Button, Card, Badge, Stat, Tabs, Table, Empty, Skeleton, Dialog, Sheet, toast, ToastViewport } from '../../ui'
+import { Button, Card, Badge, Stat, Tabs, Table, Empty, Skeleton, Dialog, Sheet, toast } from '../../ui'
 
 const ROWS = [
   { id: 1, heure: '23:12', label: 'Bar Scène A · 2 Bière, 1 Eco-cup', type: 'debit',  montant: '−11,00 €' },
@@ -117,7 +117,6 @@ export default function UiGallery() {
           <p style={{ color: 'var(--muted)' }}>Sur mobile, ce panneau monte du bas de l'écran.</p>
         </div>
       </Sheet>
-      <ToastViewport />
     </div>
   )
 }

@@ -26,8 +26,11 @@ import {
 } from '../firebase/service'
 import {
   Plus, Trash2, Pencil, X, Save, Grid3x3, List, MapPin,
-  Calendar, CheckCircle2, AlertTriangle, Zap, Users,
+  Calendar, CheckCircle2, AlertTriangle, Zap, Users, QrCode, Printer,
 } from 'lucide-react'
+import QRCode from 'qrcode'
+import { Dialog, Button } from '../ui'
+import { postQrText, postShortCode } from '../utils/shiftTime'
 
 const POST_COLORS = ['#009090','#F07848','#D89030','#6B3FA0','#0E8D7A','#5EB8E4','#A32D2D','#888780']
 const POST_EMOJIS = ['🍻','💳','🎫','🛡️','🍔','📦','🚗','🎤','📋','🔧']
@@ -230,6 +233,11 @@ function GrilleView({ posts, shifts, benevoles }) {
                         transition:'transform .12s',
                       }}>
                       <div style={{ fontSize:13, fontWeight:800 }}>{n} / {target}</div>
+                      {assigned.some(id => s.presences?.[id]) && (
+                        <div style={{ fontSize:9, marginTop:1, fontWeight:700 }} title="Bénévoles ayant pointé leur arrivée">
+                          ✓ {assigned.filter(id => s.presences?.[id]).length} présent{assigned.filter(id => s.presences?.[id]).length > 1 ? 's' : ''}
+                        </div>
+                      )}
                       {target > 0 && n < target && (
                         <div style={{ fontSize:9, marginTop:1, opacity:0.9 }}>
                           {n === 0 ? '⚡' : '⚠'} {status}
@@ -352,6 +360,11 @@ function AssignModal({ shift, post, posts, benevoles, benevsById, availables, on
                   return (
                     <div key={id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px 8px 14px', background:'var(--brand-light)', borderRadius:8, minHeight:44 }}>
                       <span style={{ flex:1, fontSize:14, color:'var(--text)', fontWeight:600, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{b.prenom} {b.nom}</span>
+                      {shift.presences?.[id] && (
+                        <span title="Arrivée pointée" style={{ fontSize:11, fontWeight:700, color:'var(--green-dark)', background:'var(--green-light)', padding:'2px 7px', borderRadius:6, flexShrink:0 }}>
+                          ✓ {new Date(shift.presences[id].at).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })}
+                        </span>
+                      )}
                       <button onClick={() => handleToggle(id, true)} disabled={busy === id}
                         title="Retirer ce bénévole"
                         style={{ background:'transparent', border:'none', cursor:'pointer', color:'var(--red-dark)', padding:0, width:36, height:36, minHeight:'auto', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:6, WebkitTapHighlightColor:'transparent', flexShrink:0 }}>
@@ -403,6 +416,7 @@ function AssignModal({ shift, post, posts, benevoles, benevsById, availables, on
 function PostesView({ posts }) {
   const { currentEventId } = useEventStore()
   const [editing, setEditing] = useState(null)
+  const [qrPost, setQrPost] = useState(null)
 
   const openNew = () => setEditing({ nom:'', emoji: POST_EMOJIS[0], couleur: POST_COLORS[0] })
 
@@ -430,6 +444,8 @@ function PostesView({ posts }) {
         </button>
       </div>
 
+      <PostQrDialog post={qrPost} eventId={currentEventId} onClose={() => setQrPost(null)}/>
+
       {posts.length === 0 && !editing && (
         <EmptyState icon={<MapPin size={36}/>} title="Aucun poste défini" msg="Créez votre premier poste (Bar, Caisse, Accueil…) pour démarrer."/>
       )}
@@ -441,6 +457,7 @@ function PostesView({ posts }) {
               {p.emoji}
             </div>
             <div style={{ flex:1, fontSize:14, fontWeight:700, color:'var(--text)', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.nom}</div>
+            <button onClick={() => setQrPost(p)} className="btn-icon" title="QR de pointage" aria-label={'QR de pointage du poste ' + p.nom} style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><QrCode size={14}/></button>
             <button onClick={() => setEditing(p)} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
             <button onClick={() => handleDelete(p.id)} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', color:'var(--red-dark)', flexShrink:0 }}><Trash2 size={14}/></button>
           </div>
@@ -703,6 +720,53 @@ function ShiftsView({ shifts, currentEvent }) {
 /* ═══════════════════════════════════════════════════════════════
    UTIL — état vide
    ═══════════════════════════════════════════════════════════════ */
+/* QR de pointage d'un poste : affiché ou imprimé au poste, scanné par le bénévole à son arrivée */
+function PostQrDialog({ post, eventId, onClose }) {
+  const [src, setSrc] = useState(null)
+  useEffect(() => {
+    setSrc(null)
+    if (!post || !eventId) return
+    QRCode.toDataURL(postQrText(eventId, post.id), { width: 480, margin: 2, color: { dark: '#003048', light: '#ffffff' } })
+      .then(setSrc).catch(() => {})
+  }, [post?.id, eventId])
+
+  const print = () => {
+    const w = window.open('', '_blank')
+    if (!w) return
+    const esc = (t) => String(t || '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>Pointage ${esc(post.nom)}</title>
+      <body style="font-family:system-ui,sans-serif;text-align:center;padding:40px;color:#003048">
+      <h1 style="font-size:40px;margin:0">${esc(post.emoji)} ${esc(post.nom)}</h1>
+      <p style="font-size:20px">Bénévoles : scannez ce QR pour pointer votre arrivée</p>
+      <img src="${src}" style="width:420px;height:420px">
+      <p style="font-size:18px">Sans caméra, code du poste : <b style="font-size:28px;letter-spacing:.1em">${postShortCode(post.id)}</b></p>
+      <script>window.onload=()=>window.print()<\/script></body>`)
+    w.document.close()
+  }
+
+  return (
+    <Dialog open={!!post} onClose={onClose} title={post ? `QR de pointage · ${post.nom}` : ''}
+      footer={<>
+        <Button variant="secondary" onClick={onClose}>Fermer</Button>
+        <Button icon={Printer} onClick={print} disabled={!src}>Imprimer</Button>
+      </>}>
+      {post && (
+        <div style={{ display:'grid', justifyItems:'center', gap:10, textAlign:'center' }}>
+          <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.5 }}>
+            Affichez ou imprimez ce QR au poste. Les bénévoles le scannent depuis leur espace pour pointer leur arrivée, d'une heure avant le début jusqu'à la fin de leur créneau.
+          </div>
+          <div style={{ background:'#fff', borderRadius:12, padding:8, border:'1px solid var(--border)' }}>
+            {src ? <img src={src} alt={'QR de pointage du poste ' + post.nom} style={{ width:240, height:240, display:'block' }}/> : <div style={{ width:240, height:240 }}/>}
+          </div>
+          <div style={{ fontSize:12, color:'var(--muted)' }}>
+            Code sans caméra : <b style={{ fontSize:18, letterSpacing:'.1em', color:'var(--text)', fontFamily:'var(--font-display)' }}>{postShortCode(post.id)}</b>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  )
+}
+
 function EmptyState({ icon, title, msg }) {
   return (
     <div style={{ background:'var(--bg2)', border:'1px dashed var(--border2)', borderRadius:'var(--radius-lg)', padding:'36px 20px', textAlign:'center' }}>

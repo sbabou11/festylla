@@ -1,51 +1,63 @@
 /**
  * pages/public/BenevoleApp.jsx
- * Espace bénévole — identique à l'espace spectateur
- * URL : /benevole?id=DOC_ID&ev=EVENT_ID
+ * Espace bénévole — URL : /benevole?id=DOC_ID&ev=EVENT_ID
  *
- * Quota par catégorie (repas/boisson/eau) au lieu d'un solde en euros
- * Le bénévole peut réserver des articles du menu (déduit du quota)
+ * Quota par catégorie (repas/boisson/eau) au lieu d'un solde en euros, affiché en bocaux.
+ * Le bénévole réserve des articles du menu (déduits du quota), voit son créneau
+ * sur un ruban horaire et pointe son arrivée en scannant le QR du poste.
+ *
+ * demo : données d'exemple (route /ui/benevole en développement), aucune écriture Firestore.
  */
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { db } from '../../firebase/config'
 import {
-  collection, query, where, getDocs, getDoc,
+  collection, query, where, getDoc,
   doc, onSnapshot, addDoc, updateDoc,
-  serverTimestamp, orderBy, increment, runTransaction,
+  serverTimestamp, increment,
 } from 'firebase/firestore'
-import { fmt, nowStr } from '../../utils/helpers'
-import { getSettings } from '../../firebase/service'
+import { nowStr, makeResaCode } from '../../utils/helpers'
+import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleToPost, pointerArrivee } from '../../firebase/service'
 import { hashPassword } from '../../utils/kpis'
+import {
+  currentOrNext, myShifts, relativeLabel, canCheckIn, fmtHour,
+  parsePostScan, postQrText, CHECKIN_EARLY_MIN,
+} from '../../utils/shiftTime'
 import BenevoleCommander from './BenevoleCommander'
 import BenevoleResas     from './BenevoleResas'
 import BenevoleProfil    from './BenevoleProfil'
 import QRCode from 'qrcode'
-import { UtensilsCrossed, Coffee, Droplets, ShoppingCart, Clock, Bookmark, User, LogOut, CalendarDays } from 'lucide-react'
+import {
+  UtensilsCrossed, Coffee, Droplets, ShoppingCart, Home, Bookmark, User, LogOut, CalendarDays,
+  ScanLine, QrCode, CheckCircle2, AlertCircle, Store, ChevronRight, MapPin, BellRing,
+} from 'lucide-react'
 import { useNotifications } from '../../hooks/useNotifications'
 import NotifBell from '../../components/NotifBell'
 import TeamChat from '../../components/TeamChat'
 import ThemeToggle from '../../components/ThemeToggle'
 import BenevolePlanning from '../../components/BenevolePlanning'
+import QrScanner from '../../components/QrScanner'
 import useAuthStore from '../../store/useAuthStore'
 import { useTheme } from '../../hooks/useTheme'
+import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, toast } from '../../ui'
+import s from './benevole/BenevoleApp.module.css'
 
-const BRAND    = '#1a6b7a'
-const BRAND_L  = '#f0f8f9'
-const AMBER    = '#BA7517'
-const AMBER_L  = '#FEF3C7'
+const BRAND    = 'var(--brand)'
+const AMBER    = 'var(--gold-dark)'
+const AMBER_L  = 'var(--gold-light)'
 
 const TYPE_CFG = {
-  repas:   { label:'Repas',   icon:UtensilsCrossed, color:'#065f46', bg:'#d1fae5', emoji:'🍽️' },
-  boisson: { label:'Boisson', icon:Coffee,          color:'#92400e', bg:'#fef3c7', emoji:'☕' },
-  eau:     { label:'Eau',     icon:Droplets,        color:'#1e40af', bg:'#dbeafe', emoji:'💧' },
+  repas:   { label:'Repas',   icon:UtensilsCrossed, color:'var(--coral-dark)', bg:'var(--coral-light)', tone:'var(--coral)', emoji:'🍽️' },
+  boisson: { label:'Boisson', icon:Coffee,          color:'var(--gold-dark)',  bg:'var(--gold-light)',  tone:'var(--gold)',  emoji:'☕' },
+  eau:     { label:'Eau',     icon:Droplets,        color:'var(--brand-dark)', bg:'var(--brand-light)', tone:'var(--brand)', emoji:'💧' },
 }
 
-const resaCode = () => 'BNV-' + Date.now().toString(36).slice(-4).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase()
+const HOUR = 3600000
+const initialsOf = (b) => ((b?.prenom?.[0] || '') + (b?.nom?.[0] || '')).toUpperCase() || 'B'
 
-export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = null } = {}) {
+export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = null, demo = null } = {}) {
   const params    = new URLSearchParams(window.location.search)
-  const docId     = docIdProp  || params.get('id')  || null
-  const eventId   = eventIdProp || params.get('ev') || null
+  const docId     = demo ? demo.benev._id : (docIdProp  || params.get('id')  || null)
+  const eventId   = demo ? 'demo' : (eventIdProp || params.get('ev') || null)
 
   const benevCol  = () => eventId
     ? collection(db, 'events', eventId, 'benevoles')
@@ -57,17 +69,19 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     ? collection(db, 'events', eventId, 'reservations')
     : collection(db, 'reservations')
 
-  const [benev,       setBenev]       = useState(null)
+  const [benev,       setBenev]       = useState(demo?.benev || null)
   useTheme() // Active le thème global (mode sombre/clair) sur cette page
   const { notifications, nonLuCount, marquerToutLu } = useNotifications({
     specId:  docId,  // benevoleId utilisé comme specId pour le filtre
     isStaff: false,
-    eventId: eventId,
+    eventId: demo ? null : eventId,
   })
-  const [menu,        setMenu]        = useState([])
-  const [resas,       setResas]       = useState([])
-  const [eventMeta,   setEventMeta]   = useState(null)
-  const [benevoles,   setBenevoles]   = useState([])  // pour afficher les noms dans le planning
+  const [menu,        setMenu]        = useState(demo?.menu || [])
+  const [resas,       setResas]       = useState(demo?.resas || [])
+  const [eventMeta,   setEventMeta]   = useState(demo?.eventMeta || null)
+  const [benevoles,   setBenevoles]   = useState(demo?.benevoles || [])  // pour afficher les noms dans le planning
+  const [posts,       setPosts]       = useState(demo?.posts || [])
+  const [shifts,      setShifts]      = useState(demo?.shifts || [])
   const { logout } = useAuthStore()
   const [tab,         setTab]         = useState('accueil')
   const [qtys,        setQtys]        = useState({})
@@ -75,15 +89,25 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const [resaErr,     setResaErr]     = useState('')
   const [resaDone,    setResaDone]    = useState(null)
   const [qrDataUrl,   setQrDataUrl]   = useState(null)
-  const [themeColor,  setThemeColor]  = useState('#1a6b7a')
+  const [themeColor,  setThemeColor]  = useState('#009090')
   const [qrOpen,      setQrOpen]      = useState(false)
   const [pwdForm,     setPwdForm]     = useState({ current:'', new1:'', new2:'' })
   const [pwdLoading,  setPwdLoading]  = useState(false)
   const [pwdMsg,      setPwdMsg]      = useState(null) // { ok, text }
-  // Charger infos événement
+  const [cancelAsk,   setCancelAsk]   = useState(null) // { id, code }
+  const [scanOpen,    setScanOpen]    = useState(false)
+  const [pointage,    setPointage]    = useState({ state: 'idle' }) // idle | busy | done | error
+  const [now,         setNow]         = useState(Date.now())
+
+  // Horloge : le ruban et les libellés « dans 20 min » restent à jour
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000)
+    return () => clearInterval(t)
+  }, [])
+
   // Charger le thème de l'événement
   useEffect(() => {
-    if (!eventId) return
+    if (!eventId || demo) return
     getSettings(eventId).then(s => {
       if (s?.theme?.brand) {
         setThemeColor(s.theme.brand)
@@ -95,8 +119,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     }).catch(()=>{})
   }, [eventId])
 
+  // Charger infos événement
   useEffect(() => {
-    if (!eventId) return
+    if (!eventId || demo) return
     getDoc(doc(db, 'events', eventId)).then(snap => {
       if (snap.exists()) setEventMeta(snap.data())
     }).catch(() => {})
@@ -104,7 +129,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
   // Charger le bénévole
   useEffect(() => {
-    if (!docId) return
+    if (!docId || demo) return
     const ref = eventId
       ? doc(db, 'events', eventId, 'benevoles', docId)
       : doc(db, 'benevoles', docId)
@@ -115,22 +140,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   }, [docId, eventId])
 
   // Charger le menu en temps réel (articles éligibles bénévoles)
-  // Charger le thème de l'événement
   useEffect(() => {
-    if (!eventId) return
-    getSettings(eventId).then(s => {
-      if (s?.theme?.brand) {
-        setThemeColor(s.theme.brand)
-        document.documentElement.style.setProperty('--brand', s.theme.brand)
-        const hex = s.theme.brand.replace('#','')
-        const r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16)
-        document.documentElement.style.setProperty('--brand-dark', '#'+[r,g,b].map(v=>Math.max(0,Math.round(v*.8)).toString(16).padStart(2,'0')).join(''))
-      }
-    }).catch(()=>{})
-  }, [eventId])
-
-  useEffect(() => {
-    if (!eventId) return
+    if (!eventId || demo) return
     const unsub = onSnapshot(menuCol(), snap => {
       setMenu(snap.docs.map(d => ({ ...d.data(), id: d.id })).filter(m => m.typeConsommation))
     })
@@ -139,16 +150,24 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
   // Liste de tous les bénévoles (pour afficher les noms dans le planning d'auto-inscription)
   useEffect(() => {
-    if (!eventId) return
-    const unsub = onSnapshot(collection(db, 'events', eventId, 'benevoles'), snap => {
+    if (!eventId || demo) return
+    const unsub = onSnapshot(benevCol(), snap => {
       setBenevoles(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     }, () => setBenevoles([]))
     return () => unsub()
   }, [eventId])
 
+  // Postes et créneaux (ruban horaire, pointage, onglet Planning)
+  useEffect(() => {
+    if (!eventId || demo) return
+    const u1 = watchVolunteerPosts(setPosts, eventId)
+    const u2 = watchVolunteerShifts(setShifts, eventId)
+    return () => { u1?.(); u2?.() }
+  }, [eventId])
+
   // Charger les réservations du bénévole
   useEffect(() => {
-    if (!docId || !eventId) return
+    if (!docId || !eventId || demo) return
     const unsub = onSnapshot(
       query(resaCol(), where('benevoleId', '==', docId)),
       snap => setResas(snap.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)))
@@ -159,13 +178,16 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   // QR code
   useEffect(() => {
     if (!docId) return
-    const url = `${window.location.origin}/benevole?id=${docId}${eventId ? '&ev=' + eventId : ''}`
-    QRCode.toDataURL(url, { width: 400, margin: 2, color: { dark: BRAND, light: '#fff' } })
+    const url = `${window.location.origin}/benevole?id=${docId}${eventId && !demo ? '&ev=' + eventId : ''}`
+    QRCode.toDataURL(url, { width: 400, margin: 2, color: { dark: '#003048', light: '#fff' } })
       .then(setQrDataUrl).catch(() => {})
   }, [docId])
 
   const openQr = useCallback(() => setQrOpen(true), [])
   const closeQr = useCallback(() => setQrOpen(false), [])
+
+  const benevNom = `${benev?.prenom||''} ${benev?.nom||''}`.trim()
+  const myId = benev?.id || docId
 
   const changePwd = async () => {
     setPwdMsg(null)
@@ -181,21 +203,25 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
     setPwdLoading(true)
     try {
-      const bRef = eventId
-        ? doc(db, 'events', eventId, 'benevoles', docId)
-        : doc(db, 'benevoles', docId)
-      const newHash = await hashPassword(pwdForm.new1)
-      await updateDoc(bRef, { password: pwdForm.new1, passwordHash: newHash })
-      const auditColPwd = eventId ? collection(db, 'events', eventId, 'audit') : collection(db, 'audit')
-      const nowPwd = new Date()
-      await addDoc(auditColPwd, {
-        action: 'CHANGEMENT_PWD_BENEV', benevoleId: docId,
-        benevoleNom: `${benev?.prenom||''} ${benev?.nom||''}`.trim(),
-        userType: 'benevole',
-        label: `Changement mot de passe bénévole`,
-        date: nowPwd.toLocaleString('fr-FR'), timestamp: nowPwd.toISOString(),
-        createdAt: serverTimestamp(),
-      })
+      if (demo) {
+        setBenev(b => ({ ...b, password: pwdForm.new1 }))
+      } else {
+        const bRef = eventId
+          ? doc(db, 'events', eventId, 'benevoles', docId)
+          : doc(db, 'benevoles', docId)
+        const newHash = await hashPassword(pwdForm.new1)
+        await updateDoc(bRef, { password: pwdForm.new1, passwordHash: newHash })
+        const auditColPwd = eventId ? collection(db, 'events', eventId, 'audit') : collection(db, 'audit')
+        const nowPwd = new Date()
+        await addDoc(auditColPwd, {
+          action: 'CHANGEMENT_PWD_BENEV', benevoleId: docId,
+          benevoleNom,
+          userType: 'benevole',
+          label: `Changement mot de passe bénévole`,
+          date: nowPwd.toLocaleString('fr-FR'), timestamp: nowPwd.toISOString(),
+          createdAt: serverTimestamp(),
+        })
+      }
       setPwdMsg({ ok:true, text:'Mot de passe modifié avec succès !' })
       setPwdForm({ current:'', new1:'', new2:'' })
     } catch (e) {
@@ -216,17 +242,29 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     return Math.max(0, (droits[type] || 0) - (conso[type] || 0))
   }
 
-  const canAddToCart = (item) => {
-    const type = item.typeConsommation
-    if (!type) return false
-    const inCart = cartItems.filter(i => i.typeConsommation === type).reduce((a, i) => a + i.qty, 0)
-    return inCart < quotaRestant(type)
-  }
-
-  // Commander
+  // Annuler une réservation (après confirmation dans la fenêtre)
   const annulerResa = async (resaId, code) => {
-    if (!window.confirm('Annuler cette réservation ?')) return
     try {
+      const resa = resas.find(r => r.id === resaId)
+      // Sommer les qty par type pour éviter les écrasements
+      const grouped = {}
+      ;(resa?.items||[]).forEach(item => {
+        if (item.typeConsommation) {
+          grouped[item.typeConsommation] = (grouped[item.typeConsommation] || 0) + (item.qty || 1)
+        }
+      })
+
+      if (demo) {
+        setResas(rs => rs.map(r => r.id === resaId ? { ...r, status: 'cancelled' } : r))
+        setBenev(b => {
+          const conso = { ...(b.consommation || {}) }
+          Object.entries(grouped).forEach(([t, q]) => { conso[t] = Math.max(0, (conso[t] || 0) - q) })
+          return { ...b, consommation: conso }
+        })
+        toast.success(`Réservation #${code} annulée`)
+        return
+      }
+
       const rRef = eventId
         ? doc(db, 'events', eventId, 'reservations', resaId)
         : doc(db, 'reservations', resaId)
@@ -238,18 +276,10 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         motifAnnulation: 'Annulé par le bénévole',
       })
       // Rembourser le quota — regrouper par typeConsommation
-      const resa = resas.find(r => r.id === resaId)
       if (resa) {
         const bRef = eventId
           ? doc(db, 'events', eventId, 'benevoles', docId)
           : doc(db, 'benevoles', docId)
-        // Sommer les qty par type pour éviter les écrasements
-        const grouped = {}
-        ;(resa.items||[]).forEach(item => {
-          if (item.typeConsommation) {
-            grouped[item.typeConsommation] = (grouped[item.typeConsommation] || 0) + (item.qty || 1)
-          }
-        })
         if (Object.keys(grouped).length) {
           const updates = {}
           Object.entries(grouped).forEach(([type, qty]) => {
@@ -275,7 +305,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       const nowAnnu = new Date()
       await addDoc(auditColAnnu, {
         action: 'BENEV_ANNULATION', benevoleId: docId,
-        benevoleNom: `${benev?.prenom||''} ${benev?.nom||''}`.trim(),
+        benevoleNom,
         resaId, resaCode: code, userType: 'benevole',
         label: `Annulation réservation bénévole #${code}`,
         date: nowAnnu.toLocaleString('fr-FR'), timestamp: nowAnnu.toISOString(),
@@ -287,18 +317,19 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         : collection(db, 'notifications')
       await addDoc(notifCol, {
         type: 'RESA_RETIREE', titre: '❌ Résa annulée par bénévole',
-        message: `${benev?.prenom||''} ${benev?.nom||''} a annulé sa réservation #${code}`,
+        message: `${benevNom} a annulé sa réservation #${code}`,
         specId: null, benevoleId: docId, resaCode: code,
         lu: false, timestamp: new Date().toISOString(), createdAt: serverTimestamp(),
       })
-    } catch (e) { alert('Erreur : ' + e.message) }
+      toast.success(`Réservation #${code} annulée`)
+    } catch (e) { toast.error('Annulation impossible : ' + e.message) }
   }
 
   const doCommande = async () => {
     if (!benev || !cartItems.length) return
     setResaLoading(true); setResaErr('')
     try {
-      const code = resaCode()
+      const code = 'BNV-' + makeResaCode()
 
       // Vérifier quota avant
       const grouped = {}
@@ -322,6 +353,18 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         qty: i.qty
       }))
       const total = itemsWithPrice.reduce((acc, i) => acc + (i.prix * i.qty), 0)
+
+      if (demo) {
+        setResas(rs => [{ id: 'd' + Date.now(), code, items: itemsWithPrice, total, status: 'pending', date: nowStr() }, ...rs])
+        setBenev(b => {
+          const conso = { ...(b.consommation || {}) }
+          Object.entries(grouped).forEach(([t, q]) => { conso[t] = (conso[t] || 0) + q })
+          return { ...b, consommation: conso }
+        })
+        setResaDone({ code, items: cartItems })
+        setQtys({})
+        return
+      }
 
       await addDoc(resaCol(), {
         benevoleId:  docId,
@@ -369,7 +412,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       const nowTx = new Date()
       await addDoc(txCol, {
         benevoleId:  docId,
-        benevoleNom: `${benev.prenom||''} ${benev.nom||''}`.trim() || '—',
+        benevoleNom: benevNom || '—',
         specId:      null,
         specNom:     null,
         type:        'benev-reservation',
@@ -390,7 +433,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       await addDoc(notifCol, {
         type:      'RESA_CREEE',
         titre:     '🛒 Nouvelle réservation bénévole',
-        message:   `${benev.prenom||''} ${benev.nom||''} a réservé : ${itemsLabel}`,
+        message:   `${benevNom} a réservé : ${itemsLabel}`,
         specId:    null,
         benevoleId: docId,
         resaCode:  code,
@@ -403,7 +446,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       const nowAudit = new Date()
       await addDoc(auditCol, {
         action: 'BENEV_RESERVATION', benevoleId: docId,
-        benevoleNom: `${benev.prenom||''} ${benev.nom||''}`.trim(),
+        benevoleNom,
         resaCode: code, montant: total, items: itemsLabel,
         userType: 'benevole',
         label: `Réservation bénévole #${code} : ${itemsLabel}`,
@@ -414,158 +457,241 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     finally { setResaLoading(false) }
   }
 
+  // ── Créneau courant et pointage ─────────────────────────────────
+  const postsById = useMemo(() => Object.fromEntries(posts.map(p => [p.id, p])), [posts])
+  const postName = (pid) => pid === '__free__' ? 'Polyvalent' : (postsById[pid]?.nom || 'Poste')
+  const slot = currentOrNext(shifts, myId, now)
+  const presence = slot ? slot.shift.presences?.[myId] : null
+  const checkInOpen = slot && canCheckIn(slot.range, now)
+
+  // Ruban centré sur le créneau affiché (2 h avant, 1 h après) ; les créneaux voisins y apparaissent s'ils débordent dans la fenêtre
+  const ribbon = useMemo(() => {
+    if (!slot) return null
+    const start = new Date(slot.range.start.getTime() - 2 * HOUR)
+    const end   = new Date(slot.range.end.getTime() + HOUR)
+    start.setMinutes(0, 0, 0)
+    const mine = myShifts(shifts, myId).filter(x => x.range.end > start && x.range.start < end)
+    return {
+      start, end,
+      items: mine.map(x => ({
+        id: x.shift.id,
+        start: x.range.start,
+        end: x.range.end,
+        label: `${postsById[x.postId]?.emoji ? postsById[x.postId].emoji + ' ' : ''}${postName(x.postId)}`,
+        sub: `${fmtHour(x.range.start)}–${fmtHour(x.range.end)}`,
+        color: postsById[x.postId]?.couleur || 'var(--brand)',
+        active: x.shift.id === slot.shift.id,
+        dim: x.range.end.getTime() <= now,
+      })),
+    }
+  }, [slot?.shift.id, shifts, posts, now])
+
+  const openScan = () => { setPointage({ state: 'idle' }); setScanOpen(true) }
+
+  const handlePointageScan = async (text) => {
+    if (pointage.state === 'busy' || pointage.state === 'done') return
+    const { post, error } = parsePostScan(text, posts, demo ? null : eventId)
+    if (error) { setPointage({ state: 'error', msg: error }); return }
+    const t = Date.now()
+    const candidates = myShifts(shifts, myId).filter(x => canCheckIn(x.range, t))
+    if (!candidates.length) {
+      setPointage({ state: 'error', msg: `Aucun de vos créneaux ne commence dans l'heure. Le pointage ouvre ${CHECKIN_EARLY_MIN} min avant le début.` })
+      return
+    }
+    const match = candidates.find(x => x.postId === post.id) || candidates.find(x => x.postId === '__free__')
+    if (!match) {
+      setPointage({ state: 'error', msg: `Ce QR est celui du poste ${post.nom}. Votre poste sur ce créneau : ${postName(candidates[0].postId)}.` })
+      return
+    }
+    const retardMin = Math.max(0, Math.round((t - match.range.start.getTime()) / 60000))
+    setPointage({ state: 'busy' })
+    try {
+      let res
+      if (demo) {
+        const prev = match.shift.presences?.[myId]
+        res = prev ? { already: true, at: prev.at } : { already: false, at: new Date().toISOString() }
+        if (!prev) setShifts(list => list.map(sh => sh.id === match.shift.id
+          ? { ...sh, presences: { ...(sh.presences || {}), [myId]: { at: res.at, postId: post.id, retardMin } } }
+          : sh))
+      } else {
+        res = await pointerArrivee(match.shift.id, myId, { postId: post.id, benevoleNom: benevNom, retardMin }, eventId)
+      }
+      setPointage({ state: 'done', at: res.at, already: res.already, post })
+    } catch (e) {
+      setPointage({ state: 'error', msg: 'Pointage impossible : ' + (e.message || 'erreur réseau') })
+    }
+  }
+
+  // Affectation sur le planning en mode démo
+  const demoAssign = async (shiftId, benevId, target) => {
+    setShifts(list => list.map(sh => {
+      if (sh.id !== shiftId) return sh
+      const postes = Object.fromEntries(Object.entries(sh.postes || {}).map(([pid, p]) => [pid, { ...p, assignments: (p.assignments || []).filter(id => id !== benevId) }]))
+      const libres = (sh.libres || []).filter(id => id !== benevId)
+      if (target === '__free__') libres.push(benevId)
+      else if (target !== '__remove__') postes[target] = { target: postes[target]?.target ?? 1, assignments: [...(postes[target]?.assignments || []), benevId] }
+      return { ...sh, postes, libres }
+    }))
+  }
+
   if (!docId) return (
-    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg2)', fontFamily:'var(--font)' }}>
-      <div style={{ textAlign:'center', padding:24, color:'var(--muted)' }}>
+    <div className={s.invalid}>
+      <div>
         <div style={{ fontSize:40, marginBottom:12 }}>🔗</div>
-        <div style={{ fontSize:16, fontWeight:600 }}>Lien invalide</div>
-        <div style={{ fontSize:13, marginTop:4 }}>Scannez le QR code fourni par l'organisation.</div>
+        <b>Lien invalide</b>
+        <p>Scannez le QR code fourni par l'organisation.</p>
       </div>
     </div>
   )
 
-  const tabBtn = (id, label, icon) => (
-    <button onClick={() => setTab(id)} style={{
-      flex:1, padding:'10px 2px', border:'none', borderBottom: tab===id ? `2px solid ${BRAND}` : '2px solid transparent',
-      background:'var(--bg2)', cursor:'pointer', fontFamily:'var(--font)',
-      fontSize:11, fontWeight:tab===id?700:500, color:tab===id?BRAND:'var(--muted)',
-      display:'flex', flexDirection:'column', alignItems:'center', gap:4, minWidth:0,
-      WebkitTapHighlightColor:'transparent', minHeight:54,
-    }}>
-      {icon}
-      <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{label}</span>
-    </button>
-  )
+  const readyResas = resas.filter(r => r.status === 'ready')
+  const pendingResas = resas.filter(r => r.status === 'pending' || r.status === 'processing').length
+  const rel = slot ? relativeLabel(slot.range, now) : null
+
+  const NAV = [
+    { id: 'accueil',   label: 'Accueil',  icon: Home },
+    { id: 'planning',  label: 'Planning', icon: CalendarDays },
+    { id: 'commander', label: 'Conso',    icon: ShoppingCart },
+    { id: 'mes-resas', label: 'Résas',    icon: Bookmark, badge: readyResas.length || pendingResas || 0 },
+    { id: 'profil',    label: 'Profil',   icon: User },
+  ]
 
   return (
-    <div style={{ minHeight:'100vh', background:'var(--bg2)', fontFamily:'var(--font)' }}>
-
-      {/* Header dégradé marine→teal (distinct des espaces spectateur/artiste) */}
-      <div style={{ background:'var(--grad-marine-teal)', padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <div style={{ width:28, height:28, borderRadius:7, background:'rgba(255,255,255,.20)', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            <img src="/logo.png" alt="YllaCash" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.style.display='none'}/>
-          </div>
-          <span style={{ fontSize:16, fontWeight:800, color:'#fff' }}>YllaCash</span>
-          {eventMeta && (
-            <div style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'2px 8px', borderRadius:6, background:'rgba(255,255,255,.18)', maxWidth:'clamp(80px, 30vw, 160px)', overflow:'hidden' }}>
-              {eventMeta.logoSrc
-                ? <img src={eventMeta.logoSrc} alt="" style={{ width:12, height:12, borderRadius:2, objectFit:'cover', flexShrink:0 }}/>
-                : <span style={{ fontSize:10, flexShrink:0 }}>{eventMeta.emoji || '🎵'}</span>
-              }
-              <span style={{ fontSize:11, fontWeight:700, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{eventMeta.nom}</span>
-            </div>
+    <div className={s.page}>
+      {/* En-tête */}
+      <header className={s.head}>
+        <div className={s.headInner}>
+          <div className={s.logo}><img src="/logo.png" alt="" onError={e => { e.currentTarget.style.display = 'none' }} /></div>
+          <span className={s.brandName}>YllaCash</span>
+          {eventMeta?.nom && (
+            <span className={s.event}>
+              {eventMeta.logoSrc ? <img src={eventMeta.logoSrc} alt="" /> : <span>{eventMeta.emoji || '🎵'}</span>}
+              {eventMeta.nom}
+            </span>
           )}
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-          {onSwitchToStaff && (
-            <button onClick={onSwitchToStaff}
-              title="Basculer vers l'espace staff"
-              aria-label="Espace staff"
-              style={{ background:'rgba(255,255,255,.15)', border:'none', borderRadius:8, padding:'7px', cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16 }}>
-              🎪
-            </button>
-          )}
-          <button onClick={logout}
-            title="Se déconnecter"
-            aria-label="Se déconnecter"
-            style={{ background:'rgba(255,255,255,.15)', border:'none', borderRadius:8, padding:'7px', cursor:'pointer', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-            <LogOut size={16}/>
-          </button>
-        </div>
-      </div>
-
-      <div style={{ maxWidth:480, margin:'0 auto', padding:'0 12px' }}>
-
-        {/* Carte bénévole — responsive */}
-        <div style={{ background:'var(--bg)', borderRadius:16, boxShadow:'0 4px 20px rgba(0,0,0,.1)', margin:'12px 0', padding:'16px' }}>
-          {benev ? (
-            <>
-              {/* Ligne principale : QR + infos + actions */}
-              <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
-                {/* QR cliquable */}
-                {qrDataUrl && (
-                  <img src={qrDataUrl} alt="QR" onClick={openQr}
-                    style={{ width:64, height:64, borderRadius:10, cursor:'pointer', flexShrink:0, border:`2px solid ${BRAND}22` }}/>
-                )}
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:16, fontWeight:800, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                    {benev.prenom} {benev.nom}
-                  </div>
-                  <div style={{ fontSize:12, color:'var(--muted)' }}>{benev.poste || 'Bénévole'}</div>
-                  <div style={{ fontSize:10, fontFamily:'monospace', color:BRAND, marginTop:2 }}>BNV-{docId?.slice(-6)}</div>
-                </div>
-                {/* Cloche + Thème — déplacés ici pour libérer le header */}
-                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0 }}>
-                  <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}/>
-                  <ThemeToggle/>
-                </div>
-              </div>
-
-              {/* Quotas — 3 colonnes compactes */}
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
-                {Object.entries(TYPE_CFG).map(([type, cfg]) => {
-                  const droits  = benev.droits?.[type] || 0
-                  const conso   = benev.consommation?.[type] || 0
-                  const restant = Math.max(0, droits - conso)
-                  const epuise  = restant === 0
-                  const Icon = cfg.icon
-                  return (
-                    <div key={type} style={{ background: epuise ? '#f1f5f9' : cfg.bg, borderRadius:10, padding:'8px 6px', textAlign:'center', border:`1px solid ${epuise?'#e2e8f0':cfg.color+'33'}` }}>
-                      <Icon size={16} style={{ color: epuise ? '#94a3b8' : cfg.color, marginBottom:2 }}/>
-                      <div style={{ fontSize:20, fontWeight:800, color: epuise ? '#94a3b8' : cfg.color, lineHeight:1 }}>{restant}</div>
-                      <div style={{ fontSize:9, color: epuise ? '#94a3b8' : cfg.color, fontWeight:600, marginTop:2 }}>{cfg.label}</div>
-                      <div style={{ fontSize:9, color: epuise ? '#94a3b8' : cfg.color, opacity:.6 }}>/ {droits}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          ) : (
-            <div style={{ textAlign:'center', padding:'20px 0', color:'var(--muted)' }}>Chargement…</div>
-          )}
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display:'flex', background:'var(--bg)', borderRadius:14, marginBottom:12, overflow:'hidden', boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
-          {tabBtn('accueil',   'Accueil',  <Clock size={14}/>)}
-          {tabBtn('planning',  'Planning', <CalendarDays size={14}/>)}
-          {tabBtn('commander', 'Conso',    <ShoppingCart size={14}/>)}
-          {tabBtn('mes-resas', 'Résa',     <Bookmark size={14}/>)}
-          {tabBtn('profil',    'Profil',   <User size={14}/>)}
-        </div>
-
-        {/* Contenu */}
-        {tab === 'accueil' && benev && (
-          <div style={{ background:'var(--bg)', borderRadius:14, padding:16, boxShadow:'0 2px 8px rgba(0,0,0,.06)' }}>
-            <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:12 }}>Bienvenue {benev.prenom} 👋</div>
-            <div style={{ fontSize:13, color:'var(--muted)', lineHeight:1.6 }}>
-              Votre espace bénévole vous permet de commander vos repas et boissons dans la limite de votre quota.
-              Présentez votre QR code au stand pour valider votre commande.
-            </div>
-            {benev.creneaux && (
-              <div style={{ marginTop:14 }}>
-                <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:8 }}>Vos créneaux</div>
-                {['Vendredi','Samedi','Dimanche'].map(j => {
-                  const cr = benev.creneaux?.[j] || {}
-                  const actifs = Object.entries(cr).filter(([,v])=>v).map(([c])=>c)
-                  if (!actifs.length) return null
-                  return (
-                    <div key={j} style={{ display:'flex', gap:8, alignItems:'center', marginBottom:6 }}>
-                      <span style={{ fontSize:12, fontWeight:600, color:'var(--text)', minWidth:60 }}>{j}</span>
-                      {actifs.map(a => (
-                        <span key={a} style={{ fontSize:11, padding:'2px 8px', borderRadius:10, background:BRAND+'18', color:BRAND, fontWeight:600 }}>{a}</span>
-                      ))}
-                    </div>
-                  )
-                })}
-              </div>
+          <div className={s.headActions}>
+            <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}/>
+            <ThemeToggle variant="light" style={{ width: 36, height: 36, minHeight: 0 }}/>
+            {onSwitchToStaff && (
+              <button type="button" className={s.headBtn} onClick={onSwitchToStaff} title="Basculer vers l'espace staff" aria-label="Basculer vers l'espace staff">
+                <Store size={16}/>
+              </button>
+            )}
+            {!demo && (
+              <button type="button" className={s.headBtn} onClick={logout} title="Se déconnecter" aria-label="Se déconnecter">
+                <LogOut size={16}/>
+              </button>
             )}
           </div>
+        </div>
+      </header>
+
+      <main className={s.wrap}>
+        {tab === 'accueil' && (
+          benev ? (
+            <>
+              {/* Bonjour + QR */}
+              <section className={s.hello}>
+                <div className={s.helloText}>
+                  <span>Bénévole{benev.poste ? ` · ${benev.poste}` : ''}</span>
+                  <h1>Bonjour {benev.prenom || benev.nom}</h1>
+                </div>
+                <button type="button" className={s.avatar} onClick={openQr} aria-label="Afficher mon QR code">
+                  {initialsOf(benev)}
+                  <span className={s.avatarQr}><QrCode size={12}/></span>
+                </button>
+              </section>
+
+              {/* Commande prête */}
+              {readyResas.length > 0 && (
+                <button type="button" className={s.ready} onClick={() => setTab('mes-resas')}>
+                  <BellRing size={18}/>
+                  <span>
+                    <b>{readyResas.length > 1 ? `${readyResas.length} commandes prêtes` : 'Votre commande est prête'}</b>
+                    <span>Code #{readyResas[0].code} · présentez votre QR au stand</span>
+                  </span>
+                  <ChevronRight size={18}/>
+                </button>
+              )}
+
+              {/* Quotas en bocaux */}
+              <section className={s.card}>
+                <div className={s.cardHead}>
+                  <h2>Mes quotas</h2>
+                  <span className={s.muted}>Ce qu'il vous reste</span>
+                </div>
+                <div className={s.jars}>
+                  {Object.entries(TYPE_CFG).map(([type, cfg]) => (
+                    <Jar key={type}
+                      value={quotaRestant(type)}
+                      max={benev.droits?.[type] || 0}
+                      label={cfg.label} color={cfg.tone} icon={cfg.icon}/>
+                  ))}
+                </div>
+              </section>
+
+              {/* Mon créneau sur le ruban horaire */}
+              <section className={s.card}>
+                <div className={s.cardHead}>
+                  <h2>Mon créneau</h2>
+                  {rel?.text && <Badge tone={presence ? 'success' : rel.tone}>{presence ? 'Arrivée pointée' : rel.text}</Badge>}
+                </div>
+                {slot && ribbon ? (
+                  <>
+                    <TimeRibbon start={ribbon.start} end={ribbon.end} items={ribbon.items} now={now}/>
+                    <div className={s.slotInfo}>
+                      <MapPin size={14}/>
+                      <span>
+                        <b>{postName(slot.postId)}</b> · {slot.shift.label ? slot.shift.label + ' · ' : ''}
+                        {slot.range.start.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}, {fmtHour(slot.range.start)}–{fmtHour(slot.range.end)}
+                      </span>
+                    </div>
+                    {presence ? (
+                      <div className={s.checked}>
+                        <CheckCircle2 size={18}/>
+                        <span>Arrivée enregistrée à {fmtHour(new Date(presence.at))}{presence.retardMin > 0 ? ` · ${presence.retardMin} min après le début` : ''}</span>
+                      </div>
+                    ) : (
+                      <button type="button" className={s.scanAction} onClick={openScan} disabled={!checkInOpen}>
+                        <span className={s.scanIcon}><ScanLine size={20}/></span>
+                        <span>
+                          <b>Pointer mon arrivée</b>
+                          <span>{checkInOpen ? 'Scanner le QR du poste' : `Ouvre ${CHECKIN_EARLY_MIN} min avant le début du créneau`}</span>
+                        </span>
+                        <ChevronRight size={18} className={s.chev}/>
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className={s.noSlot}>
+                    <p>{shifts.length ? 'Aucun créneau à venir pour vous.' : "L'organisation n'a pas encore publié les créneaux."}</p>
+                    {shifts.length > 0 && <Button variant="secondary" size="sm" icon={CalendarDays} onClick={() => setTab('planning')}>Choisir un créneau</Button>}
+                    {/* Anciennes disponibilités déclarées à l'inscription */}
+                    {benev.creneaux && ['Vendredi','Samedi','Dimanche'].map(j => {
+                      const actifs = Object.entries(benev.creneaux?.[j] || {}).filter(([,v])=>v).map(([c])=>c)
+                      if (!actifs.length) return null
+                      return (
+                        <div key={j} className={s.legacy}>
+                          <b>{j}</b>
+                          {actifs.map(a => <Badge key={a} tone="brand">{a}</Badge>)}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <Button size="lg" block icon={UtensilsCrossed} onClick={() => setTab('commander')}>Commander mon repas</Button>
+              <p className={s.hint}>Présentez votre QR code au stand pour retirer votre commande.</p>
+            </>
+          ) : (
+            <div className={s.loading}>Chargement…</div>
+          )
         )}
 
         {tab === 'planning' && benev && (
-          <BenevolePlanning benev={benev} eventId={eventId} benevoles={benevoles}/>
+          <BenevolePlanning benev={{ ...benev, id: myId }} eventId={eventId} benevoles={benevoles}
+            posts={posts} shifts={shifts} onAssign={demo ? demoAssign : undefined}/>
         )}
 
         {tab === 'commander' && (
@@ -581,7 +707,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         {tab === 'mes-resas' && (
           <BenevoleResas
             resas={resas} BRAND={BRAND} AMBER={AMBER} AMBER_L={AMBER_L}
-            cancelResa={annulerResa}
+            cancelResa={(id, code) => setCancelAsk({ id, code })}
           />
         )}
 
@@ -592,33 +718,84 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             pwdMsg={pwdMsg} pwdLoading={pwdLoading} changePwd={changePwd}
           />
         )}
-      </div>
 
-      {/* Modale QR plein écran */}
+        <footer className={s.footer}>
+          <b>YllaCash v1.0 · 05/2026</b>
+          <span>Développée par <strong>Maison Ylla</strong></span>
+        </footer>
+      </main>
+
+      {/* Barre d'onglets */}
+      <nav className={s.nav} aria-label="Navigation">
+        {NAV.map(item => {
+          const Icon = item.icon
+          const on = tab === item.id
+          return (
+            <button key={item.id} type="button" className={`${s.navItem} ${on ? s.navOn : ''}`}
+              onClick={() => setTab(item.id)} aria-current={on ? 'page' : undefined}>
+              <span className={s.navIcon}>
+                <Icon size={20}/>
+                {item.badge > 0 && <span className={s.navBadge}>{item.badge}</span>}
+              </span>
+              {item.label}
+            </button>
+          )
+        })}
+      </nav>
+
+      {/* Pointage : scan du QR du poste */}
+      <Sheet open={scanOpen} onClose={() => setScanOpen(false)} title="Pointer mon arrivée">
+        {pointage.state === 'done' ? (
+          <div className={s.scanDone}>
+            <CheckCircle2 size={44}/>
+            <b>{pointage.already ? 'Déjà pointé' : 'Arrivée enregistrée'}</b>
+            <span>{pointage.post?.emoji} {pointage.post?.nom} · {fmtHour(new Date(pointage.at))}</span>
+            <Button block onClick={() => setScanOpen(false)}>Terminer</Button>
+          </div>
+        ) : (
+          <div className={s.scanBody}>
+            <p className={s.muted}>Scannez le QR affiché au poste. Sans caméra, saisissez le code à 4 caractères écrit sous le QR.</p>
+            {scanOpen && (
+              <QrScanner
+                onScan={handlePointageScan}
+                parse={(t) => t.trim()}
+                placeholder="Code du poste (ex : 7KQ2)"
+                hint="Pointez la caméra vers le QR du poste"
+                simulate={posts.length ? [postQrText(demo ? 'demo' : eventId, (posts.find(p => p.id === slot?.postId) || posts[0]).id)] : []}
+              />
+            )}
+            {pointage.state === 'busy' && <p className={s.muted}>Enregistrement…</p>}
+            {pointage.state === 'error' && (
+              <div className={s.scanErr} role="alert"><AlertCircle size={16}/><span>{pointage.msg}</span></div>
+            )}
+          </div>
+        )}
+      </Sheet>
+
+      {/* Confirmation d'annulation */}
+      <Dialog open={!!cancelAsk} onClose={() => setCancelAsk(null)} title="Annuler cette réservation ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setCancelAsk(null)}>Garder</Button>
+          <Button variant="danger" onClick={() => { const c = cancelAsk; setCancelAsk(null); annulerResa(c.id, c.code) }}>Annuler la réservation</Button>
+        </>}>
+        <p className={s.muted}>La réservation #{cancelAsk?.code} sera annulée et votre quota vous sera rendu.</p>
+      </Dialog>
+
+      {/* QR plein écran : fond blanc pour la lecture */}
       {qrOpen && qrDataUrl && (
-        <div onClick={closeQr} style={{ position:'fixed', inset:0, zIndex:300, background:'var(--bg)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:20 }}>
-          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:4 }}>{benev?.nom} {benev?.prenom}</div>
-          <div style={{ fontSize:12, fontFamily:'monospace', color:'var(--muted)', marginBottom:20 }}>Bénévole</div>
-          <img src={qrDataUrl} alt="QR" style={{ width:'min(85vw,380px)', height:'min(85vw,380px)', borderRadius:16 }}/>
-          <div style={{ marginTop:24, fontSize:13, color:'var(--muted)' }}>Appuyez pour fermer</div>
-        </div>
+        <button type="button" className={s.qrFull} onClick={closeQr} aria-label="Fermer le QR code">
+          <b>{benevNom}</b>
+          <span>Bénévole · BNV-{docId?.slice(-6)}</span>
+          <img src={qrDataUrl} alt="Mon QR code bénévole"/>
+          <span>Appuyez pour fermer</span>
+        </button>
       )}
-      {/* Footer À propos */}
-      <div style={{ textAlign:'center', padding:'20px 16px 32px', fontFamily:'var(--font)' }}>
-        <div style={{ fontSize:12, fontWeight:700, color:'var(--muted)' }}>YllaCash v1.0 · 05/2026</div>
-        <div style={{ fontSize:11, color:'var(--muted)', opacity:.7, marginTop:2 }}>
-          Développée par <strong>Maison Ylla</strong>
-        </div>
-        <div style={{ fontSize:10, color:'var(--muted)', opacity:.5, marginTop:6, fontStyle:'italic', maxWidth:280, margin:'6px auto 0' }}>
-          "Toute la gestion financière de votre événement en un seul endroit, et bien plus encore"
-        </div>
-      </div>
 
       {/* Chat équipe (v7) */}
-      {eventId && benev && (
+      {eventId && benev && !demo && (
         <TeamChat
           eventId={eventId}
-          currentUser={{ uid: docId, id: docId, nom: ((benev.prenom || '') + ' ' + (benev.nom || '')).trim() || benev.nom || 'Bénévole', role: 'benevole' }}
+          currentUser={{ uid: docId, id: docId, nom: benevNom || benev.nom || 'Bénévole', role: 'benevole' }}
           brandColor={themeColor}
           isAdmin={false}
         />

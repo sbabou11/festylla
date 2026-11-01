@@ -92,85 +92,6 @@ const preloadLibs = () => {
 }
 
 
-// ── Sélecteur d'espace : staff avec profil bénévole ───────────────
-function EspaceSelector({ user, onStaff, onBenev, onLogout }) {
-  const BRAND = '#1a6b7a'
-  const roleLabels = {
-    stand:        'Stand',
-    billetterie:  'Billetterie',
-    admin:        'Admin',
-    super_admin:  'Super Admin',
-    consultation: 'Consultation',
-    directeur_artistique: 'Directeur Artistique',
-  }
-  const roleSubtitles = {
-    stand:        'Caisse, encaissements',
-    billetterie:  'Recharges, nouveaux comptes',
-    admin:        'Caisse, encaissements',
-    super_admin:  'Gestion complète',
-    consultation: 'Consultation',
-    directeur_artistique: 'Gestion du planning festival',
-  }
-  return (
-    <div style={{ minHeight:'100vh', background:'linear-gradient(135deg,#0d3d47 0%,#1a6b7a 100%)', display:'flex', alignItems:'center', justifyContent:'center', padding:20, fontFamily:'system-ui,sans-serif' }}>
-      <div style={{ width:'100%', maxWidth:400 }}>
-        {/* Logo */}
-        <div style={{ textAlign:'center', marginBottom:32 }}>
-          <div style={{ width:64, height:64, borderRadius:18, background:'rgba(255,255,255,.15)', margin:'0 auto 14px', display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden' }}>
-            <img src="/logo.png" alt="YllaCash" style={{ width:'100%', height:'100%', objectFit:'cover' }} onError={e=>e.target.style.display='none'}/>
-          </div>
-          <div style={{ fontSize:26, fontWeight:800, color:'#fff', letterSpacing:'-.01em' }}>YllaCash</div>
-          <div style={{ fontSize:14, color:'rgba(255,255,255,.7)', marginTop:6 }}>
-            Bonjour <strong>{user.nom}</strong> 👋
-          </div>
-        </div>
-
-        {/* Carte sélecteur */}
-        <div style={{ background:'#fff', borderRadius:20, padding:28, boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
-          <div style={{ fontSize:16, fontWeight:700, color:'#0d2d33', marginBottom:6, textAlign:'center' }}>
-            Dans quel espace souhaitez-vous entrer ?
-          </div>
-          <div style={{ fontSize:13, color:'#64748b', marginBottom:24, textAlign:'center' }}>
-            Votre compte est associé à deux espaces.
-          </div>
-
-          {/* Espace staff */}
-          <button onClick={onStaff} style={{ width:'100%', padding:'18px 20px', borderRadius:14, border:'2px solid #e2e8f0', background:'#f8fafc', cursor:'pointer', textAlign:'left', marginBottom:12, transition:'border-color .15s', fontFamily:'system-ui' }}
-            onMouseEnter={e=>e.currentTarget.style.borderColor=BRAND}
-            onMouseLeave={e=>e.currentTarget.style.borderColor='#e2e8f0'}>
-            <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-              <div style={{ width:44, height:44, borderRadius:12, background:'#e1f5ee', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🎪</div>
-              <div>
-                <div style={{ fontSize:15, fontWeight:700, color:'#0d2d33', marginBottom:2 }}>Espace staff</div>
-                <div style={{ fontSize:12, color:'#64748b' }}>{roleLabels[user.role] || user.role} · {roleSubtitles[user.role] || 'Espace personnel'}</div>
-              </div>
-              <div style={{ marginLeft:'auto', fontSize:18, color:'#cbd5e1' }}>›</div>
-            </div>
-          </button>
-
-          {/* Espace bénévole */}
-          <button onClick={onBenev} style={{ width:'100%', padding:'18px 20px', borderRadius:14, border:'2px solid #e2e8f0', background:'#f8fafc', cursor:'pointer', textAlign:'left', transition:'border-color .15s', fontFamily:'system-ui' }}
-            onMouseEnter={e=>e.currentTarget.style.borderColor='#534AB7'}
-            onMouseLeave={e=>e.currentTarget.style.borderColor='#e2e8f0'}>
-            <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-              <div style={{ width:44, height:44, borderRadius:12, background:'#ede9fe', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🙋</div>
-              <div>
-                <div style={{ fontSize:15, fontWeight:700, color:'#0d2d33', marginBottom:2 }}>Mon espace bénévole</div>
-                <div style={{ fontSize:12, color:'#64748b' }}>Réservations, quotas repas &amp; boissons</div>
-              </div>
-              <div style={{ marginLeft:'auto', fontSize:18, color:'#cbd5e1' }}>›</div>
-            </div>
-          </button>
-
-          {/* Déconnexion */}
-          <button onClick={onLogout} style={{ width:'100%', marginTop:20, padding:'10px', border:'none', background:'none', color:'#94a3b8', fontSize:13, cursor:'pointer', fontFamily:'system-ui' }}>
-            Se déconnecter
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 
 class ErrorBoundary extends React.Component {
@@ -196,6 +117,7 @@ class ErrorBoundary extends React.Component {
 }
 
 const LoginPage    = lazy(() => import('./pages/auth/Login'))
+const EspaceSelector = lazy(() => import('./pages/auth/EspaceSelector'))
 const BenevoleApp  = lazy(() => import('./pages/public/BenevoleApp'))
 const SoldePage    = lazy(() => import('./pages/public/SoldePage'))
 const Inscription  = lazy(() => import('./pages/public/Inscription'))
@@ -206,11 +128,16 @@ const UiGallery     = import.meta.env.DEV ? lazy(() => import('./pages/dev/UiGal
 const DevDashboard  = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevDashboard')) : null
 const DevCaisse     = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevCaisse')) : null
 const DevSolde      = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevSolde')) : null
+const DevBenevole   = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevBenevole')) : null
+const DevLive       = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevLive')) : null
+const DevLogin      = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevAuth').then(m => ({ default: m.DevLogin }))) : null
+const DevEspace     = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevAuth').then(m => ({ default: m.DevEspace }))) : null
 
 const page = (el) => <Suspense fallback={<Loader />}>{el}</Suspense>
 
 export default function App() {
   return (
+    <>
     <Routes>
       {/* Pages publiques (sans connexion staff) */}
       <Route path="/live"        element={page(<LivePlanning />)} />
@@ -226,10 +153,17 @@ export default function App() {
       {DevDashboard && <Route path="/ui/dashboard" element={page(<DevDashboard />)} />}
       {DevCaisse && <Route path="/ui/caisse" element={page(<DevCaisse />)} />}
       {DevSolde && <Route path="/ui/spectateur" element={page(<DevSolde />)} />}
+      {DevBenevole && <Route path="/ui/benevole" element={page(<DevBenevole />)} />}
+      {DevLive && <Route path="/ui/live" element={page(<DevLive />)} />}
+      {DevLogin && <Route path="/ui/connexion" element={page(<DevLogin />)} />}
+      {DevEspace && <Route path="/ui/espace" element={page(<DevEspace />)} />}
       {/* Toutes les autres URLs → app staff (affiche Login si non connecté).
           Chaque page staff a son adresse : /dashboard, /debit, /spectateurs… */}
       <Route path="*" element={<ErrorBoundary><StaffApp /></ErrorBoundary>} />
     </Routes>
+    {/* Un seul conteneur de toasts pour toutes les pages, publiques comme staff */}
+    <ToastViewport />
+    </>
   )
 }
 
@@ -301,12 +235,14 @@ function StaffApp() {
   // Staff avec profil bénévole → sélecteur d'espace (si pas encore choisi)
   if (user.benevoleDocId && !espaceChoisi) {
     return (
-      <EspaceSelector
-        user={user}
-        onStaff={() => setEspaceChoisi('staff')}
-        onBenev={() => setEspaceChoisi('benev')}
-        onLogout={logout}
-      />
+      <Suspense fallback={<Loader />}>
+        <EspaceSelector
+          user={user}
+          onStaff={() => setEspaceChoisi('staff')}
+          onBenev={() => setEspaceChoisi('benev')}
+          onLogout={logout}
+        />
+      </Suspense>
     )
   }
 
@@ -489,7 +425,6 @@ function StaffApp() {
         onNavigate={navigate}
         canAccessPage={canAccessPage}
       />
-      <ToastViewport />
     </div>
   )
 }

@@ -28,19 +28,23 @@ function fmtDate(yyyymmdd) {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-export default function BenevolePlanning({ benev, eventId, benevoles }) {
-  const [posts, setPosts]   = useState([])
-  const [shifts, setShifts] = useState([])
+// posts / shifts : fournis par le parent (qui les écoute déjà) ; sinon le composant les écoute lui-même.
+// onAssign : remplace l'écriture Firestore (mode démo).
+export default function BenevolePlanning({ benev, eventId, benevoles, posts: postsProp, shifts: shiftsProp, onAssign }) {
+  const [ownPosts, setPosts]   = useState([])
+  const [ownShifts, setShifts] = useState([])
+  const posts  = postsProp  || ownPosts
+  const shifts = shiftsProp || ownShifts
   const [busy, setBusy]     = useState(null)  // { shiftId, postId } en cours d'écriture
   const [error, setError]   = useState('')
 
   // Listeners temps réel
   useEffect(() => {
-    if (!eventId) return
+    if (!eventId || postsProp || shiftsProp) return
     const u1 = watchVolunteerPosts(setPosts, eventId)
     const u2 = watchVolunteerShifts(setShifts, eventId)
     return () => { u1?.(); u2?.() }
-  }, [eventId])
+  }, [eventId, !!postsProp, !!shiftsProp])
 
   // Map id → nom pour afficher les autres bénévoles
   const benevsById = useMemo(() => {
@@ -80,7 +84,8 @@ export default function BenevolePlanning({ benev, eventId, benevoles }) {
       const current = myPositionOn(shift)
       // Si je clique sur mon poste actuel → désinscription
       const target = current === postId ? '__remove__' : postId
-      await assignBenevoleToPost(shift.id, benev.id, target, eventId)
+      if (onAssign) await onAssign(shift.id, benev.id, target)
+      else await assignBenevoleToPost(shift.id, benev.id, target, eventId)
     } catch (e) {
       console.warn(e)
       setError('Impossible de mettre à jour. Réessayez.')

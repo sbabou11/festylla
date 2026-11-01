@@ -6,7 +6,8 @@ import React, { useState, useEffect } from 'react'
 import { db } from '../../firebase/config'
 import { getSettings } from '../../firebase/service'
 import { collection, query, orderBy, onSnapshot, getDoc, doc } from 'firebase/firestore'
-import { MapPin, Clock, ChevronRight, X, Search, Rows3, Image as ImageIcon, GitCommitVertical, Ticket, LayoutGrid } from 'lucide-react'
+import { MapPin, Clock, ChevronRight, X, Search, Rows3, Image as ImageIcon, GitCommitVertical, Ticket, LayoutGrid, GanttChart } from 'lucide-react'
+import { TimeRibbon } from '../../ui'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
 
@@ -371,7 +372,74 @@ function CarteArtiste({ cr, onClose }) {
 }
 
 // ── Composant principal ───────────────────────────────────────────────
-export default function LivePlanning() {
+// Journée de festival : de 6h à 6h, une soirée qui finit à 3h reste sur la même journée
+const DAY_CUT_H = 6
+const toDate = (ts) => ts ? (ts.toDate ? ts.toDate() : new Date(ts)) : null
+function festDayKey(ts) {
+  const d = toDate(ts)
+  if (!d || isNaN(d)) return ''
+  return dayKey(new Date(d.getTime() - DAY_CUT_H * 3600000))
+}
+function fmtDayChip(key) {
+  const d = new Date(key + 'T12:00:00')
+  const s = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })
+  return s.charAt(0).toUpperCase() + s.slice(1)
+}
+
+// Vue ruban : une ligne par scène, ligne « maintenant » sur la journée en cours
+function RibbonView({ items, now, onOpen }) {
+  const days = [...new Set(items.map(cr => festDayKey(cr.debut)).filter(Boolean))].sort()
+  const today = festDayKey(now)
+  const [day, setDay] = useState(null)
+  const current = day && days.includes(day) ? day : (days.includes(today) ? today : (days.find(d => d > today) || days[days.length - 1]))
+  const ofDay = items.filter(cr => festDayKey(cr.debut) === current && toDate(cr.debut) && toDate(cr.fin))
+  if (!ofDay.length) return null
+
+  const scenes = [...new Set(ofDay.map(cr => cr.scene || 'Programme'))]
+  const start = new Date(Math.min(...ofDay.map(cr => toDate(cr.debut).getTime())))
+  const end   = new Date(Math.max(...ofDay.map(cr => toDate(cr.fin).getTime())))
+  start.setMinutes(0, 0, 0)
+  if (end.getMinutes() || end.getSeconds()) { end.setHours(end.getHours() + 1); end.setMinutes(0, 0, 0) }
+
+  return (
+    <div style={{ display:'grid', gridTemplateColumns:'minmax(0, 1fr)', gap:10 }}>
+      {days.length > 1 && (
+        <div role="tablist" aria-label="Choisir le jour" style={{ display:'flex', gap:6, overflowX:'auto' }}>
+          {days.map(d => (
+            <button key={d} role="tab" aria-selected={d === current} onClick={() => setDay(d)}
+              style={{ padding:'5px 12px', borderRadius:8, border:'1px solid var(--border)', background: d === current ? 'var(--brand)' : 'var(--bg)', color: d === current ? 'var(--on-brand)' : 'var(--muted)', fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:'var(--font)', minHeight:'auto', whiteSpace:'nowrap' }}>
+              {d === today ? "Aujourd'hui" : fmtDayChip(d)}
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'12px 12px 8px' }}>
+        <TimeRibbon
+          start={start} end={end} now={now} hourWidth={132}
+          lanes={scenes.map(sc => ({ id: sc, label: sc }))}
+          items={ofDay.map(cr => {
+            const ti = TYPES[cr.type] || TYPES.autre
+            const st = autoStatut(cr)
+            return {
+              id: cr.id, lane: cr.scene || 'Programme',
+              start: toDate(cr.debut), end: toDate(cr.fin),
+              label: cr.artiste || cr.titre || 'Créneau',
+              sub: fmt2(cr.debut) + '–' + fmt2(cr.fin),
+              color: ti.color,
+              active: st === 'en-cours',
+              dim: st === 'termine' || cr.statut === 'annule',
+              onClick: () => onOpen(cr),
+            }
+          })}
+        />
+      </div>
+      <div style={{ fontSize:11, color:'var(--muted)', textAlign:'center' }}>Faites défiler horizontalement · touchez un artiste pour sa fiche</div>
+    </div>
+  )
+}
+
+// demo : { eventMeta, planning } — aperçu sans Firestore (route /ui/live en développement)
+export default function LivePlanning({ demo = null } = {}) {
   useTheme()
 
   // Mode sombre forcé pour la vue grand écran (lisible la nuit)
@@ -385,9 +453,10 @@ export default function LivePlanning() {
     }
   }, [])
   const params  = new URLSearchParams(window.location.search)
-  const eventId = params.get('ev') || null
+  const eventId = demo ? 'demo' : (params.get('ev') || null)
 
   const [planning, setPlanning]     = useState(() => {
+    if (demo) return demo.planning
     try {
       const cached = localStorage.getItem('yllacash-planning-' + eventId)
       if (cached) {
@@ -402,14 +471,14 @@ export default function LivePlanning() {
   const [carteOpen, setCarteOpen]   = useState(null)
   const [filterType, setFilterType] = useState('tous')
   const [search, setSearch]         = useState('')
-  const [eventMeta, setEventMeta]   = useState(null)
+  const [eventMeta, setEventMeta]   = useState(demo?.eventMeta || null)
   const [viewMode, setViewMode]     = useState(() => {
     try {
       const saved = localStorage.getItem('yllacash-planning-view')
-      // 5 vues : 'compact' (Piste 1) | 'photo' (Piste 2, défaut) | 'timeline' (Piste 3) | 'ticket' (Piste 4) | 'grid' (Piste 5)
-      if (['compact','photo','timeline','ticket','grid'].includes(saved)) return saved
+      // 6 vues : 'ruban' (défaut) | 'compact' | 'photo' | 'timeline' | 'ticket' | 'grid'
+      if (['ruban','compact','photo','timeline','ticket','grid'].includes(saved)) return saved
     } catch {}
-    return 'photo'
+    return 'ruban'
   })
   const listRef  = React.useRef(null)
 
@@ -425,7 +494,7 @@ export default function LivePlanning() {
 
   // Charger le thème
   useEffect(() => {
-    if (!eventId) return
+    if (!eventId || demo) return
     getSettings(eventId).then(s => {
       if (s?.theme?.brand) {
         setThemeColor(s.theme.brand)
@@ -436,7 +505,7 @@ export default function LivePlanning() {
 
   // Charger le planning
   useEffect(() => {
-    if (!eventId) return
+    if (!eventId || demo) return
     const col = collection(db, 'events', eventId, 'planning')
     const q   = query(col, orderBy('debut', 'asc'))
     const unsub = onSnapshot(q, snap => {
@@ -456,7 +525,7 @@ export default function LivePlanning() {
 
   // Charger les méta de l'événement
   useEffect(() => {
-    if (!eventId) return
+    if (!eventId || demo) return
     getDoc(doc(db, 'events', eventId)).then(s => s.exists() && setEventMeta(s.data())).catch(() => {})
   }, [eventId])
 
@@ -623,6 +692,7 @@ export default function LivePlanning() {
               <div role="radiogroup" aria-label="Choisir la vue"
                 style={{ display:'flex', gap:2, padding:2, background:'var(--bg2)', borderRadius:8, border:'1px solid var(--border)', flexShrink:0, marginLeft:allTypes.length > 1 ? 'auto' : 0 }}>
                 {[
+                  { id:'ruban',    Icon: GanttChart,         label:'Ruban' },
                   { id:'compact',  Icon: Rows3,              label:'Compact' },
                   { id:'photo',    Icon: ImageIcon,          label:'Photo' },
                   { id:'timeline', Icon: GitCommitVertical,  label:'Timeline' },
@@ -656,7 +726,11 @@ export default function LivePlanning() {
         )}
 
         {/* Liste — change de layout selon viewMode */}
-        {viewMode === 'grid' ? (
+        {viewMode === 'ruban' ? (
+          <div ref={listRef}>
+            <RibbonView items={filtered} now={now} onOpen={setCarteOpen}/>
+          </div>
+        ) : viewMode === 'grid' ? (
           /* Mode grille : 2 colonnes */
           <div ref={listRef} style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:8 }}>
             {filtered.map(cr => {

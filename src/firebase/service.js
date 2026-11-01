@@ -1492,3 +1492,28 @@ export const assignBenevoleToPost = async (shiftId, benevoleId, postId, evId = n
     tx.update(ref, { postes, libres, pending })
   })
 }
+
+// Pointage d'arrivée d'un bénévole sur un créneau (scan du QR du poste)
+// presences: { [benevoleId]: { at: ISO, postId, retardMin } } — le premier pointage fait foi
+export const pointerArrivee = async (shiftId, benevoleId, { postId, benevoleNom = '', retardMin = 0 } = {}, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) throw new Error('Aucun événement courant')
+  const ref = doc(db, 'events', eventId, 'volunteer-shifts', shiftId)
+  const at = new Date().toISOString()
+  const already = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new Error('Créneau introuvable')
+    const prev = snap.data().presences?.[benevoleId]
+    if (prev) return prev
+    tx.update(ref, { [`presences.${benevoleId}`]: { at, postId: postId || null, retardMin } })
+    return null
+  })
+  if (already) return { already: true, at: already.at }
+  addDoc(collection(db, 'events', eventId, 'audit'), {
+    action: 'BENEV_POINTAGE', benevoleId, benevoleNom, shiftId, postId: postId || null, retardMin,
+    userType: 'benevole',
+    label: `Pointage d'arrivée${benevoleNom ? ' de ' + benevoleNom : ''}${retardMin > 0 ? ` (${retardMin} min de retard)` : ''}`,
+    date: new Date().toLocaleString('fr-FR'), timestamp: at, createdAt: serverTimestamp(),
+  }).catch(() => {})
+  return { already: false, at }
+}

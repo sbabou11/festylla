@@ -6,7 +6,6 @@
 import React, { useEffect, useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import Debit from '../stand/Debit'
-import { ToastViewport } from '../../ui'
 import shell from '../../App.module.css'
 
 const MENU = [
@@ -49,7 +48,6 @@ export default function DevCaisse() {
         <header className={shell.bar}><h1 className={shell.title}>Encaisser · aperçu</h1></header>
         <main className={shell.content}><Debit /></main>
       </div>
-      <ToastViewport />
     </div>
   )
 }

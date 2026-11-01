@@ -10,7 +10,6 @@ import useEventStore from '../../store/useEventStore'
 import Sidebar from '../../components/Sidebar'
 import CommandPalette from '../../components/CommandPalette'
 import Dashboard from '../admin/Dashboard'
-import { ToastViewport } from '../../ui'
 import shell from '../../App.module.css'
 
 const H = 3600 * 1000
@@ -106,7 +105,6 @@ export default function DevDashboard() {
         </div>
       </div>
       <CommandPalette open={palette} onClose={() => setPalette(false)} onNavigate={setPage} canAccessPage={() => true} />
-      <ToastViewport />
     </div>
   )
 }

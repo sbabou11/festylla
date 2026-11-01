@@ -10,7 +10,20 @@ import { Camera, CameraOff, Keyboard } from 'lucide-react'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
 
-export default function QrScanner({ onScan, onManual, placeholder = 'ID spectateur (ex: FY-4A2B)' }) {
+// Le QR contient soit l'ID direct (FY-XXXX) soit une URL
+const parseSpecId = (text) => text.includes('FY-')
+  ? text.match(/FY-[A-Z0-9]{4}/)?.[0]
+  : text.trim().toUpperCase()
+
+// parse    : transforme le texte lu en valeur transmise à onScan (null = ignoré)
+// hint     : consigne sous la caméra
+// simulate : valeurs du bouton « Simuler un scan », affiché en développement seulement
+export default function QrScanner({
+  onScan, onManual, placeholder = 'ID spectateur (ex: FY-4A2B)',
+  parse = parseSpecId,
+  hint = 'Pointez la caméra vers le QR code du spectateur',
+  simulate = ['FY-4A2B', 'FY-9C7E', 'FY-1F3D'],
+}) {
   const [mode, setMode] = useState('camera') // 'camera' | 'manual'
   const [camError, setCamError] = useState(null)
   const [scanning, setScanning] = useState(false)
@@ -48,10 +61,7 @@ export default function QrScanner({ onScan, onManual, placeholder = 'ID spectate
         (decodedText) => {
           // QR scanné avec succès
           if (mountedRef.current && onScan) {
-            // Le QR contient soit l'ID direct (FY-XXXX) soit une URL
-            const id = decodedText.includes('FY-')
-              ? decodedText.match(/FY-[A-Z0-9]{4}/)?.[0]
-              : decodedText.trim().toUpperCase()
+            const id = parse(decodedText)
             if (id) onScan(id)
           }
         },
@@ -92,8 +102,7 @@ export default function QrScanner({ onScan, onManual, placeholder = 'ID spectate
 
   const handleSimulate = () => {
     // Simulation pour le dev / navigateur sans caméra
-    const ids = ['FY-4A2B', 'FY-9C7E', 'FY-1F3D']
-    const id = ids[Math.floor(Math.random() * ids.length)]
+    const id = simulate[Math.floor(Math.random() * simulate.length)]
     if (onScan) onScan(id)
   }
 
@@ -129,15 +138,15 @@ export default function QrScanner({ onScan, onManual, placeholder = 'ID spectate
           />
           {scanning && (
             <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginTop: 6 }}>
-              Pointez la caméra vers le QR code du spectateur
+              {hint}
             </div>
           )}
-          {/* Bouton simulation (visible uniquement si pas en prod) */}
-          <button
+          {/* Bouton simulation (développement uniquement) */}
+          {import.meta.env.DEV && simulate?.length > 0 && <button
             onClick={handleSimulate}
             style={{ width: '100%', marginTop: 8, padding: '6px 10px', border: '0.5px solid var(--border2)', borderRadius: 8, background: 'var(--bg2)', color: 'var(--muted)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}>
             Simuler un scan (démo)
-          </button>
+          </button>}
         </div>
       )}
 
