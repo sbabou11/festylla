@@ -1,15 +1,24 @@
 /**
- * pages/admin/Transactions.jsx — v2
+ * pages/admin/Transactions.jsx — v3
  * Super admin : voir et supprimer des transactions individuelles
+ * Tableau du design system (cartes sur mobile), suppression confirmée par appui long.
  */
 import React, { useState } from 'react'
+import clsx from 'clsx'
 import useAppStore from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt } from '../../utils/helpers'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Receipt } from 'lucide-react'
 import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore'
 import useEventStore from '../../store/useEventStore'
+import { Button, Badge, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
+import s from './transactions/transactions.module.css'
+
+const TYPE_LABEL = { credit: 'Crédit', debit: 'Débit', reservation: 'Réservation', annulation: 'Annulation', 'benev-reservation': 'Résa bénévole', 'benev-retrait': 'Retrait bénévole', 'benev-annulation': 'Annul. bénévole', 'artist-gift': 'Avantage artiste' }
+const TYPE_TONE  = { credit: 'brand', debit: 'danger', reservation: 'warning', annulation: 'neutral', 'benev-reservation': 'warning', 'benev-retrait': 'brand', 'benev-annulation': 'neutral', 'artist-gift': 'coral' }
+// Types affichés sans signe (ni + ni −)
+const NO_SIGN = ['reservation','benev-reservation','annulation','benev-annulation','benev-retrait','artist-gift']
 
 export default function Transactions() {
   const { logs, spectateurs } = useAppStore()
@@ -19,16 +28,13 @@ export default function Transactions() {
 
   const [deleting, setDeleting] = useState(null)
   const [visible,  setVisible]  = useState(50)
+  const [pending,  setPending]  = useState(null)   // transaction à supprimer (remplace window.confirm)
 
   const specMap = Object.fromEntries(spectateurs.map(s => [s.id, s.nom]))
-  const allTx   = (logs || []).map(t => ({ ...t, snom: t.benevoleNom || specMap[t.specId] || t.specNom || t.specId || '—' }))
-
-  const typeLabel = { credit: 'Crédit', debit: 'Débit', reservation: 'Réservation', annulation: 'Annulation', 'benev-reservation': 'Résa bénévole', 'benev-retrait': 'Retrait bénévole', 'benev-annulation': 'Annul. bénévole', 'artist-gift': 'Avantage artiste' }
-  const typeColor = { credit: 'var(--brand-dark)', debit: 'var(--red)', reservation: 'var(--amber)', annulation: 'var(--purple)', 'benev-reservation': 'var(--amber)', 'benev-retrait': 'var(--brand-dark)', 'benev-annulation': 'var(--purple)', 'artist-gift': '#7c3aed' }
-  const typeBg    = { credit: 'var(--brand-light)', debit: 'var(--red-light)', reservation: 'var(--amber-light)', annulation: 'var(--purple-light)', 'benev-reservation': 'var(--amber-light)', 'benev-retrait': 'var(--brand-light)', 'benev-annulation': 'var(--purple-light)', 'artist-gift': '#ede9fe' }
+  const allTx   = (logs || []).map((t, i) => ({ ...t, _k: i, snom: t.benevoleNom || specMap[t.specId] || t.specNom || t.specId || '—' }))
 
   const handleDelete = async (tx) => {
-    if (!window.confirm(`Supprimer cette transaction ?\n${tx.label} — ${fmt(tx.montant || 0)}`)) return
+    setPending(null)
     setDeleting(tx._docId || tx.id)
     try {
       // Chercher le document par specId + date (Firebase n'expose pas le docId dans les logs)
@@ -40,78 +46,64 @@ export default function Transactions() {
       const snap = await getDocs(q)
       if (snap.empty) throw new Error('Transaction introuvable dans Firestore')
       for (const d of snap.docs) await deleteDoc(d.ref)
-    } catch (e) { alert('Erreur : ' + e.message) }
+      toast.success('Transaction supprimée')
+    } catch (e) { toast.error('Suppression impossible : ' + e.message) }
     finally { setDeleting(null) }
   }
 
-  if (!allTx.length) return (
-    <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Aucune transaction enregistrée.</div>
-  )
+  if (!allTx.length) return <Empty icon={Receipt} title="Aucune transaction enregistrée">Les recharges, achats et réservations apparaîtront ici.</Empty>
+
+  const sign = (t) => t.type === 'credit' ? '+' : NO_SIGN.includes(t.type) ? '' : '−'
+
+  const columns = [
+    { key: 'snom',  label: 'Spectateur', card: 'title', render: t => <span className={s.ellipsis}>{t.snom}</span> },
+    { key: 'montant', label: 'Montant', align: 'right', render: t => (
+      <span className={clsx(s.amount, s[`amt_${TYPE_TONE[t.type] || 'neutral'}`])}>{sign(t)}{fmt(t.montant || 0)}</span>
+    ) },
+    { key: 'date',  label: 'Date', render: t => <span className={s.date}>{t.date}</span> },
+    { key: 'type',  label: 'Type', render: t => <Badge tone={TYPE_TONE[t.type] || 'neutral'}>{TYPE_LABEL[t.type] || t.type}</Badge> },
+    { key: 'label', label: 'Détail', render: t => <span className={s.ellipsis}>{t.label}</span> },
+    { key: 'staff', label: 'Staff', render: t => <span className={s.muted}>{t.staff || '—'}</span> },
+    isAdmin && { key: 'del', label: '', align: 'right', render: t => (
+      <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer la transaction ${t.label}`}
+        loading={deleting === (t._docId || t.id)} disabled={!!deleting}
+        className={s.delBtn} onClick={() => setPending(t)}/>
+    ) },
+  ]
 
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', minWidth: isAdmin ? 560 : 500, fontSize: 12, borderCollapse: 'collapse', background: 'var(--bg)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-        <thead>
-          <tr>
-            {['Date', 'Spectateur', 'Type', 'Détail', 'Montant', 'Staff', ...(isAdmin ? [''] : [])].map(h => (
-              <th key={h} style={{ textAlign: 'left', padding: '7px 8px', color: 'var(--muted)', borderBottom: '0.5px solid var(--border)', fontWeight: 600, fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {allTx.slice(0, visible).map((t, i) => (
-            <tr key={i} style={{ opacity: deleting === (t._docId || t.id) ? 0.4 : 1 }}>
-              <td style={{ padding: '8px', borderBottom: '0.5px solid var(--border)', color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.date}</td>
-              <td style={{ padding: '8px', borderBottom: '0.5px solid var(--border)', color: 'var(--text)', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.snom}</td>
-              <td style={{ padding: '8px', borderBottom: '0.5px solid var(--border)', whiteSpace: 'nowrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: typeBg[t.type] || 'var(--bg2)', color: typeColor[t.type] || 'var(--text)' }}>
-                  {typeLabel[t.type] || t.type}
-                </span>
-              </td>
-              <td style={{ padding: '8px', borderBottom: '0.5px solid var(--border)', color: 'var(--text)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</td>
-              <td style={{ padding: '8px', borderBottom: '0.5px solid var(--border)', fontWeight: 600, color: typeColor[t.type] || 'var(--text)', whiteSpace: 'nowrap' }}>
-                {t.type === 'credit' ? '+' : ['reservation','benev-reservation','annulation','benev-annulation','benev-retrait','artist-gift'].includes(t.type) ? '' : '−'}
-                {fmt(t.montant || 0)}
-              </td>
-              <td style={{ padding: '8px', borderBottom: '0.5px solid var(--border)', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{t.staff || '—'}</td>
-              {isAdmin && (
-                <td style={{ padding: '8px', borderBottom: '0.5px solid var(--border)' }}>
-                  <button onClick={() => handleDelete(t)} disabled={!!deleting}
-                    style={{ display: 'flex', alignItems: 'center', padding: '4px 7px', border: '0.5px solid #F09595', borderRadius: 6, background: 'var(--red-light)', color: 'var(--red)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}>
-                    <Trash2 size={11}/>
-                  </button>
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className={s.page}>
+      <Table columns={columns} rows={allTx.slice(0, visible)} rowKey="_k"/>
+
       {/* Pagination */}
       {(allTx.length > 10) && (
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, padding:'14px 0', flexWrap:'wrap' }}>
-          <span style={{ fontSize:12, color:'var(--muted)' }}>
-            {Math.min(visible, allTx.length)} / {allTx.length} transactions
-          </span>
+        <div className={s.pager}>
+          <span className={s.muted}>{Math.min(visible, allTx.length)} / {allTx.length} transactions</span>
           {visible < allTx.length && (
-            <button onClick={() => setVisible(v => v + 50)}
-              style={{ padding:'7px 18px', border:'0.5px solid var(--brand)', borderRadius:20, background:'var(--brand-light)', color:'var(--brand-dark)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' }}>
-              Afficher 50 de plus
-            </button>
+            <Button variant="secondary" size="sm" onClick={() => setVisible(v => v + 50)}>Afficher 50 de plus</Button>
           )}
           {visible < allTx.length && (
-            <button onClick={() => setVisible(allTx.length)}
-              style={{ padding:'7px 18px', border:'0.5px solid var(--muted)', borderRadius:20, background:'transparent', color:'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:'var(--font)' }}>
-              Tout afficher ({allTx.length})
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => setVisible(allTx.length)}>Tout afficher ({allTx.length})</Button>
           )}
           {visible > 10 && (
-            <button onClick={() => setVisible(10)}
-              style={{ padding:'7px 18px', border:'0.5px solid var(--border2)', borderRadius:20, background:'var(--bg2)', color:'var(--muted)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' }}>
-              Afficher moins
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => setVisible(10)}>Afficher moins</Button>
           )}
         </div>
       )}
+
+      {/* Confirmation de suppression (irréversible) */}
+      <Dialog open={!!pending} onClose={() => setPending(null)} title="Supprimer cette transaction ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setPending(null)}>Annuler</Button>
+          <HoldButton tone="danger" icon={Trash2} onConfirm={() => handleDelete(pending)}>Maintenir pour supprimer</HoldButton>
+        </>}>
+        {pending && (
+          <div className={s.dialogStack}>
+            <p className={s.dialogText}><b>{pending.label}</b> — {fmt(pending.montant || 0)}</p>
+            <p className={s.muted}>{pending.snom} · {pending.date}. Cette action est irréversible.</p>
+          </div>
+        )}
+      </Dialog>
     </div>
   )
 }

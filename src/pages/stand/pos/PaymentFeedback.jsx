@@ -5,9 +5,10 @@
  */
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, X, Undo2, WifiOff } from 'lucide-react'
+import { Undo2, WifiOff } from 'lucide-react'
 import clsx from 'clsx'
 import { fmt } from '../../../utils/helpers'
+import { SuccessCheck } from '../../../ui'
 import { HOLD_MS } from '../../../utils/pendingSales'
 import s from './pos.module.css'
 
@@ -40,7 +41,7 @@ export default function PaymentFeedback({ feedback, onUndo, onClose }) {
   return createPortal(
     <div className={clsx(s.flash, ok ? s.flashOk : s.flashErr)} role="alertdialog" aria-live="assertive"
       onClick={onClose}>
-      <div className={s.flashIcon}>{ok ? <Check size={56} strokeWidth={3} /> : <X size={56} strokeWidth={3} />}</div>
+      <SuccessCheck size={120} tone="inverse" cross={!ok} play={feedback.saleId || feedback.message} className={s.flashCheck} />
       {ok ? (
         <>
           <b className={s.flashAmount}>−{fmt(feedback.total)}</b>

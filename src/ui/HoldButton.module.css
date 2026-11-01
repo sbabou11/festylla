@@ -1,0 +1,37 @@
+.hold {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch);
+  padding: 0 var(--space-5);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-md);
+  font: 700 var(--fs-13) var(--font);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+.block { width: 100%; }
+.hold:disabled { opacity: .5; cursor: not-allowed; }
+.fill { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); }
+.label { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.danger  { background: var(--red-light);   color: var(--red-dark); }
+.danger .fill  { background: var(--red); }
+.brand   { background: var(--brand-light); color: var(--brand-dark); }
+.brand .fill   { background: var(--brand); }
+.warning { background: var(--gold-light);  color: var(--gold-dark); }
+.warning .fill { background: var(--gold); }
+
+.filling .fill { transform: scaleX(1); transition: transform var(--hold-ms) linear; }
+.done .fill { transform: scaleX(1); }
+.filling .label { color: #fff; transition: color var(--dur-base) calc(var(--hold-ms) * .45); }
+.done .label { color: #fff; }
+.brand.filling .label, .brand.done .label { color: var(--on-brand); }
+/* La jauge reste visible même avec « Réduire les animations » : elle dit combien de temps tenir */
+@media (prefers-reduced-motion: reduce) { .filling .fill { transition-duration: var(--hold-ms) !important; } }

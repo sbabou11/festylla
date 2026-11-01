@@ -1,15 +1,17 @@
 // pages/spectateur/MesReservations.jsx
-import React from 'react'
+import React, { useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
+import { Button, Dialog } from '../../ui'
 
 export default function MesReservations({ onNavigate }) {
   const { spectateurs, reservations, currentSpecId, annulerReservation } = useAppStore()
   const s = spectateurs.find(x => x.id === currentSpecId) || spectateurs[0]
   const resas = reservations.filter(r => r.specId === s.id)
 
+  const [cancelAsk, setCancelAsk] = useState(null) // id à annuler, confirmé dans la fenêtre
   const cancel = async (id) => {
-    if (window.confirm("Annuler cette réservation ?")) await annulerReservation(id)
+    await annulerReservation(id)
   }
 
   return (
@@ -32,7 +34,7 @@ export default function MesReservations({ onNavigate }) {
             {r.status === 'ready' && <div style={{ padding: '8px 10px', background: 'var(--brand-light)', border: '0.5px solid #5DCAA5', borderRadius: 8, fontSize: 12, color: 'var(--brand-dark)', marginBottom: 6 }}>✓ Prêt ! Présentez votre QR au stand.</div>}
             {r.status === 'pending' && (
               <div style={{ marginTop: 8 }}>
-                <button onClick={() => cancel(r.id)} style={{ padding: '5px 10px', background: 'var(--red-light)', color: 'var(--red)', border: '0.5px solid #F09595', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)' }}>
+                <button onClick={() => setCancelAsk(r.id)} style={{ padding: '5px 10px', background: 'var(--red-light)', color: 'var(--red)', border: '0.5px solid #F09595', borderRadius: 8, fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)' }}>
                   Annuler la réservation
                 </button>
               </div>
@@ -43,6 +45,14 @@ export default function MesReservations({ onNavigate }) {
       <button onClick={() => onNavigate('carte')} style={{ width: '100%', padding: 8, background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}>
         + Réserver un article
       </button>
+
+      <Dialog open={!!cancelAsk} onClose={() => setCancelAsk(null)} title="Annuler cette réservation ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setCancelAsk(null)}>Garder</Button>
+          <Button variant="danger" onClick={() => { const id = cancelAsk; setCancelAsk(null); cancel(id) }}>Annuler la réservation</Button>
+        </>}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>La réservation ne sera pas préparée.</p>
+      </Dialog>
     </div>
   )
 }

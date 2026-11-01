@@ -3,35 +3,32 @@
  * Deux QR codes génériques à afficher dans le festival :
  * 1. Inscription → /inscription  (créer son espace)
  * 2. Mon solde   → /solde        (consulter son solde)
+ * La page d'impression (fenêtre séparée) garde ses propres couleurs fixes.
  */
 import React, { useEffect, useRef } from 'react'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import QRCode from 'qrcode'
+import clsx from 'clsx'
+import { Printer, Lightbulb } from 'lucide-react'
+import { Button, Card } from '../../ui'
+import s from './qrentree/qrentree.module.css'
 
-const QrCard = ({ canvasRef, url, titre, description, couleur, label, boutonLabel, onPrint }) => (
-  <div style={{
-    background: 'var(--bg)', border: '0.5px solid var(--border)',
-    borderRadius: 'var(--radius-lg)', padding: '20px 24px', marginBottom: 14,
-    textAlign: 'center',
-  }}>
-    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>{titre}</div>
-    <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 20, lineHeight: 1.5 }}>{description}</div>
+// Carte d'un QR : la teinte (teal ou violet) vient de la classe tone
+const QrCard = ({ canvasRef, url, titre, description, tone, label, boutonLabel, onPrint }) => (
+  <Card className={clsx(s.qrCard, s[tone])}>
+    <h3 className={s.qrTitle}>{titre}</h3>
+    <p className={s.qrDesc}>{description}</p>
 
-    <div style={{ display: 'inline-block', padding: 16, background: '#fff', borderRadius: 14, border: `2px solid ${couleur}`, marginBottom: 16 }}>
-      <canvas ref={canvasRef}/>
-      <div style={{ marginTop: 10, fontSize: 13, fontWeight: 700, color: couleur }}>{label}</div>
+    <div className={s.qrFrame}>
+      <canvas ref={canvasRef} className={s.canvas} aria-label={`QR code : ${url}`} role="img"/>
+      <div className={s.qrLabel}>{label}</div>
     </div>
 
-    <div style={{ padding: '8px 14px', background: 'var(--bg2)', borderRadius: 8, fontSize: 11, fontFamily: 'monospace', color: 'var(--muted)', marginBottom: 16, wordBreak: 'break-all' }}>
-      {url}
-    </div>
+    <code className={s.url}>{url}</code>
 
-    <button onClick={onPrint}
-      style={{ padding: '10px 24px', background: couleur, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
-      {boutonLabel}
-    </button>
-  </div>
+    <Button icon={Printer} onClick={onPrint} className={s.printBtn}>{boutonLabel}</Button>
+  </Card>
 )
 
 export default function QrEntree() {
@@ -154,66 +151,66 @@ export default function QrEntree() {
     win.document.close()
   }
 
-  const card = { background: 'var(--bg)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', marginBottom: 14 }
-
   return (
-    <div style={{ maxWidth: 520 }}>
+    <div className={s.page}>
 
       {/* Bannière événement actif */}
       {currentEvent && (
-        <div style={{ padding:'10px 16px', background:'var(--brand-light)', border:'1px solid var(--brand)', borderRadius:10, marginBottom:14, fontSize:13, color:'var(--brand-dark)', display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ fontSize:18 }}>{currentEvent.emoji || '🎵'}</span>
+        <div className={s.banner}>
+          <span className={s.bannerEmoji} aria-hidden="true">{currentEvent.emoji || '🎵'}</span>
           <span>QR codes pour <strong>{currentEvent.nom}</strong> — changez d'événement dans le menu pour générer d'autres QR.</span>
         </div>
       )}
 
-      {/* QR 1 — Inscription */}
-      <QrCard
-        canvasRef={refInscription}
-        url={inscriptionUrl}
-        titre="QR code — Créer son espace festival"
-        description="À afficher à l'entrée ou à la billetterie. Les spectateurs scannent pour créer leur compte et obtenir leur QR code personnel."
-        couleur="#1a6b7a"
-        label="Scannez pour créer votre espace"
-        boutonLabel="Imprimer — Inscription"
-        onPrint={() => printQr('inscription')}
-      />
+      <div className={s.qrGrid}>
+        {/* QR 1 — Inscription */}
+        <QrCard
+          canvasRef={refInscription}
+          url={inscriptionUrl}
+          titre="QR code — Créer son espace festival"
+          description="À afficher à l'entrée ou à la billetterie. Les spectateurs scannent pour créer leur compte et obtenir leur QR code personnel."
+          tone="teal"
+          label="Scannez pour créer votre espace"
+          boutonLabel="Imprimer — Inscription"
+          onPrint={() => printQr('inscription')}
+        />
 
-      {/* QR 2 — Mon solde */}
-      <QrCard
-        canvasRef={refSolde}
-        url={soldeUrl}
-        titre="QR code — Consulter son solde"
-        description="À afficher aux stands, bars et points de vente. Les spectateurs scannent pour accéder à leur espace et vérifier leur solde."
-        couleur="#534AB7"
-        label="Scannez pour voir votre solde"
-        boutonLabel="Imprimer — Solde"
-        onPrint={() => printQr('solde')}
-      />
-
-      {/* Explications */}
-      <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 12 }}>Comment ça fonctionne ?</div>
-        {[
-          ['1', 'Inscription (QR vert)',  'Le spectateur scanne le QR vert → entre son nom → son compte est créé → il reçoit son QR code personnel unique.'],
-          ['2', 'Solde (QR violet)',       'Le spectateur scanne le QR violet → saisit son ID → consulte son solde, ses réservations et sa carte.'],
-          ['3', 'QR code personnel',       'Chaque spectateur a un QR unique généré à l\'inscription. Il est lié à son compte et son solde.'],
-          ['4', 'Plusieurs spots',         'Imprimez autant de QR que nécessaire et placez-les à différents endroits du festival.'],
-        ].map(([num, titre, desc]) => (
-          <div key={num} style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '0.5px solid var(--border)' }}>
-            <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{num}</div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{titre}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{desc}</div>
-            </div>
-          </div>
-        ))}
+        {/* QR 2 — Mon solde */}
+        <QrCard
+          canvasRef={refSolde}
+          url={soldeUrl}
+          titre="QR code — Consulter son solde"
+          description="À afficher aux stands, bars et points de vente. Les spectateurs scannent pour accéder à leur espace et vérifier leur solde."
+          tone="violet"
+          label="Scannez pour voir votre solde"
+          boutonLabel="Imprimer — Solde"
+          onPrint={() => printQr('solde')}
+        />
       </div>
 
-      <div style={{ ...card, background: 'var(--brand-light)', border: '0.5px solid #5DCAA5' }}>
-        <div style={{ fontSize: 12, color: 'var(--brand-dark)', lineHeight: 1.6 }}>
-          💡 <strong>Astuce :</strong> Multipliez les QR codes aux endroits stratégiques — entrée, bars, stands merch — pour que chaque spectateur puisse accéder à son espace facilement.
-        </div>
+      {/* Explications */}
+      <Card title="Comment ça fonctionne ?">
+        <ol className={s.steps}>
+          {[
+            ['1', 'Inscription (QR vert)',  'Le spectateur scanne le QR vert → entre son nom → son compte est créé → il reçoit son QR code personnel unique.'],
+            ['2', 'Solde (QR violet)',       'Le spectateur scanne le QR violet → saisit son ID → consulte son solde, ses réservations et sa carte.'],
+            ['3', 'QR code personnel',       "Chaque spectateur a un QR unique généré à l'inscription. Il est lié à son compte et son solde."],
+            ['4', 'Plusieurs spots',         'Imprimez autant de QR que nécessaire et placez-les à différents endroits du festival.'],
+          ].map(([num, titre, desc]) => (
+            <li key={num} className={s.step}>
+              <span className={s.stepNum} aria-hidden="true">{num}</span>
+              <div>
+                <div className={s.stepTitle}>{titre}</div>
+                <div className={s.stepDesc}>{desc}</div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </Card>
+
+      <div className={s.tip}>
+        <Lightbulb size={16} aria-hidden="true" className={s.tipIcon}/>
+        <p><strong>Astuce :</strong> Multipliez les QR codes aux endroits stratégiques — entrée, bars, stands merch — pour que chaque spectateur puisse accéder à son espace facilement.</p>
       </div>
     </div>
   )

@@ -1,10 +1,12 @@
 /**
- * pages/admin/Evenements.jsx — responsive mobile-first
+ * pages/admin/Evenements.jsx — v2 (design system)
  * - Icône = logo de l'événement (logoSrc) ou emoji fallback
  * - Bouton "Nouvel événement" en bas (FAB sur mobile)
- * - Layout adaptatif
+ * - Copie nommée dans une fenêtre, suppression confirmée par appui long
+ * La couleur d'un événement est une donnée : elle passe par la variable CSS --c.
  */
 import React, { useState, useEffect } from 'react'
+import clsx from 'clsx'
 import useEventStore from '../../store/useEventStore'
 import { compressImage } from '../../utils/imageUtils'
 import useAuthStore  from '../../store/useAuthStore'
@@ -12,8 +14,10 @@ import useAppStore   from '../../store/useAppStore'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import {
   Plus, Pencil, Trash2, Copy, X, Save,
-  Calendar, MapPin, CheckCircle, ArrowRight,
+  Calendar, MapPin, CheckCircle, ArrowRight, Upload, Info,
 } from 'lucide-react'
+import { Button, Empty, Skeleton, Dialog, HoldButton, toast } from '../../ui'
+import s from './evenements/evenements.module.css'
 
 const COULEURS = [
   '#1a6b7a','#534AB7','#BA7517','#0F6E56','#A32D2D',
@@ -28,25 +32,18 @@ const formatDate = (d) => {
 }
 
 // ── Icône de l'événement : logo si dispo, sinon emoji ───────────
-const EventIcon = ({ event, size = 44 }) => {
+// size : sm (36) | md (44) | lg (48)
+const EventIcon = ({ event, size = 'md' }) => {
   const couleur = event.couleur || '#1a6b7a'
   const logoSrc = event.logoSrc || null
+  const [broken, setBroken] = useState(false)
+  useEffect(() => setBroken(false), [logoSrc])
   return (
-    <div style={{
-      width: size, height: size, borderRadius: size * 0.27,
-      background: couleur + '22',
-      border: `1.5px solid ${couleur}44`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      overflow: 'hidden', flexShrink: 0,
-    }}>
-      {logoSrc
-        ? <img src={logoSrc} alt={event.nom} style={{ width:'100%', height:'100%', objectFit:'cover' }}
-            onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex' }}/>
-        : null
+    <div className={clsx(s.icon, s[`icon_${size}`])} style={{ '--c': couleur }}>
+      {logoSrc && !broken
+        ? <img src={logoSrc} alt={event.nom} className={s.iconImg} onError={() => setBroken(true)}/>
+        : <span className={s.iconEmoji} aria-hidden="true">{event.emoji || '🎵'}</span>
       }
-      <span style={{ fontSize: size * 0.5, display: logoSrc ? 'none' : 'flex' }}>
-        {event.emoji || '🎵'}
-      </span>
     </div>
   )
 }
@@ -55,48 +52,27 @@ const EventIcon = ({ event, size = 44 }) => {
 const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, isMobile }) => {
   const couleur = event.couleur || '#1a6b7a'
   return (
-    <div style={{
-      background: 'var(--bg)',
-      border: `2px solid ${isActive ? couleur : 'var(--border)'}`,
-      borderRadius: 16,
-      padding: isMobile ? '14px 14px 14px 18px' : '20px 20px 20px 24px',
-      marginBottom: 12,
-      boxShadow: isActive ? `0 0 0 3px ${couleur}18` : '0 1px 4px rgba(0,0,0,.06)',
-      position: 'relative', overflow: 'hidden',
-    }}>
-      {/* Bande couleur gauche */}
-      <div style={{ position:'absolute', left:0, top:0, bottom:0, width:4, background:couleur, borderRadius:'2px 0 0 2px' }}/>
-
+    <article className={clsx(s.card, isActive && s.cardActive)} style={{ '--c': couleur }}>
       {/* Header : icône + nom + badge actif */}
-      <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:10 }}>
-        <EventIcon event={event} size={isMobile ? 40 : 48}/>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:3 }}>
-            <span style={{ fontSize: isMobile ? 15 : 16, fontWeight:800, color:'var(--text)', lineHeight:1.2 }}>
-              {event.nom}
-            </span>
-            {isActive && (
-              <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20, background:couleur, color:'#fff', flexShrink:0 }}>
-                Actif
-              </span>
-            )}
+      <div className={s.cardHead}>
+        <EventIcon event={event} size={isMobile ? 'sm' : 'lg'}/>
+        <div className={s.cardInfo}>
+          <div className={s.cardTitleRow}>
+            <h3 className={s.cardTitle}>{event.nom}</h3>
+            {isActive && <span className={s.activeTag}>Actif</span>}
           </div>
-          {event.description && (
-            <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.4, overflow:'hidden', textOverflow:'ellipsis', whiteSpace: isMobile ? 'nowrap' : 'normal' }}>
-              {event.description}
-            </div>
-          )}
+          {event.description && <p className={s.cardDesc}>{event.description}</p>}
           {/* Infos date + lieu */}
-          <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginTop:6 }}>
+          <div className={s.meta}>
             {event.date && (
-              <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'var(--muted)' }}>
-                <Calendar size={11}/> {formatDate(event.date)}
+              <span className={s.metaItem}>
+                <Calendar size={12} aria-hidden="true"/> {formatDate(event.date)}
                 {event.dateFin && ` → ${formatDate(event.dateFin)}`}
               </span>
             )}
             {event.lieu && (
-              <span style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, color:'var(--muted)' }}>
-                <MapPin size={11}/> {event.lieu}
+              <span className={s.metaItem}>
+                <MapPin size={12} aria-hidden="true"/> {event.lieu}
               </span>
             )}
           </div>
@@ -104,31 +80,20 @@ const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, i
       </div>
 
       {/* Actions */}
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
+      <div className={s.cardActions}>
         {!isActive ? (
-          <button onClick={() => onSelect(event.id)} className="btn-primary"
-            style={{ fontSize:13, padding:'0 14px', height:36, gap:6 }}>
-            <ArrowRight size={13}/> Activer
-          </button>
+          <Button size="sm" icon={ArrowRight} onClick={() => onSelect(event.id)}>Activer</Button>
         ) : (
-          <span style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, fontWeight:700, color:couleur }}>
-            <CheckCircle size={14}/> Actif
-          </span>
+          <span className={s.activeLabel}><CheckCircle size={14} aria-hidden="true"/> Actif</span>
         )}
-        <button onClick={() => onEdit(event)} className="btn-secondary"
-          style={{ fontSize:13, padding:'0 12px', height:36, gap:5 }}>
-          <Pencil size={12}/> {!isMobile && 'Modifier'}
-        </button>
-        <button onClick={() => onDuplicate(event)} className="btn-secondary"
-          title="Dupliquer" style={{ fontSize:13, padding:'0 12px', height:36 }}>
-          <Copy size={12}/>
-        </button>
-        <button onClick={() => onDelete(event)} className="btn-danger"
-          style={{ fontSize:13, padding:'0 12px', height:36, marginLeft:'auto' }}>
-          <Trash2 size={12}/>
-        </button>
+        <Button variant="secondary" size="sm" icon={Pencil} onClick={() => onEdit(event)}
+          iconOnly={isMobile} aria-label={`Modifier ${event.nom}`}>Modifier</Button>
+        <Button variant="secondary" size="sm" icon={Copy} iconOnly title="Dupliquer"
+          aria-label={`Dupliquer ${event.nom}`} onClick={() => onDuplicate(event)}/>
+        <Button variant="danger" size="sm" icon={Trash2} iconOnly className={s.pushRight}
+          aria-label={`Supprimer ${event.nom}`} onClick={() => onDelete(event)}/>
       </div>
-    </div>
+    </article>
   )
 }
 
@@ -146,156 +111,142 @@ const EventForm = ({ initial, onSave, onCancel, isMobile }) => {
     logoSrc:     initial?.logoSrc     || (theme?.logoSrc || null),
   })
   const [saving, setSaving] = useState(false)
-
-  const inp = {
-    width:'100%', minHeight:44, padding:'0 12px',
-    border:'1.5px solid var(--border2)', borderRadius:10,
-    fontSize:14, fontFamily:'var(--font)', color:'var(--text)',
-    background:'var(--bg)', outline:'none', boxSizing:'border-box',
-  }
+  const [nomError, setNomError] = useState('')
 
   const handleSave = async () => {
-    if (!form.nom.trim()) { alert('Le nom est requis'); return }
+    if (!form.nom.trim()) { setNomError('Le nom est requis'); return }
     setSaving(true)
     try { await onSave(form) }
     finally { setSaving(false) }
   }
 
   return (
-    <div className="card" style={{ border:'2px solid var(--brand)', marginBottom:16, boxSizing:'border-box', overflow:'hidden' }}>
-      <div style={{ fontSize:16, fontWeight:700, color:'var(--text)', marginBottom:18 }}>
-        {initial ? 'Modifier l\'événement' : 'Nouvel événement'}
-      </div>
+    <section className={s.formCard} aria-label={initial ? 'Modifier l\'événement' : 'Nouvel événement'}>
+      <h2 className={s.formTitle}>{initial ? 'Modifier l\'événement' : 'Nouvel événement'}</h2>
 
       {/* Icône + Nom */}
-      <div style={{ display:'flex', gap:10, marginBottom:12 }}>
-        <div>
-          <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:5 }}>Icône</label>
-          <select value={form.emoji} onChange={e => setForm(f => ({...f, emoji:e.target.value}))}
-            style={{ ...inp, width:60, textAlign:'center', fontSize:22, padding:'0 4px' }}>
+      <div className={s.nameRow}>
+        <div className={s.field}>
+          <label className={s.label} htmlFor="evt-emoji">Icône</label>
+          <select id="evt-emoji" className={clsx(s.input, s.emojiSelect)} value={form.emoji}
+            onChange={e => setForm(f => ({...f, emoji:e.target.value}))}>
             {EMOJI_OPTIONS.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
         </div>
-        <div style={{ flex:1 }}>
-          <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:5 }}>Nom *</label>
-          <input value={form.nom} onChange={e => setForm(f => ({...f,nom:e.target.value}))}
-            placeholder="ex : Fest'Ylla 2026" style={inp}/>
+        <div className={clsx(s.field, s.grow)}>
+          <label className={s.label} htmlFor="evt-nom">Nom *</label>
+          <input id="evt-nom" className={clsx(s.input, nomError && s.inputError)} value={form.nom}
+            aria-invalid={!!nomError} aria-describedby={nomError ? 'evt-nom-err' : undefined}
+            onChange={e => { setForm(f => ({...f,nom:e.target.value})); setNomError('') }}
+            placeholder="ex : Fest'Ylla 2026"/>
+          {nomError && <span id="evt-nom-err" className={s.fieldError}>{nomError}</span>}
         </div>
       </div>
 
-      <div style={{ marginBottom:12 }}>
-        <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:5 }}>Description</label>
-        <input value={form.description} onChange={e => setForm(f => ({...f,description:e.target.value}))}
-          placeholder="Festival afro de Strasbourg" style={inp}/>
+      <div className={s.field}>
+        <label className={s.label} htmlFor="evt-desc">Description</label>
+        <input id="evt-desc" className={s.input} value={form.description}
+          onChange={e => setForm(f => ({...f,description:e.target.value}))}
+          placeholder="Festival afro de Strasbourg"/>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:10, marginBottom:12 }}>
-        <div>
-          <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:5 }}>Début</label>
-          <input type="date" value={form.date} onChange={e => setForm(f => ({...f,date:e.target.value}))} style={inp}/>
+      <div className={s.grid2}>
+        <div className={s.field}>
+          <label className={s.label} htmlFor="evt-debut">Début</label>
+          <input id="evt-debut" type="date" className={s.input} value={form.date}
+            onChange={e => setForm(f => ({...f,date:e.target.value}))}/>
         </div>
-        <div>
-          <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:5 }}>Fin</label>
-          <input type="date" value={form.dateFin} onChange={e => setForm(f => ({...f,dateFin:e.target.value}))} style={inp}/>
+        <div className={s.field}>
+          <label className={s.label} htmlFor="evt-fin">Fin</label>
+          <input id="evt-fin" type="date" className={s.input} value={form.dateFin}
+            onChange={e => setForm(f => ({...f,dateFin:e.target.value}))}/>
         </div>
       </div>
 
-      <div style={{ marginBottom:14 }}>
-        <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:5 }}>Lieu</label>
-        <input value={form.lieu} onChange={e => setForm(f => ({...f,lieu:e.target.value}))}
-          placeholder="Strasbourg, Bas-Rhin" style={inp}/>
+      <div className={s.field}>
+        <label className={s.label} htmlFor="evt-lieu">Lieu</label>
+        <input id="evt-lieu" className={s.input} value={form.lieu}
+          onChange={e => setForm(f => ({...f,lieu:e.target.value}))}
+          placeholder="Strasbourg, Bas-Rhin"/>
       </div>
 
       {/* Logo — fichier ou URL */}
-      <div style={{ marginBottom:14 }}>
-        <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:5 }}>
-          Logo / Icône de l'événement
-        </label>
+      <div className={s.field}>
+        <span className={s.label}>Logo / Icône de l'événement</span>
 
         {/* Aperçu */}
         {form.logoSrc && (
-          <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10, padding:'10px 14px', background:'var(--bg2)', borderRadius:10 }}>
-            <img src={form.logoSrc} alt="Logo"
-              style={{ width:52, height:52, borderRadius:12, objectFit:'cover', border:'1px solid var(--border)' }}
+          <div className={s.logoPreview}>
+            <img src={form.logoSrc} alt="Logo" className={s.logoImg}
               onError={e => e.target.style.display='none'}/>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>Logo chargé</div>
-              <div style={{ fontSize:11, color:'var(--muted)' }}>Cliquez sur "Changer" pour modifier</div>
+            <div className={s.grow}>
+              <div className={s.logoTitle}>Logo chargé</div>
+              <div className={s.hint}>Choisissez un autre fichier pour le changer</div>
             </div>
-            <button onClick={() => setForm(f => ({...f, logoSrc:null}))}
-              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--red)', fontSize:12, minHeight:'auto', padding:4 }}>
-              Supprimer
-            </button>
+            <Button variant="ghost" size="sm" className={s.dangerText}
+              onClick={() => setForm(f => ({...f, logoSrc:null}))}>Supprimer</Button>
           </div>
         )}
 
         {/* Bouton upload fichier */}
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <label style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'8px 14px', background:'var(--brand)', color:'#fff', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' }}>
+        <div className={s.logoRow}>
+          <label className={s.fileBtn}>
             <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"
-              style={{ display:'none' }}
+              className={s.fileInput}
               onChange={async (e) => {
                 const file = e.target.files?.[0]
                 if (!file) return
                 try {
                   const src = await compressImage(file, 256, 0.85)
                   setForm(f => ({...f, logoSrc: src}))
-                } catch { alert('Erreur lors du chargement du fichier') }
+                } catch { toast.error('Impossible de charger ce fichier') }
                 e.target.value = ''
               }}
             />
-            📁 {form.logoSrc ? 'Changer' : 'Choisir un fichier'}
+            <Upload size={15} aria-hidden="true"/> {form.logoSrc ? 'Changer' : 'Choisir un fichier'}
           </label>
 
           {/* Ou par URL */}
           <input value={form.logoSrc?.startsWith('data:') ? '' : (form.logoSrc || '')}
             onChange={e => setForm(f => ({...f, logoSrc:e.target.value||null}))}
             placeholder="Ou coller une URL https://…"
-            style={{ ...inp, flex:1, minWidth:180 }}/>
+            aria-label="URL du logo"
+            className={clsx(s.input, s.urlInput)}/>
         </div>
-        <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>
-          PNG, JPG, SVG — recommandé 256×256px minimum
-        </div>
+        <span className={s.hint}>PNG, JPG, SVG — recommandé 256×256px minimum</span>
       </div>
 
       {/* Couleur */}
-      <div style={{ marginBottom:18 }}>
-        <label style={{ fontSize:12, fontWeight:600, color:'var(--muted)', display:'block', marginBottom:6 }}>Couleur principale</label>
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', overflowX:'hidden' }}>
+      <div className={s.field}>
+        <span className={s.label}>Couleur principale</span>
+        <div className={s.swatches}>
           {COULEURS.map(c => (
-            <button key={c} onClick={() => setForm(f => ({...f,couleur:c}))}
-              style={{ width:28, height:28, borderRadius:'50%', background:c, border:form.couleur===c?'3px solid var(--text)':'2px solid transparent', cursor:'pointer', transform:form.couleur===c?'scale(1.15)':'scale(1)', transition:'all .12s', outline:'none', flexShrink:0 }}/>
+            <button key={c} type="button" aria-label={`Couleur ${c}`} aria-pressed={form.couleur === c}
+              className={clsx(s.swatch, form.couleur === c && s.swatchOn)} style={{ '--c': c }}
+              onClick={() => setForm(f => ({...f,couleur:c}))}/>
           ))}
-          <input type="color" value={form.couleur} onChange={e => setForm(f => ({...f,couleur:e.target.value}))}
-            style={{ width:28, height:28, borderRadius:'50%', border:'2px solid var(--border2)', cursor:'pointer', padding:2, background:'none' }}/>
+          <input type="color" aria-label="Couleur personnalisée" className={s.colorInput}
+            value={form.couleur} onChange={e => setForm(f => ({...f,couleur:e.target.value}))}/>
         </div>
       </div>
 
       {/* Aperçu */}
-      <div style={{ padding:'12px 16px', background:'var(--bg2)', borderRadius:10, marginBottom:16, display:'flex', alignItems:'center', gap:12 }}>
-        <EventIcon event={form} size={40}/>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-            {form.nom || 'Nom de l\'événement'}
-          </div>
-          {form.lieu && <div style={{ fontSize:12, color:'var(--muted)' }}>{form.lieu}</div>}
+      <div className={s.preview} style={{ '--c': form.couleur }}>
+        <EventIcon event={form} size="sm"/>
+        <div className={s.previewInfo}>
+          <div className={s.previewName}>{form.nom || 'Nom de l\'événement'}</div>
+          {form.lieu && <div className={s.hint}>{form.lieu}</div>}
         </div>
-        <span style={{ fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20, background:form.couleur, color:'#fff', flexShrink:0 }}>
-          Aperçu
-        </span>
+        <span className={s.activeTag}>Aperçu</span>
       </div>
 
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-        <button onClick={handleSave} disabled={saving} className="btn-primary"
-          style={{ flex: isMobile ? 1 : 'none' }}>
-          <Save size={13}/> {saving ? 'Sauvegarde…' : initial ? 'Enregistrer' : 'Créer'}
-        </button>
-        <button onClick={onCancel} className="btn-secondary"
-          style={{ flex: isMobile ? 1 : 'none' }}>
-          <X size={13}/> Annuler
-        </button>
+      <div className={s.formActions}>
+        <Button icon={Save} onClick={handleSave} loading={saving} block={isMobile}>
+          {saving ? 'Sauvegarde…' : initial ? 'Enregistrer' : 'Créer'}
+        </Button>
+        <Button variant="secondary" icon={X} onClick={onCancel} block={isMobile}>Annuler</Button>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -306,6 +257,9 @@ export default function Evenements() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing]   = useState(null)
   const { isMobile }            = useBreakpoint()
+  // Fenêtres (remplacent window.confirm et prompt)
+  const [pendingDel, setPendingDel] = useState(null)   // événement à supprimer
+  const [copy,       setCopy]       = useState(null)   // { evt, nom }
 
   useEffect(() => {
     const unsub = watchEvents()
@@ -323,50 +277,62 @@ export default function Evenements() {
     setEditing(null)
   }
 
-  const handleDelete = async (evt) => {
-    if (!window.confirm(`Supprimer "${evt.nom}" ?\n\nToutes ses données seront désactivées.`)) return
-    await deleteEvent(evt.id)
+  const handleDelete = (evt) => setPendingDel(evt)
+  const confirmDelete = async () => {
+    const evt = pendingDel
+    setPendingDel(null)
+    if (!evt) return
+    try {
+      await deleteEvent(evt.id)
+      toast.success(`« ${evt.nom} » supprimé`)
+    } catch (e) { toast.error('Suppression impossible : ' + e.message) }
   }
 
-  const handleDuplicate = async (evt) => {
-    const nom = prompt(`Nom de la copie de "${evt.nom}" :`, `${evt.nom} — Copie`)
-    if (!nom) return
-    await duplicateEvent(evt.id, { ...evt, nom, actif:false, id:undefined })
+  const handleDuplicate = (evt) => setCopy({ evt, nom: `${evt.nom} — Copie` })
+  const confirmDuplicate = async () => {
+    const evt = copy?.evt
+    const nom = copy?.nom?.trim()
+    if (!evt || !nom) return
+    setCopy(null)
+    try {
+      await duplicateEvent(evt.id, { ...evt, nom, actif:false, id:undefined })
+      toast.success(`« ${nom} » créé`)
+    } catch (e) { toast.error('Copie impossible : ' + e.message) }
   }
 
   const visible = events.filter(e => !e.deleted)
 
   if (eventLoading) return (
-    <div style={{ padding:40, textAlign:'center', color:'var(--muted)', fontSize:14 }}>Chargement…</div>
+    <div className={s.page} aria-busy="true">
+      {[0, 1, 2].map(i => (
+        <div key={i} className={s.skeletonCard}>
+          <Skeleton width={48} height={48} radius={12}/>
+          <div className={s.grow}>
+            <Skeleton height={16} width="55%"/>
+            <Skeleton height={12} width="35%" className={s.skLine}/>
+          </div>
+        </div>
+      ))}
+    </div>
   )
 
   const activeEvent = visible.find(e => e.id === currentEventId)
 
   return (
-    <div style={{ maxWidth:640, paddingBottom: isMobile ? 88 : 0 }}>
+    <div className={clsx(s.page, isMobile && s.pageFab)}>
 
       {/* Bannière événement actif */}
       {activeEvent && (
-        <div style={{
-          padding: isMobile ? '12px 14px' : '14px 20px',
-          background:`linear-gradient(135deg, ${activeEvent.couleur||'#1a6b7a'}22, ${activeEvent.couleur||'#1a6b7a'}06)`,
-          border:`1.5px solid ${activeEvent.couleur||'#1a6b7a'}44`,
-          borderRadius:14, marginBottom:16,
-          display:'flex', alignItems:'center', gap:12,
-        }}>
-          <EventIcon event={activeEvent} size={isMobile ? 36 : 44}/>
-          <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', color:activeEvent.couleur||'#1a6b7a', marginBottom:2 }}>
-              Événement actif
-            </div>
-            <div style={{ fontSize: isMobile ? 14 : 16, fontWeight:800, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-              {activeEvent.nom}
-            </div>
+        <div className={s.banner} style={{ '--c': activeEvent.couleur || '#1a6b7a' }}>
+          <EventIcon event={activeEvent} size={isMobile ? 'sm' : 'md'}/>
+          <div className={s.bannerInfo}>
+            <div className={s.bannerKicker}>Événement actif</div>
+            <div className={s.bannerName}>{activeEvent.nom}</div>
             {activeEvent.lieu && (
-              <div style={{ fontSize:11, color:'var(--muted)', marginTop:1 }}>📍 {activeEvent.lieu}</div>
+              <div className={s.metaItem}><MapPin size={12} aria-hidden="true"/> {activeEvent.lieu}</div>
             )}
           </div>
-          <CheckCircle size={20} style={{ color:activeEvent.couleur||'#1a6b7a', flexShrink:0 }}/>
+          <CheckCircle size={20} aria-hidden="true" className={s.bannerCheck}/>
         </div>
       )}
 
@@ -376,32 +342,31 @@ export default function Evenements() {
 
       {/* Liste */}
       {visible.length === 0 && !showForm && !editing ? (
-        <div style={{ padding:'56px 20px', textAlign:'center', color:'var(--muted)' }}>
-          <div style={{ fontSize:52, marginBottom:14 }}>🎵</div>
-          <div style={{ fontSize:17, fontWeight:700, color:'var(--text)', marginBottom:6 }}>Aucun événement</div>
-          <div style={{ fontSize:13, lineHeight:1.5 }}>
-            Appuyez sur le bouton <strong>+</strong> pour créer votre premier événement
-          </div>
-        </div>
+        <Empty icon={Calendar} title="Aucun événement">
+          Appuyez sur <strong>Nouvel événement</strong> pour créer votre premier événement.
+        </Empty>
       ) : (
-        visible.map(evt => (
-          <EventCard
-            key={evt.id}
-            event={evt}
-            isActive={evt.id === currentEventId}
-            onSelect={selectEvent}
-            onEdit={setEditing}
-            onDelete={handleDelete}
-            onDuplicate={handleDuplicate}
-            isMobile={isMobile}
-          />
-        ))
+        <div className={clsx(s.list, 'yc-stagger')}>
+          {visible.map(evt => (
+            <EventCard
+              key={evt.id}
+              event={evt}
+              isActive={evt.id === currentEventId}
+              onSelect={selectEvent}
+              onEdit={setEditing}
+              onDelete={handleDelete}
+              onDuplicate={handleDuplicate}
+              isMobile={isMobile}
+            />
+          ))}
+        </div>
       )}
 
       {/* Info isolation */}
       {visible.length > 0 && !showForm && !editing && (
-        <div className="alert alert-info" style={{ marginTop:8, fontSize:12 }}>
-          <strong>Isolation complète</strong> — spectateurs, transactions, réservations, menu et staff sont séparés par événement.
+        <div className={s.note}>
+          <Info size={15} aria-hidden="true" className={s.noteIcon}/>
+          <p><strong>Isolation complète</strong> — spectateurs, transactions, réservations, menu et staff sont séparés par événement.</p>
         </div>
       )}
 
@@ -409,35 +374,44 @@ export default function Evenements() {
       {!showForm && !editing && (
         isMobile ? (
           /* FAB fixe en bas sur mobile */
-          <button
-            onClick={() => setShowForm(true)}
-            style={{
-              position: 'fixed', bottom: 24, right: 20,
-              width: 56, height: 56,
-              borderRadius: '50%',
-              background: 'var(--brand)',
-              color: '#fff',
-              border: 'none',
-              boxShadow: '0 4px 20px rgba(26,107,122,.45)',
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              zIndex: 50,
-              WebkitTapHighlightColor: 'transparent',
-            }}
-            title="Nouvel événement"
-          >
-            <Plus size={26}/>
+          <button type="button" className={s.fab} onClick={() => setShowForm(true)}
+            title="Nouvel événement" aria-label="Nouvel événement">
+            <Plus size={26} aria-hidden="true"/>
           </button>
         ) : (
           /* Bouton en bas de la liste sur desktop */
-          <div style={{ marginTop:16 }}>
-            <button onClick={() => setShowForm(true)} className="btn-primary"
-              style={{ width:'100%', justifyContent:'center', gap:8 }}>
-              <Plus size={16}/> Nouvel événement
-            </button>
-          </div>
+          <Button icon={Plus} block onClick={() => setShowForm(true)}>Nouvel événement</Button>
         )
       )}
+
+      {/* Copie : nom de la nouvelle édition (remplace prompt) */}
+      <Dialog open={!!copy} onClose={() => setCopy(null)} title="Dupliquer l'événement"
+        footer={<>
+          <Button variant="secondary" onClick={() => setCopy(null)}>Annuler</Button>
+          <Button icon={Copy} onClick={confirmDuplicate} disabled={!copy?.nom?.trim()}>Dupliquer</Button>
+        </>}>
+        {copy && (
+          <form className={s.dialogStack} onSubmit={e => { e.preventDefault(); confirmDuplicate() }}>
+            <div className={s.field}>
+              <label className={s.label} htmlFor="evt-copy-nom">Nom de la copie de « {copy.evt.nom} »</label>
+              <input id="evt-copy-nom" className={s.input} value={copy.nom} autoFocus
+                onFocus={e => e.target.select()}
+                onChange={e => setCopy(c => ({ ...c, nom: e.target.value }))}/>
+            </div>
+          </form>
+        )}
+      </Dialog>
+
+      {/* Suppression (irréversible côté interface) */}
+      <Dialog open={!!pendingDel} onClose={() => setPendingDel(null)} title="Supprimer cet événement ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setPendingDel(null)}>Annuler</Button>
+          <HoldButton tone="danger" icon={Trash2} onConfirm={confirmDelete}>Maintenir pour supprimer</HoldButton>
+        </>}>
+        <p className={s.dialogText}>
+          Supprimer <b>« {pendingDel?.nom} »</b> ? Toutes ses données seront désactivées.
+        </p>
+      </Dialog>
     </div>
   )
 }

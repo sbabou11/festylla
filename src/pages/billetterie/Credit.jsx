@@ -1,9 +1,10 @@
 /**
- * pages/billetterie/Credit.jsx — ergonomie optimisée
+ * pages/billetterie/Credit.jsx — recharge d'un portefeuille
  * Flux : scanner → choisir montant (1 tap) → confirmer
- * Boutons larges, retour visuel immédiat, aucune étape inutile
+ * Boutons larges, coche de réussite et nouveau solde qui défile depuis l'ancien.
  */
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import useAuthStore  from '../../store/useAuthStore'
@@ -12,9 +13,19 @@ import { collection, query, where, getDocs } from 'firebase/firestore'
 import { fmt } from '../../utils/helpers'
 import QrCode from '../../components/QrCode'
 import QrScanner from '../../components/QrScanner'
-import { CheckCircle, Wallet, RefreshCw } from 'lucide-react'
+import { Wallet, RefreshCw, X, Banknote, CreditCard } from 'lucide-react'
+import { Button, Card, SuccessCheck, AnimatedNumber } from '../../ui'
+import s from './credit.module.css'
 
 const MONTANTS = [10, 20, 30, 50, 100]
+const MOYENS = [{ value: 'Espèces', icon: Banknote }, { value: 'Carte bancaire', icon: CreditCard }]
+
+// Affiche l'ancien solde puis défile vers le nouveau
+function RollingBalance({ from, to }) {
+  const [v, setV] = useState(from)
+  useEffect(() => { const t = setTimeout(() => setV(to), 450); return () => clearTimeout(t) }, [from, to])
+  return <AnimatedNumber value={v} format={fmt} duration={800} />
+}
 
 export default function Credit() {
   const { spectateurs, crediter } = useAppStore()
@@ -78,100 +89,90 @@ export default function Credit() {
 
   // ── Succès ─────────────────────────────────────────────────────────
   if (done) return (
-    <div style={{ maxWidth:400, margin:'0 auto', padding:'24px 0' }}>
-      <div style={{ textAlign:'center', padding:'32px 20px', background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:'var(--radius-lg)' }}>
-        <CheckCircle size={52} style={{ color:'var(--brand)', marginBottom:16 }}/>
-        <div style={{ fontSize:22, fontWeight:700, color:'var(--text)', marginBottom:6 }}>
-          {done.montant}€ crédités !
+    <div className={s.page}>
+      <Card className={s.done}>
+        <SuccessCheck size={64} play={done.newSolde} />
+        <h2 className={s.doneTitle}>{done.montant} € crédités</h2>
+        <p className={s.doneName}>{done.nom}</p>
+        <div className={s.doneBalance}>
+          <Wallet size={18} aria-hidden="true" />
+          <RollingBalance from={done.newSolde - done.montant * 100} to={done.newSolde} />
         </div>
-        <div style={{ fontSize:15, color:'var(--muted)', marginBottom:20 }}>{done.nom}</div>
-        <div style={{ display:'inline-flex', alignItems:'center', gap:8, background:'var(--brand-light)', borderRadius:12, padding:'10px 20px', marginBottom:24 }}>
-          <Wallet size={18} style={{ color:'var(--brand-dark)' }}/>
-          <span style={{ fontSize:22, fontWeight:700, color:'var(--brand-dark)' }}>{fmt(done.newSolde)}</span>
-        </div>
-        <br/>
-        <button onClick={reset} className="btn-primary" style={{ width:'100%' }}>
-          <RefreshCw size={16}/> Nouveau client
-        </button>
-      </div>
+        <Button block size="lg" icon={RefreshCw} onClick={reset} autoFocus>Nouveau client</Button>
+      </Card>
     </div>
   )
 
   return (
-    <div style={{ maxWidth:520, margin:'0 auto' }}>
+    <div className={s.page}>
 
       {/* Étape 1 — Scanner */}
       {!spec && (
-        <div className="card">
-          <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:4 }}>Identifier le spectateur</div>
-          <div style={{ fontSize:13, color:'var(--muted)', marginBottom:14 }}>Scannez le QR code ou entrez l'ID</div>
+        <Card title="Identifier le spectateur" subtitle="Scannez le QR code ou entrez l'ID">
           <QrScanner onScan={findById} placeholder="Ex : FY-4A2B"/>
-          {err && <div style={{ marginTop:10, padding:'10px 14px', background:'var(--red-light)', borderRadius:'var(--radius)', fontSize:13, color:'var(--red)', fontWeight:500 }}>{err}</div>}
-        </div>
+          {err && <p className={clsx(s.msg, err === 'Recherche en cours…' ? s.msgInfo : s.msgErr)} role="status">{err}</p>}
+        </Card>
       )}
 
       {/* Étape 2 — Créditer */}
       {spec && (
         <>
           {/* Fiche spectateur — dégradé marine-teal */}
-          <div style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 16px', background:'var(--grad-marine-teal)', borderRadius:'var(--radius-lg)', marginBottom:12, color:'#fff' }}>
-            <div style={{ background:'#FFF8F2', padding:6, borderRadius:8 }}>
-              <QrCode value={spec.id} size={56}/>
+          <div className={s.client}>
+            <div className={s.clientQr}><QrCode value={spec.id} size={56}/></div>
+            <div className={s.clientInfo}>
+              <b className={s.clientName}>{spec.nom}</b>
+              <span className={s.clientId}>{spec.id}</span>
+              <span className={s.clientSolde}>{fmt(spec.solde)}</span>
             </div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>{spec.nom}</div>
-              <div style={{ fontSize:11, color:'rgba(255,255,255,.75)', fontFamily:'monospace' }}>{spec.id}</div>
-              <div style={{ fontSize:20, fontWeight:800, color:'#fff', marginTop:2 }}>{fmt(spec.solde)}</div>
-            </div>
-            <button onClick={() => setSpec(null)} style={{ background:'rgba(255,255,255,.18)', border:'none', cursor:'pointer', color:'#fff', padding:'6px 10px', borderRadius:6, fontSize:14 }}>✕</button>
-          </div>
-
-          <div className="card">
-            {/* Montants rapides — boutons larges */}
-            <div style={{ fontSize:13, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>
-              Montant à créditer
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:8, marginBottom:14 }}>
-              {MONTANTS.map(v => (
-                <button key={v} onClick={() => setMontant(v)}
-                  style={{ minHeight:52, borderRadius:'var(--radius)', border:`2px solid ${montant===v?'var(--brand)':'var(--border)'}`, background:montant===v?'var(--brand)':'var(--bg2)', color:montant===v?'#fff':'var(--text)', fontSize:15, fontWeight:700, cursor:'pointer', transition:'all .12s', fontFamily:'var(--font)' }}>
-                  {v}€
-                </button>
-              ))}
-            </div>
-
-            {/* Montant personnalisé */}
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}>
-              <span style={{ fontSize:13, color:'var(--muted)', whiteSpace:'nowrap' }}>Autre montant :</span>
-              <div style={{ display:'flex', alignItems:'center', gap:8, flex:1 }}>
-                <input type="number" value={montant} min={1} max={500}
-                  onChange={e => setMontant(parseInt(e.target.value)||0)}
-                  className="inp" style={{ textAlign:'center', fontSize:18, fontWeight:700, flex:1 }}/>
-                <span style={{ fontSize:15, color:'var(--text)', fontWeight:600 }}>€</span>
-              </div>
-            </div>
-
-            {/* Mode de paiement */}
-            <div style={{ fontSize:13, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>
-              Mode de paiement
-            </div>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:20 }}>
-              {['Espèces','Carte bancaire'].map(m => (
-                <button key={m} onClick={() => setMoyen(m)}
-                  style={{ minHeight:44, borderRadius:'var(--radius)', border:`2px solid ${moyen===m?'var(--brand)':'var(--border)'}`, background:moyen===m?'var(--brand-light)':'var(--bg2)', color:moyen===m?'var(--brand-dark)':'var(--text)', fontSize:13, fontWeight:moyen===m?700:400, cursor:'pointer', transition:'all .12s', fontFamily:'var(--font)' }}>
-                  {m === 'Espèces' ? '💵 ' : '💳 '}{m}
-                </button>
-              ))}
-            </div>
-
-            {err && <div style={{ marginBottom:14, padding:'10px 14px', background:'var(--red-light)', borderRadius:'var(--radius)', fontSize:13, color:'var(--red)' }}>{err}</div>}
-
-            {/* CTA principal — très grand et visible */}
-            <button onClick={doCredit} disabled={loading || !montant || montant < 1} className="btn-primary"
-              style={{ width:'100%', fontSize:16, height:56, borderRadius:'var(--radius)' }}>
-              {loading ? 'Traitement…' : `Créditer ${montant}€ — ${moyen}`}
+            <button type="button" onClick={() => setSpec(null)} className={s.clientClose} aria-label="Changer de spectateur">
+              <X size={16} />
             </button>
           </div>
+
+          <Card>
+            <div className={s.form}>
+              {/* Montants rapides — boutons larges */}
+              <div className={s.group} role="group" aria-labelledby="credit-montant">
+                <span id="credit-montant" className={s.label}>Montant à créditer</span>
+                <div className={s.amounts}>
+                  {MONTANTS.map(v => (
+                    <button key={v} type="button" onClick={() => setMontant(v)} aria-pressed={montant === v}
+                      className={clsx(s.amount, montant === v && s.amountOn)}>
+                      {v} €
+                    </button>
+                  ))}
+                </div>
+                {/* Montant personnalisé */}
+                <label className={s.custom}>
+                  <span>Autre montant</span>
+                  <input type="number" value={montant} min={1} max={500} inputMode="numeric"
+                    onChange={e => setMontant(parseInt(e.target.value)||0)} className={s.customInput}/>
+                  <span aria-hidden="true">€</span>
+                </label>
+              </div>
+
+              {/* Mode de paiement */}
+              <div className={s.group} role="group" aria-labelledby="credit-moyen">
+                <span id="credit-moyen" className={s.label}>Mode de paiement</span>
+                <div className={s.moyens}>
+                  {MOYENS.map(({ value: m, icon: Icon }) => (
+                    <button key={m} type="button" onClick={() => setMoyen(m)} aria-pressed={moyen === m}
+                      className={clsx(s.moyen, moyen === m && s.moyenOn)}>
+                      <Icon size={16} aria-hidden="true" /> {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {err && <p className={clsx(s.msg, s.msgErr)} role="alert">{err}</p>}
+
+              {/* CTA principal — très grand et visible */}
+              <Button size="lg" block onClick={doCredit} loading={loading} disabled={!montant || montant < 1} className={s.cta}>
+                Créditer {montant} € · {moyen}
+              </Button>
+            </div>
+          </Card>
         </>
       )}
     </div>

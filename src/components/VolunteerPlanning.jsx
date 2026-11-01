@@ -29,7 +29,7 @@ import {
   Calendar, CheckCircle2, AlertTriangle, Zap, Users, QrCode, Printer,
 } from 'lucide-react'
 import QRCode from 'qrcode'
-import { Dialog, Button } from '../ui'
+import { Dialog, Button, toast } from '../ui'
 import { postQrText, postShortCode } from '../utils/shiftTime'
 
 const POST_COLORS = ['#009090','#F07848','#D89030','#6B3FA0','#0E8D7A','#5EB8E4','#A32D2D','#888780']
@@ -417,6 +417,7 @@ function PostesView({ posts }) {
   const { currentEventId } = useEventStore()
   const [editing, setEditing] = useState(null)
   const [qrPost, setQrPost] = useState(null)
+  const [ask, confirmDialog] = useConfirm()
 
   const openNew = () => setEditing({ nom:'', emoji: POST_EMOJIS[0], couleur: POST_COLORS[0] })
 
@@ -431,7 +432,7 @@ function PostesView({ posts }) {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Supprimer ce poste ? Les affectations existantes seront orphelines.')) return
+    if (!(await ask({ title: 'Supprimer ce poste ?', message: 'Les affectations existantes seront orphelines.', label: 'Supprimer' }))) return
     await deleteVolunteerPost(id, currentEventId)
   }
 
@@ -445,6 +446,7 @@ function PostesView({ posts }) {
       </div>
 
       <PostQrDialog post={qrPost} eventId={currentEventId} onClose={() => setQrPost(null)}/>
+      {confirmDialog}
 
       {posts.length === 0 && !editing && (
         <EmptyState icon={<MapPin size={36}/>} title="Aucun poste défini" msg="Créez votre premier poste (Bar, Caisse, Accueil…) pour démarrer."/>
@@ -520,6 +522,7 @@ function PostesView({ posts }) {
    ═══════════════════════════════════════════════════════════════ */
 function ShiftsView({ shifts, currentEvent }) {
   const { currentEventId } = useEventStore()
+  const [ask, confirmDialog] = useConfirm()
   const [posts, setPosts] = useState([])
   useEffect(() => {
     if (!currentEventId) return
@@ -557,14 +560,18 @@ function ShiftsView({ shifts, currentEvent }) {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Supprimer ce créneau ? Toutes ses affectations seront perdues.')) return
+    if (!(await ask({ title: 'Supprimer ce créneau ?', message: 'Toutes ses affectations seront perdues.', label: 'Supprimer' }))) return
     await deleteVolunteerShift(id, currentEventId)
   }
 
   // Génération en masse : "Midi+Soir" pour chaque date de l'événement
   const handleBulkGen = async () => {
-    if (eventDates.length === 0) { alert("Définissez d'abord les dates de l'événement dans Événements."); return }
-    if (!confirm(`Créer 2 créneaux par jour (Midi 12h-16h + Soir 18h-23h) sur ${eventDates.length} jour${eventDates.length>1?'s':''} ?`)) return
+    if (eventDates.length === 0) { toast.error("Définissez d'abord les dates de l'événement dans Événements."); return }
+    if (!(await ask({
+      title: 'Générer les créneaux ?',
+      message: `Créer 2 créneaux par jour (Midi 12h-16h + Soir 18h-23h) sur ${eventDates.length} jour${eventDates.length>1?'s':''} ?`,
+      label: 'Générer', variant: 'primary',
+    }))) return
     for (const d of eventDates) {
       const postesInit = {}
       posts.forEach(p => { postesInit[p.id] = { target: 0, assignments: [] } })
@@ -575,6 +582,7 @@ function ShiftsView({ shifts, currentEvent }) {
 
   return (
     <div>
+      {confirmDialog}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12, flexWrap:'wrap', gap:8 }}>
         <div style={{ fontSize:13, color:'var(--muted)', flex:'1 1 200px' }}>
           {shifts.length} créneau{shifts.length>1?'x':''}
@@ -765,6 +773,24 @@ function PostQrDialog({ post, eventId, onClose }) {
       )}
     </Dialog>
   )
+}
+
+// Confirmation dans une fenêtre (remplace window.confirm)
+// const [ask, confirmDialog] = useConfirm() ; if (!(await ask({ title, message, label }))) return
+function useConfirm() {
+  const [req, setReq] = useState(null) // { title, message, label, variant, resolve }
+  const ask = (opts) => new Promise(resolve => setReq({ ...opts, resolve }))
+  const answer = (ok) => { req?.resolve(ok); setReq(null) }
+  const dialog = (
+    <Dialog open={!!req} onClose={() => answer(false)} title={req?.title}
+      footer={<>
+        <Button variant="secondary" onClick={() => answer(false)}>Annuler</Button>
+        <Button variant={req?.variant || 'danger'} onClick={() => answer(true)}>{req?.label || 'Confirmer'}</Button>
+      </>}>
+      <p style={{ margin:0, fontSize:13, lineHeight:1.5, color:'var(--text)' }}>{req?.message}</p>
+    </Dialog>
+  )
+  return [ask, dialog]
 }
 
 function EmptyState({ icon, title, msg }) {

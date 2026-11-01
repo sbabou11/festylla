@@ -38,7 +38,7 @@ import BenevolePlanning from '../../components/BenevolePlanning'
 import QrScanner from '../../components/QrScanner'
 import useAuthStore from '../../store/useAuthStore'
 import { useTheme } from '../../hooks/useTheme'
-import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, toast } from '../../ui'
+import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, SuccessCheck, toast } from '../../ui'
 import s from './benevole/BenevoleApp.module.css'
 
 const BRAND    = 'var(--brand)'
@@ -747,7 +747,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       <Sheet open={scanOpen} onClose={() => setScanOpen(false)} title="Pointer mon arrivée">
         {pointage.state === 'done' ? (
           <div className={s.scanDone}>
-            <CheckCircle2 size={44}/>
+            <SuccessCheck size={64} play={pointage.at}/>
             <b>{pointage.already ? 'Déjà pointé' : 'Arrivée enregistrée'}</b>
             <span>{pointage.post?.emoji} {pointage.post?.nom} · {fmtHour(new Date(pointage.at))}</span>
             <Button block onClick={() => setScanOpen(false)}>Terminer</Button>
@@ -759,7 +759,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
               <QrScanner
                 onScan={handlePointageScan}
                 parse={(t) => t.trim()}
-                placeholder="Code du poste (ex : 7KQ2)"
+                placeholder="Code du poste, écrit sous le QR"
+                codeLength={4}
+                codeStatus={pointage.state === 'error' ? 'error' : null}
                 hint="Pointez la caméra vers le QR du poste"
                 simulate={posts.length ? [postQrText(demo ? 'demo' : eventId, (posts.find(p => p.id === slot?.postId) || posts[0]).id)] : []}
               />

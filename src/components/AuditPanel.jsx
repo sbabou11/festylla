@@ -2,64 +2,69 @@
  * components/AuditPanel.jsx — v2
  * Journal d'audit complet — toutes actions, tous utilisateurs
  * Filtres : type utilisateur × type action × recherche texte
+ * Panneau ui/Sheet : latéral sur ordinateur, feuille du bas sur mobile. Styles : AuditPanel.module.css
  */
 import React, { useState, useEffect } from 'react'
-import { X, ClipboardList, Search } from 'lucide-react'
+import { ClipboardList, Search, User, Clock } from 'lucide-react'
 import { db } from '../firebase/config'
 import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore'
 import useAuthStore   from '../store/useAuthStore'
 import useEventStore  from '../store/useEventStore'
 import { useExport }  from '../hooks/useExport'
 import { useBreakpoint } from '../hooks/useBreakpoint'
+import { fmt } from '../utils/helpers'
+import clsx from 'clsx'
+import { Sheet, Badge, Empty, Skeleton } from '../ui'
+import s from './AuditPanel.module.css'
 
-// ── Configuration des actions ───────────────────────────────────────
+// ── Configuration des actions (tone = couleur de pastille ui/Badge) ─────
 const ACTION_CFG = {
   // Financier
-  CREDIT:              { icon:'💳', label:'Crédit',                color:'#065f46', bg:'#d1fae5', cat:'financier' },
-  DEBIT:               { icon:'🛒', label:'Encaissement',          color:'#991b1b', bg:'#fee2e2', cat:'financier' },
-  RETRAIT:             { icon:'📦', label:'Retrait résa',           color:'#4338ca', bg:'#ede9fe', cat:'financier' },
-  RETRAIT_BENEV:       { icon:'🎁', label:'Retrait bénévole',       color:'#4338ca', bg:'#ede9fe', cat:'financier' },
+  CREDIT:              { icon:'💳', label:'Crédit',                tone:'success', cat:'financier' },
+  DEBIT:               { icon:'🛒', label:'Encaissement',          tone:'coral',  cat:'financier' },
+  RETRAIT:             { icon:'📦', label:'Retrait résa',           tone:'brand', cat:'financier' },
+  RETRAIT_BENEV:       { icon:'🎁', label:'Retrait bénévole',       tone:'brand', cat:'financier' },
   // Réservations
-  RESERVATION:         { icon:'📋', label:'Réservation',           color:'#92400e', bg:'#fef3c7', cat:'reservation' },
-  BENEV_RESERVATION:   { icon:'📋', label:'Résa bénévole',         color:'#92400e', bg:'#fef3c7', cat:'reservation' },
-  RESA_PRISE_EN_CHARGE:{ icon:'👨‍🍳', label:'Prise en charge',       color:'#534AB7', bg:'#EDE9FE', cat:'reservation' },
-  RESA_PRETE:          { icon:'✅', label:'Commande prête',         color:'#1a6b7a', bg:'#e0f4f7', cat:'reservation' },
-  ANNULATION_RESA:     { icon:'❌', label:'Annulation résa',        color:'#dc2626', bg:'#fee2e2', cat:'reservation' },
-  ANNULATION_RESA_SPEC:{ icon:'❌', label:'Annulation par client',  color:'#dc2626', bg:'#fee2e2', cat:'reservation' },
-  BENEV_ANNULATION:    { icon:'❌', label:'Annulation bénévole',    color:'#dc2626', bg:'#fee2e2', cat:'reservation' },
-  SUPPRESSION_RESA:    { icon:'🗑️', label:'Suppression résa',       color:'#991b1b', bg:'#fee2e2', cat:'reservation' },
+  RESERVATION:         { icon:'📋', label:'Réservation',           tone:'warning', cat:'reservation' },
+  BENEV_RESERVATION:   { icon:'📋', label:'Résa bénévole',         tone:'warning', cat:'reservation' },
+  RESA_PRISE_EN_CHARGE:{ icon:'👨‍🍳', label:'Prise en charge',       tone:'brand', cat:'reservation' },
+  RESA_PRETE:          { icon:'✅', label:'Commande prête',         tone:'brand', cat:'reservation' },
+  ANNULATION_RESA:     { icon:'❌', label:'Annulation résa',        tone:'danger', cat:'reservation' },
+  ANNULATION_RESA_SPEC:{ icon:'❌', label:'Annulation par client',  tone:'danger', cat:'reservation' },
+  BENEV_ANNULATION:    { icon:'❌', label:'Annulation bénévole',    tone:'danger', cat:'reservation' },
+  SUPPRESSION_RESA:    { icon:'🗑️', label:'Suppression résa',       tone:'danger', cat:'reservation' },
   // Staff
-  CONNEXION:           { icon:'🔑', label:'Connexion',             color:'#1a6b7a', bg:'#e0f4f7', cat:'session' },
-  DECONNEXION:         { icon:'🚪', label:'Déconnexion',           color:'#475569', bg:'#f1f5f9', cat:'session' },
-  CREATION_STAFF:      { icon:'👤', label:'Création staff',         color:'#065f46', bg:'#d1fae5', cat:'administration' },
-  MODIF_STAFF:         { icon:'✏️', label:'Modification staff',     color:'#92400e', bg:'#fef3c7', cat:'administration' },
-  SUPPRESSION_STAFF:   { icon:'🗑️', label:'Suppression staff',      color:'#991b1b', bg:'#fee2e2', cat:'administration' },
-  RESET_PWD_STAFF:     { icon:'🔒', label:'Reset mot de passe',     color:'#92400e', bg:'#fef3c7', cat:'administration' },
+  CONNEXION:           { icon:'🔑', label:'Connexion',             tone:'brand', cat:'session' },
+  DECONNEXION:         { icon:'🚪', label:'Déconnexion',           tone:'neutral', cat:'session' },
+  CREATION_STAFF:      { icon:'👤', label:'Création staff',         tone:'success', cat:'administration' },
+  MODIF_STAFF:         { icon:'✏️', label:'Modification staff',     tone:'warning', cat:'administration' },
+  SUPPRESSION_STAFF:   { icon:'🗑️', label:'Suppression staff',      tone:'danger', cat:'administration' },
+  RESET_PWD_STAFF:     { icon:'🔒', label:'Reset mot de passe',     tone:'warning', cat:'administration' },
   // Bénévoles
-  CREATION_BENEV:      { icon:'🙋', label:'Création bénévole',      color:'#065f46', bg:'#d1fae5', cat:'benevole' },
-  MODIF_BENEV:         { icon:'✏️', label:'Modification bénévole',  color:'#92400e', bg:'#fef3c7', cat:'benevole' },
-  SUPPRESSION_BENEV:   { icon:'🗑️', label:'Suppression bénévole',   color:'#991b1b', bg:'#fee2e2', cat:'benevole' },
-  CONSO_BENEV:         { icon:'🍽️', label:'Consommation bénévole',  color:'#534AB7', bg:'#EDE9FE', cat:'benevole' },
-  RESET_CONSO_BENEV:   { icon:'🔄', label:'Reset conso bénévole',   color:'#475569', bg:'#f1f5f9', cat:'benevole' },
-  CHANGEMENT_PWD_BENEV:{ icon:'🔒', label:'Changement mdp bénévole',color:'#92400e', bg:'#fef3c7', cat:'benevole' },
+  CREATION_BENEV:      { icon:'🙋', label:'Création bénévole',      tone:'success', cat:'benevole' },
+  MODIF_BENEV:         { icon:'✏️', label:'Modification bénévole',  tone:'warning', cat:'benevole' },
+  SUPPRESSION_BENEV:   { icon:'🗑️', label:'Suppression bénévole',   tone:'danger', cat:'benevole' },
+  CONSO_BENEV:         { icon:'🍽️', label:'Consommation bénévole',  tone:'brand', cat:'benevole' },
+  RESET_CONSO_BENEV:   { icon:'🔄', label:'Reset conso bénévole',   tone:'neutral', cat:'benevole' },
+  CHANGEMENT_PWD_BENEV:{ icon:'🔒', label:'Changement mdp bénévole',tone:'warning', cat:'benevole' },
   // Spectateurs
-  CREATION_SPECTATEUR: { icon:'👥', label:'Création spectateur',    color:'#065f46', bg:'#d1fae5', cat:'spectateur' },
-  MODIF_SPECTATEUR:    { icon:'✏️', label:'Modification spectateur', color:'#92400e', bg:'#fef3c7', cat:'spectateur' },
+  CREATION_SPECTATEUR: { icon:'👥', label:'Création spectateur',    tone:'success', cat:'spectateur' },
+  MODIF_SPECTATEUR:    { icon:'✏️', label:'Modification spectateur', tone:'warning', cat:'spectateur' },
   // Menu & Catégories
-  CREATION_ARTICLE:    { icon:'🍽️', label:'Ajout article menu',     color:'#065f46', bg:'#d1fae5', cat:'menu' },
-  MODIF_ARTICLE:       { icon:'✏️', label:'Modification article',    color:'#92400e', bg:'#fef3c7', cat:'menu' },
-  SUPPRESSION_ARTICLE: { icon:'🗑️', label:'Suppression article',     color:'#991b1b', bg:'#fee2e2', cat:'menu' },
-  CREATION_CATEGORIE:  { icon:'📂', label:'Création catégorie',      color:'#065f46', bg:'#d1fae5', cat:'menu' },
-  MODIF_CATEGORIE:     { icon:'✏️', label:'Modification catégorie',  color:'#92400e', bg:'#fef3c7', cat:'menu' },
-  SUPPRESSION_CATEGORIE:{ icon:'🗑️', label:'Suppression catégorie',  color:'#991b1b', bg:'#fee2e2', cat:'menu' },
+  CREATION_ARTICLE:    { icon:'🍽️', label:'Ajout article menu',     tone:'success', cat:'menu' },
+  MODIF_ARTICLE:       { icon:'✏️', label:'Modification article',    tone:'warning', cat:'menu' },
+  SUPPRESSION_ARTICLE: { icon:'🗑️', label:'Suppression article',     tone:'danger', cat:'menu' },
+  CREATION_CATEGORIE:  { icon:'📂', label:'Création catégorie',      tone:'success', cat:'menu' },
+  MODIF_CATEGORIE:     { icon:'✏️', label:'Modification catégorie',  tone:'warning', cat:'menu' },
+  SUPPRESSION_CATEGORIE:{ icon:'🗑️', label:'Suppression catégorie',  tone:'danger', cat:'menu' },
   // Rôles
-  CREATION_ROLE:       { icon:'🛡️', label:'Création rôle',           color:'#4338ca', bg:'#ede9fe', cat:'administration' },
-  MODIF_ROLE:          { icon:'✏️', label:'Modification rôle',       color:'#92400e', bg:'#fef3c7', cat:'administration' },
-  SUPPRESSION_ROLE:    { icon:'🗑️', label:'Suppression rôle',        color:'#991b1b', bg:'#fee2e2', cat:'administration' },
+  CREATION_ROLE:       { icon:'🛡️', label:'Création rôle',           tone:'brand', cat:'administration' },
+  MODIF_ROLE:          { icon:'✏️', label:'Modification rôle',       tone:'warning', cat:'administration' },
+  SUPPRESSION_ROLE:    { icon:'🗑️', label:'Suppression rôle',        tone:'danger', cat:'administration' },
   // Paramètres
-  MODIF_SETTINGS:      { icon:'⚙️', label:'Paramètres modifiés',     color:'#475569', bg:'#f1f5f9', cat:'administration' },
+  MODIF_SETTINGS:      { icon:'⚙️', label:'Paramètres modifiés',     tone:'neutral', cat:'administration' },
   // Autres
-  OTHER:               { icon:'📝', label:'Action',                  color:'#475569', bg:'#f1f5f9', cat:'autre' },
+  OTHER:               { icon:'📝', label:'Action',                  tone:'neutral', cat:'autre' },
 }
 
 // Filtres par type d'utilisateur
@@ -152,107 +157,68 @@ export default function AuditPanel({ open, onClose }) {
 
   const cfg = (action) => ACTION_CFG[action] || ACTION_CFG.OTHER
 
-  if (!open) return null
+  const typeLabel = { staff:'Staff', admin:'Admin', benevole:'Bénévole', spectateur:'Spectateur' }
 
-  const sel = { height:34, padding:'0 8px', border:'1px solid var(--border2)', borderRadius:8, fontSize:11, fontFamily:'var(--font)', color:'var(--text)', background:'var(--bg2)', outline:'none', cursor:'pointer' }
-
-  const Content = () => (
-    <>
-      {isMobile && <div style={{ width:40, height:4, borderRadius:2, background:'var(--border2)', margin:'12px auto 4px' }}/>}
-
-      {/* Header */}
-      <div style={{ padding:isMobile?'12px 16px 12px':'14px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <ClipboardList size={16} style={{ color:'var(--brand)' }}/>
-          <div>
-            <div style={{ fontSize:14, fontWeight:700, color:'var(--text)' }}>Journal d'audit</div>
-            <div style={{ fontSize:11, color:'var(--muted)' }}>{filtered.length} entrée{filtered.length>1?'s':''} sur {logs.length}</div>
-          </div>
-        </div>
-        <button onClick={onClose} style={{ width:30, height:30, display:'flex', alignItems:'center', justifyContent:'center', border:'none', borderRadius:8, background:'var(--bg2)', color:'var(--muted)', cursor:'pointer', minHeight:'auto' }}>
-          <X size={15}/>
-        </button>
-      </div>
-
-      {/* Recherche */}
-      <div style={{ padding:'10px 14px', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
-        <div style={{ position:'relative', marginBottom:8 }}>
-          <Search size={12} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'var(--muted)' }}/>
+  return (
+    <Sheet open={open} onClose={onClose} title="Journal d'audit" className={s.sheet}>
+      {/* Recherche + filtres (restent visibles pendant le défilement) */}
+      <div className={s.toolbar}>
+        <p className={s.count} aria-live="polite">
+          {loading ? 'Chargement…' : `${filtered.length} entrée${filtered.length>1?'s':''} sur ${logs.length}`}
+        </p>
+        <label className={s.search}>
+          <Search size={14} aria-hidden="true"/>
           <input value={search} onChange={e => setSrch(e.target.value)} placeholder="Rechercher action, membre, montant…"
-            style={{ width:'100%', height:34, paddingLeft:28, paddingRight:10, border:'1px solid var(--border2)', borderRadius:8, fontSize:12, fontFamily:'var(--font)', color:'var(--text)', background:'var(--bg2)', outline:'none', boxSizing:'border-box' }}/>
-        </div>
-        {/* Filtres */}
-        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-          <select value={userType} onChange={e => setUserType(e.target.value)} style={sel}>
+            aria-label="Rechercher dans le journal" type="search"/>
+        </label>
+        <div className={s.filters}>
+          <select value={userType} onChange={e => setUserType(e.target.value)} className={s.select} aria-label="Type d'utilisateur">
             {USER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          <select value={actionCat} onChange={e => setActionCat(e.target.value)} style={sel}>
+          <select value={actionCat} onChange={e => setActionCat(e.target.value)} className={s.select} aria-label="Type d'action">
             {ACTION_CATS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
       </div>
 
       {/* Liste */}
-      <div style={{ overflowY:'auto', flex:1, padding:'6px 0' }}>
-        {loading ? (
-          <div style={{ padding:40, textAlign:'center', color:'var(--muted)', fontSize:14 }}>Chargement…</div>
-        ) : filtered.length === 0 ? (
-          <div style={{ padding:'40px 16px', textAlign:'center', color:'var(--muted)' }}>
-            <ClipboardList size={32} style={{ opacity:.2, display:'block', margin:'0 auto 10px' }}/>
-            <div style={{ fontSize:13, fontWeight:600 }}>Aucun résultat</div>
-            <div style={{ fontSize:11, marginTop:4 }}>Modifiez vos filtres</div>
-          </div>
-        ) : filtered.map((l, i) => {
-          const c = cfg(l.action)
-          const who = l.benevoleNom || l.specNom || l.staff || '—'
-          const typeLabel = { staff:'👤 Staff', admin:'🛡️ Admin', benevole:'🙋 Bénévole', spectateur:'👥 Spectateur' }
-          return (
-            <div key={l.id || i} style={{ display:'flex', gap:10, padding:'10px 14px', borderBottom:'1px solid var(--border)', alignItems:'flex-start' }}>
-              <div style={{ width:34, height:34, borderRadius:9, background:c.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
-                {c.icon}
-              </div>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:2, flexWrap:'wrap' }}>
-                  <span style={{ fontSize:10, fontWeight:700, padding:'1px 6px', borderRadius:8, background:c.bg, color:c.color }}>{c.label}</span>
-                  {l.userType && (
-                    <span style={{ fontSize:10, padding:'1px 6px', borderRadius:8, background:'var(--bg2)', color:'var(--muted)', fontWeight:600 }}>
-                      {typeLabel[l.userType] || l.userType}
-                    </span>
-                  )}
-                  {l.montant > 0 && (
-                    <span style={{ fontSize:11, fontWeight:700, color:c.color }}>{(l.montant/100).toFixed(2)}€</span>
-                  )}
-                </div>
-                <div style={{ fontSize:12, color:'var(--text)', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                  {l.label || '—'}
-                </div>
-                <div style={{ display:'flex', gap:8, fontSize:10, color:'var(--muted)', flexWrap:'wrap' }}>
-                  {who !== '—' && <span>👤 {who}</span>}
-                  <span>🕐 {fmtDate(l.timestamp || l.date)}</span>
-                  {l.resaCode && <span style={{ fontFamily:'monospace' }}>#{l.resaCode}</span>}
-                </div>
-              </div>
+      {loading ? (
+        <div className={s.list} aria-busy="true">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className={s.item}>
+              <Skeleton width={34} height={34} radius={9}/>
+              <div className={s.itemBody}><Skeleton lines={2} height={12}/></div>
             </div>
-          )
-        })}
-      </div>
-    </>
-  )
-
-  if (isMobile) return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:210, background:'rgba(0,0,0,0.5)' }}>
-      <div onClick={e=>e.stopPropagation()} style={{ position:'absolute', bottom:0, left:0, right:0, maxHeight:'92vh', background:'var(--bg)', borderRadius:'20px 20px 0 0', boxShadow:'0 -8px 40px rgba(0,0,0,.25)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
-        <Content/>
-      </div>
-    </div>
-  )
-
-  return (
-    <>
-      <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:109, background:'rgba(0,0,0,0.3)' }}/>
-      <div style={{ position:'fixed', top:0, right:0, bottom:0, width:440, maxWidth:'92vw', background:'var(--bg)', borderLeft:'1px solid var(--border)', boxShadow:'-8px 0 40px rgba(0,0,0,.15)', zIndex:110, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-        <Content/>
-      </div>
-    </>
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <Empty icon={ClipboardList} title="Aucun résultat" className={s.empty}>Modifiez vos filtres ou votre recherche.</Empty>
+      ) : (
+        <ul className={s.list}>
+          {filtered.map((l, i) => {
+            const c = cfg(l.action)
+            const who = l.benevoleNom || l.specNom || l.staff || '—'
+            return (
+              <li key={l.id || i} className={s.item}>
+                <span className={clsx(s.icon, s[c.tone])} aria-hidden="true">{c.icon}</span>
+                <div className={s.itemBody}>
+                  <div className={s.tags}>
+                    <Badge tone={c.tone}>{c.label}</Badge>
+                    {l.userType && <Badge>{typeLabel[l.userType] || l.userType}</Badge>}
+                    {l.montant > 0 && <b className={s.amount}>{fmt(l.montant)}</b>}
+                  </div>
+                  <p className={s.label} title={l.label || undefined}>{l.label || '—'}</p>
+                  <div className={s.meta}>
+                    {who !== '—' && <span><User size={11} aria-hidden="true"/> {who}</span>}
+                    <span><Clock size={11} aria-hidden="true"/> {fmtDate(l.timestamp || l.date)}</span>
+                    {l.resaCode && <span className={s.mono}>#{l.resaCode}</span>}
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </Sheet>
   )
 }

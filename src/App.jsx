@@ -1,13 +1,15 @@
 /**
  * App.jsx — v5 responsive
- * Mobile : boutons studio/offline/rôle déplacés dans la sidebar
+ * Mobile : barre du bas (4 pages du rôle + « Plus » qui ouvre le menu complet)
+ * Changement de page : transition douce via l'API View Transitions quand elle existe
  */
 import React, { useState, useEffect, Suspense, lazy } from 'react'
+import { flushSync } from 'react-dom'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
-import { Sun, Moon, Palette, WifiOff, Menu, Search, X, HandHeart } from 'lucide-react'
+import { Sun, Moon, Palette, WifiOff, Search, X, HandHeart } from 'lucide-react'
 import CommandPalette from './components/CommandPalette'
 import './utils/pendingSales' // envoie au démarrage les encaissements restés en attente
-import { ToastViewport } from './ui'
+import { ToastViewport, Skeleton } from './ui'
 import shell from './App.module.css'
 import NotifBell from './components/NotifBell'
 import EventSelector from './components/EventSelector'
@@ -15,6 +17,7 @@ import AuditPanel from './components/AuditPanel'
 import { useNotifications } from './hooks/useNotifications'
 import { useFCM }           from './hooks/useFCM'
 import Sidebar  from './components/Sidebar'
+import BottomNav from './components/BottomNav'
 import Studio   from './components/Studio'
 import Avatar   from './components/Avatar'
 import { useTheme }      from './hooks/useTheme'
@@ -75,6 +78,17 @@ const Loader = ({ msg = 'Chargement…' }) => (
   </div>
 )
 
+
+// Pendant le chargement d'une page : sa silhouette plutôt qu'un texte
+const PageSkeleton = () => (
+  <div className={shell.skeleton} aria-busy="true" aria-label="Chargement de la page">
+    <div className={shell.skeletonStats}>
+      {[0, 1, 2, 3].map(i => <Skeleton key={i} height={92} radius={12} />)}
+    </div>
+    <Skeleton height={18} width="30%" />
+    <Skeleton lines={6} height={14} />
+  </div>
+)
 
 // Préchargement des librairies lourdes en background au démarrage
 const preloadLibs = () => {
@@ -188,7 +202,7 @@ function StaffApp() {
   const { isOffline, syncNow, toggleSimulate } = useOffline()
   const { loading, error }             = useFirestore()
   React.useEffect(() => { preloadLibs() }, []) // Préchargement PDF/XLS en background
-  const { staff, spectateurs, logs }   = useAppStore()
+  const { staff, spectateurs, logs, roles } = useAppStore()
   const { isMobile, isTablet }         = useBreakpoint()
   const { currentEventId: notifEventId } = useEventStore()
   const { notifications, nonLuCount, marquerToutLu } = useNotifications({ isStaff: true, staffId: user?.id, staffRole: user?.role, eventId: notifEventId })
@@ -266,8 +280,12 @@ function StaffApp() {
 
   const navigate = (pid, search = '') => {
     if (!canAccessPage(pid)) return
-    routerNavigate(`/${pid}${search}`)
-    setStudioOpen(false)
+    const go = () => { routerNavigate(`/${pid}${search}`); setStudioOpen(false); setMobileMenuOpen(false) }
+    // Seul le contenu (view-transition-name: page) glisse ; rien si l'utilisateur réduit les animations
+    const animate = pid !== currentPage && document.startViewTransition
+      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (animate) document.startViewTransition(() => flushSync(go))
+    else go()
   }
 
   const PageComponent = PAGES[currentPage]
@@ -331,11 +349,6 @@ function StaffApp() {
         <div className={shell.main}>
           {/* Barre du haut : titre, événement, état, recherche, actions */}
           <header className={shell.bar}>
-            {isMobile && (
-              <button type="button" onClick={() => setMobileMenuOpen(true)} className={shell.iconBtn} aria-label="Ouvrir le menu">
-                <Menu size={18} />
-              </button>
-            )}
             <h1 className={shell.title}>{PAGE_TITLES[currentPage] || currentPage}</h1>
             {currentEv && !isMobile && (
               <span className={shell.event}>
@@ -380,13 +393,26 @@ function StaffApp() {
 
           {/* Contenu de la page */}
           <main className={shell.content}>
-            <Suspense fallback={<div className={shell.pageLoading}>Chargement…</div>}>
+            <Suspense fallback={<PageSkeleton />}>
               {PageComponent
                 ? <PageComponent onNavigate={navigate} view={user.role} />
                 : <div className={shell.pageLoading}>Page non disponible pour le rôle « {user.role} »</div>}
             </Suspense>
           </main>
         </div>
+
+        {/* Téléphone : barre du bas ; « Plus » ouvre le menu complet (pages, thème, Studio, déconnexion) */}
+        {isMobile && (
+          <BottomNav
+            role={user.role}
+            customPages={roles?.find(r => r.id === user.role)?.pages}
+            currentPage={currentPage}
+            onNavigate={navigate}
+            onMore={() => setMobileMenuOpen(true)}
+            canAccess={canAccessPage}
+            badges={{ alertes: alertCount }}
+          />
+        )}
 
         {/* Journal d'audit */}
         <AuditPanel open={auditOpen} onClose={() => setAuditOpen(false)} />

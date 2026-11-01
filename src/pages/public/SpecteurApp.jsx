@@ -10,6 +10,7 @@ import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, addDoc,
          updateDoc, doc, serverTimestamp, runTransaction, orderBy } from 'firebase/firestore'
 import { fmt, nowStr, makeResaCode } from '../../utils/helpers'
+import { Button, Sheet, toast } from '../../ui'
 
 const BRAND   = '#1a6b7a'
 const BRAND_L = '#E1F5EE'
@@ -37,6 +38,7 @@ export default function SpecteurApp() {
   const [resaLoading, setResaLoading] = useState(false)
   const [resaDone, setResaDone]  = useState(null)
   const [resaErr, setResaErr]    = useState('')
+  const [cancelAsk, setCancelAsk] = useState(null) // id de la réservation à annuler (fenêtre de confirmation)
 
   // Charger le menu au montage
   useEffect(() => {
@@ -134,8 +136,8 @@ export default function SpecteurApp() {
     }
   }
 
+  // Annuler une réservation (après confirmation dans la fenêtre)
   const annulerResa = async (resaId) => {
-    if (!window.confirm('Annuler cette réservation ?')) return
     try {
       await updateDoc(doc(db, 'reservations', resaId), { status: 'collected' })
       await addDoc(collection(db, 'transactions'), {
@@ -144,7 +146,7 @@ export default function SpecteurApp() {
         date: nowStr(), createdAt: serverTimestamp(),
       })
       await refreshSpec()
-    } catch (e) { alert('Erreur : ' + e.message) }
+    } catch (e) { toast.error("Impossible d'annuler la réservation : " + e.message) }
   }
 
   const card   = { background: '#fff', border: '0.5px solid #ddd', borderRadius: 14, padding: 16, marginBottom: 12 }
@@ -376,7 +378,7 @@ export default function SpecteurApp() {
                         </div>
                       )}
                       {r.status === 'pending' && (
-                        <button onClick={() => annulerResa(r.id)}
+                        <button onClick={() => setCancelAsk(r.id)}
                           style={{ padding: '5px 12px', background: RED_L, color: RED, border: `0.5px solid #F09595`, borderRadius: 8, fontSize: 12, cursor: 'pointer' }}>
                           Annuler
                         </button>
@@ -397,6 +399,15 @@ export default function SpecteurApp() {
           <a href="/" style={{ color: BRAND, textDecoration: 'none' }}>Accès staff →</a>
         </div>
       </div>
+
+      {/* Confirmation d'annulation */}
+      <Sheet open={!!cancelAsk} onClose={() => setCancelAsk(null)} title="Annuler cette réservation ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setCancelAsk(null)}>Garder</Button>
+          <Button variant="danger" onClick={() => { const id = cancelAsk; setCancelAsk(null); annulerResa(id) }}>Annuler la réservation</Button>
+        </>}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--muted)' }}>La réservation ne sera pas préparée. Vous pourrez en faire une nouvelle à tout moment.</p>
+      </Sheet>
     </div>
   )
 }

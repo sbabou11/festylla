@@ -1,0 +1,43 @@
+.root { display: grid; gap: var(--space-3); margin-bottom: var(--space-3); }
+.modes { display: flex; width: 100%; }
+.modes > button { flex: 1; justify-content: center; }
+.error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--gold-light);
+  color: var(--gold-dark);
+  font-size: var(--fs-12);
+  font-weight: 600;
+}
+/* La vidéo reste noire dans les deux thèmes : c'est l'image de la caméra */
+.camera { position: relative; min-height: 220px; overflow: hidden; border-radius: var(--radius-lg); border: 2px solid var(--border2); background: #000; }
+.hint { margin: 6px 0 0; text-align: center; font-size: var(--fs-12); color: var(--muted); }
+.simulate {
+  width: 100%;
+  margin-top: var(--space-2);
+  min-height: 36px;
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
+  background: var(--bg2);
+  color: var(--muted);
+  font: 600 var(--fs-12) var(--font);
+  cursor: pointer;
+}
+.manual { display: grid; gap: var(--space-2); }
+.manualCode { display: grid; gap: var(--space-1); padding: var(--space-2) 0; }
+.input {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0 12px;
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: 600 var(--fs-15) var(--font);
+  letter-spacing: .04em;
+  outline: none;
+}
+.input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }

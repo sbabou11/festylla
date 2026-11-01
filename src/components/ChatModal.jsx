@@ -1,25 +1,29 @@
 /**
- * components/ChatModal.jsx — v7
- * Modale du chat équipe — style Messenger/WhatsApp.
+ * components/ChatModal.jsx — v8 (design system)
+ * Modale du chat équipe — style messagerie, feuille qui monte du bas sur mobile.
  * - Affichage des messages (texte, voice notes, images) en bulles
  * - Avatar + nom + rôle (badge couleur)
  * - Input texte + push-to-talk + image
  * - Indicateur "X en train d'écrire"
  * - Auto-scroll bas
- * - Suppression : auteur (ses messages) ou admin/super_admin (tous)
+ * - Suppression : auteur (ses messages) ou admin/super_admin (tous), confirmée dans la feuille
  * - Séparateurs de date entre jours
+ * Styles : ChatModal.module.css (tokens uniquement, s'adapte au clair, sombre et plein soleil).
  */
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { X, Send, Mic, Image as ImageIcon, Trash2, Play, Pause, AlertCircle, Square, Volume2, VolumeX } from 'lucide-react'
+import clsx from 'clsx'
+import { X, Send, Mic, Image as ImageIcon, Trash2, Play, Pause, AlertCircle, Volume2, VolumeX, MessageCircle } from 'lucide-react'
+import { Button } from '../ui'
+import s from './ChatModal.module.css'
 
 const ROLE_COLORS = {
-  super_admin:          '#F07848',  // Coral — pouvoir max
-  admin:                '#F07848',  // Coral aussi
-  directeur_artistique: '#5EB8E4',  // Bleu clair (cohérent avec la sidebar)
-  billetterie:          '#0E8D7A',  // Vert teal foncé
-  stand:                '#D89030',  // Or
-  consultation:         '#888780',  // Gris chaud
-  benevole:             '#009090',  // Teal signature
+  super_admin:          'var(--coral)',   // Coral — pouvoir max
+  admin:                'var(--coral)',   // Coral aussi
+  directeur_artistique: '#5EB8E4',        // Bleu clair (cohérent avec la sidebar)
+  billetterie:          'var(--green)',   // Vert teal foncé
+  stand:                'var(--gold)',    // Or
+  consultation:         'var(--muted)',   // Gris
+  benevole:             'var(--brand)',   // Teal signature
 }
 const ROLE_LABELS = {
   super_admin:          'Super Admin',
@@ -54,10 +58,6 @@ function dayKey(ts) {
   return d.toDateString()
 }
 
-function getInitials(nom) {
-  return (nom || '?').split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase()
-}
-
 function formatDuration(sec) {
   if (!sec || sec < 0) return '0:00'
   const m = Math.floor(sec / 60)
@@ -65,8 +65,8 @@ function formatDuration(sec) {
   return m + ':' + String(s).padStart(2, '0')
 }
 
-// ─── Lecteur audio inline ─────────────────────────────────────────
-function VoicePlayer({ url, duration, color }) {
+// ─── Lecteur audio inline (couleurs : héritées de la bulle) ────────
+function VoicePlayer({ url, duration }) {
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const audioRef = useRef(null)
@@ -92,17 +92,14 @@ function VoicePlayer({ url, duration, color }) {
   }
 
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:10, minWidth: 180 }}>
-      <button onClick={toggle}
-        style={{ width: 34, height: 34, borderRadius:'50%', border:'none', background: color, color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-        {playing ? <Pause size={14}/> : <Play size={14}/>}
+    <div className={s.voice}>
+      <button type="button" className={s.play} onClick={toggle} aria-label={playing ? 'Mettre en pause le vocal' : 'Écouter le vocal'}>
+        {playing ? <Pause size={14} aria-hidden="true"/> : <Play size={14} aria-hidden="true"/>}
       </button>
-      <div style={{ flex:1, height: 4, background:'rgba(0,0,0,.1)', borderRadius:2, overflow:'hidden', minWidth: 60 }}>
-        <div style={{ width: progress + '%', height:'100%', background: color, transition: 'width .1s linear' }}/>
+      <div className={s.track} aria-hidden="true">
+        <span style={{ width: progress + '%' }}/>
       </div>
-      <span style={{ fontSize:11, color:'inherit', opacity:.7, fontFamily:'monospace', minWidth: 32 }}>
-        {formatDuration(duration)}
-      </span>
+      <span className={s.dur}>{formatDuration(duration)}</span>
       <audio ref={audioRef} src={url} preload="metadata"/>
     </div>
   )
@@ -124,6 +121,7 @@ export default function ChatModal({
   const [recordSec, setRecordSec] = useState(0)
   const [err, setErr] = useState('')
   const [fullImage, setFullImage] = useState(null)
+  const [toDelete, setToDelete] = useState(null)   // message en attente de confirmation
   const recRef = useRef(null)        // MediaRecorder
   const chunksRef = useRef([])
   const recTimerRef = useRef(null)
@@ -246,12 +244,19 @@ export default function ChatModal({
     finally { setSending(false) }
   }
 
-  // Suppression
-  const handleDelete = async (m) => {
+  // Suppression : demande de confirmation dans la feuille (au-dessus de la saisie)
+  const handleDelete = (m) => {
     const isOwn = m.author?.uid === uid
     if (!isOwn && !isAdmin) return
-    if (!window.confirm(isOwn ? 'Supprimer votre message ?' : 'Supprimer ce message ?')) return
-    try { await remove(m.id) } catch (e) { alert('Erreur : ' + e.message) }
+    setErr('')
+    setToDelete(m)
+  }
+  const confirmDelete = async () => {
+    const m = toDelete
+    setToDelete(null)
+    if (!m) return
+    // Erreur affichée dans le bandeau du chat : un toast passerait sous la feuille
+    try { await remove(m.id) } catch (e) { setErr('Suppression impossible : ' + (e.message || 'réessayez')) }
   }
 
   // Préparer les messages avec séparateurs de date
@@ -271,153 +276,92 @@ export default function ChatModal({
 
   if (!open) return null
 
+  const visibleCount = messages.filter(m => !m.deletedAt).length
+  const subtitle = othersTyping.length > 0
+    ? (othersTyping.length === 1
+        ? othersTyping[0].nom + ' en train d\'écrire…'
+        : othersTyping.length + ' personnes en train d\'écrire…')
+    : (visibleCount + ' message' + (messages.length > 1 ? 's' : ''))
+
   return (
     <>
-      <div onClick={(e) => e.target === e.currentTarget && onClose()}
-        style={{
-          position:'fixed', inset:0, zIndex: 1000,
-          background:'rgba(0,0,0,.45)',
-          display:'flex', alignItems:'flex-end', justifyContent:'center',
-          fontFamily:'var(--font)',
-        }}>
-        <div style={{
-          width:'100%', maxWidth: 540,
-          height:'min(680px, 92vh)',
-          background:'var(--bg)',
-          borderTopLeftRadius: 20, borderTopRightRadius: 20,
-          display:'flex', flexDirection:'column',
-          boxShadow:'0 -10px 40px rgba(0,0,0,.2)',
-          overflow:'hidden',
-        }}>
-          {/* Header — marine du logo */}
-          <div style={{
-            padding:'14px 18px',
-            background: '#003048',
-            color:'#fff',
-            display:'flex', alignItems:'center', justifyContent:'space-between',
-            flexShrink: 0,
-          }}>
-            <div>
-              <div style={{ fontSize:15, fontWeight:800 }}>💬 Chat équipe</div>
-              <div style={{ fontSize:11, opacity:.80 }}>
-                {othersTyping.length > 0
-                  ? (othersTyping.length === 1
-                      ? othersTyping[0].nom + ' en train d\'écrire…'
-                      : othersTyping.length + ' personnes en train d\'écrire…')
-                  : (messages.filter(m => !m.deletedAt).length + ' message' + (messages.length > 1 ? 's' : ''))
-                }
-              </div>
+      <div className={s.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className={s.panel} role="dialog" aria-modal="true" aria-label="Chat équipe">
+          {/* En-tête */}
+          <header className={s.head}>
+            <div className={s.headText}>
+              <h2 className={s.title}><MessageCircle size={16} aria-hidden="true"/> Chat équipe</h2>
+              <p className={clsx(s.sub, othersTyping.length > 0 && s.typing)} aria-live="polite">{subtitle}</p>
             </div>
-            <div style={{ display:'flex', alignItems:'center', gap: 6 }}>
+            <div className={s.headBtns}>
               {onToggleWalkieMute && (
-                <button onClick={onToggleWalkieMute}
-                  title={walkieMuted ? 'Réactiver le talkie' : 'Couper le son du talkie'}
-                  style={{
-                    background:'rgba(255,255,255,.18)', border:'none', color:'#fff',
-                    width: 34, height: 34, borderRadius: 8, cursor:'pointer',
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    minHeight: 'auto',
-                  }}>
-                  {walkieMuted ? <VolumeX size={16}/> : <Volume2 size={16}/>}
+                <button type="button" className={s.headBtn} onClick={onToggleWalkieMute}
+                  aria-pressed={walkieMuted}
+                  aria-label={walkieMuted ? 'Réactiver le talkie' : 'Couper le son du talkie'}
+                  title={walkieMuted ? 'Réactiver le talkie' : 'Couper le son du talkie'}>
+                  {walkieMuted ? <VolumeX size={18} aria-hidden="true"/> : <Volume2 size={18} aria-hidden="true"/>}
                 </button>
               )}
-              <button onClick={onClose} style={{
-                background:'rgba(255,255,255,.18)', border:'none', color:'#fff',
-                width: 34, height: 34, borderRadius: 8, cursor:'pointer',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                minHeight: 'auto',
-              }}>
-                <X size={18}/>
+              <button type="button" className={s.headBtn} onClick={onClose} aria-label="Fermer le chat">
+                <X size={18} aria-hidden="true"/>
               </button>
             </div>
-          </div>
+          </header>
 
           {/* Messages */}
-          <div ref={messagesScrollRef} style={{
-            flex: 1, overflow:'auto',
-            background:'var(--bg2)',
-            padding:'14px 12px',
-            display:'flex', flexDirection:'column', gap: 6,
-          }}>
+          <div ref={messagesScrollRef} className={s.list}>
             {messages.length === 0 && (
-              <div style={{ textAlign:'center', padding:'40px 20px', color:'var(--muted)' }}>
-                <div style={{ fontSize: 40, marginBottom: 10 }}>💬</div>
-                <div style={{ fontSize: 13 }}>Aucun message pour le moment.<br/>Soyez le premier à écrire !</div>
+              <div className={s.empty}>
+                <span className={s.emptyIcon}><MessageCircle size={22} aria-hidden="true"/></span>
+                <b>Aucun message pour le moment</b>
+                <p>Soyez le premier à écrire !</p>
               </div>
             )}
             {renderItems.map(item => {
               if (item.kind === 'sep') {
                 return (
-                  <div key={item.key} style={{ display:'flex', justifyContent:'center', margin:'8px 0' }}>
-                    <span style={{ fontSize:10, fontWeight:700, color:'var(--muted)', background:'var(--bg)', padding:'4px 12px', borderRadius:6, border:'0.5px solid var(--border)', textTransform:'uppercase', letterSpacing:'.05em' }}>
-                      {item.label}
-                    </span>
-                  </div>
+                  <div key={item.key} className={s.sep}><span>{item.label}</span></div>
                 )
               }
               const m = item.m
               const isMine = m.author?.uid === uid
               const canDelete = isMine || isAdmin
-              const roleCol = ROLE_COLORS[m.author?.role] || '#888'
+              const roleCol = ROLE_COLORS[m.author?.role] || 'var(--muted)'
               const roleLab = ROLE_LABELS[m.author?.role] || m.author?.role || ''
               const isDeleted = !!m.deletedAt
 
               return (
-                <div key={m.id} style={{
-                  display:'flex',
-                  justifyContent: isMine ? 'flex-end' : 'flex-start',
-                  marginTop: 2,
-                }}>
-                  <div style={{
-                    maxWidth:'82%',
-                    display:'flex', flexDirection:'column',
-                    alignItems: isMine ? 'flex-end' : 'flex-start',
-                    gap: 2,
-                  }}>
+                <div key={m.id} className={clsx(s.row, isMine && s.mine)}>
+                  <div className={s.col}>
                     {!isMine && !isDeleted && (
-                      <div style={{ fontSize:10, color:'var(--muted)', display:'flex', alignItems:'center', gap:6, marginLeft: 4 }}>
-                        <span style={{ fontWeight:700 }}>{m.author?.nom || '—'}</span>
-                        <span style={{ background: roleCol + '22', color: roleCol, padding:'1px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700, textTransform: 'uppercase' }}>{roleLab}</span>
+                      <div className={s.author}>
+                        <b>{m.author?.nom || '—'}</b>
+                        {roleLab && <span className={s.role} style={{ '--role': roleCol }}>{roleLab}</span>}
                       </div>
                     )}
-                    <div style={{
-                      background: isDeleted ? 'var(--bg2)' : (isMine ? 'var(--brand)' : 'var(--bg)'),
-                      color:      isDeleted ? 'var(--muted)' : (isMine ? '#fff' : 'var(--text)'),
-                      border: isMine ? 'none' : '0.5px solid var(--border)',
-                      borderRadius: 12,
-                      borderBottomLeftRadius:  !isMine ? 4 : 12,
-                      borderBottomRightRadius:  isMine ? 4 : 12,
-                      padding: m.type === 'image' ? 4 : '8px 12px',
-                      fontSize: 14,
-                      lineHeight: 1.45,
-                      wordBreak: 'break-word',
-                      fontStyle: isDeleted ? 'italic' : 'normal',
-                      position:'relative',
-                      maxWidth: '100%',
-                    }}>
-                      {isDeleted && '🗑 Message supprimé'}
+                    <div className={clsx(s.bubble, isDeleted && s.deleted, !isDeleted && m.type === 'image' && s.image)}>
+                      {isDeleted && <><Trash2 size={13} aria-hidden="true"/> Message supprimé</>}
                       {!isDeleted && m.type === 'text' && m.content}
                       {!isDeleted && m.type === 'voice' && (
-                        <VoicePlayer url={m.audioUrl} duration={m.duration} color={isMine ? '#fff' : 'var(--brand)'}/>
+                        <VoicePlayer url={m.audioUrl} duration={m.duration}/>
                       )}
                       {!isDeleted && m.type === 'image' && (
-                        <img src={m.imageUrl}
-                          alt=""
-                          onClick={() => setFullImage(m.imageUrl)}
-                          onLoad={() => {
-                            const el = messagesScrollRef.current
-                            if (el) el.scrollTop = el.scrollHeight
-                          }}
-                          style={{ maxWidth: 240, width:'100%', maxHeight: 320, borderRadius: 10, display:'block', cursor:'pointer' }}/>
+                        <button type="button" className={s.imgBtn} onClick={() => setFullImage(m.imageUrl)} aria-label="Agrandir l'image">
+                          <img src={m.imageUrl}
+                            alt={'Image envoyée par ' + (m.author?.nom || 'un membre')}
+                            onLoad={() => {
+                              const el = messagesScrollRef.current
+                              if (el) el.scrollTop = el.scrollHeight
+                            }}/>
+                        </button>
                       )}
                     </div>
-                    <div style={{ fontSize:9, color:'var(--muted)', display:'flex', alignItems:'center', gap: 6, paddingX: 4 }}>
+                    <div className={s.meta}>
                       <span>{fmtHour(m.createdAt || m.timestamp)}</span>
                       {canDelete && !isDeleted && (
-                        <button onClick={() => handleDelete(m)}
-                          title="Supprimer"
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', padding: 0, display:'flex', alignItems:'center' }}>
-                          <Trash2 size={11}/>
+                        <button type="button" className={s.del} onClick={() => handleDelete(m)}
+                          aria-label="Supprimer ce message" title="Supprimer">
+                          <Trash2 size={13} aria-hidden="true"/>
                         </button>
                       )}
                     </div>
@@ -430,87 +374,77 @@ export default function ChatModal({
 
           {/* Erreur */}
           {err && (
-            <div style={{ padding:'6px 14px', background:'var(--red-light)', color:'var(--red-dark)', fontSize:11, display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-              <AlertCircle size={12}/> {err}
+            <div className={s.err} role="alert">
+              <AlertCircle size={14} aria-hidden="true"/> <span>{err}</span>
             </div>
           )}
 
-          {/* Input */}
-          <div style={{
-            padding:'10px 12px',
-            background:'var(--bg)',
-            borderTop:'0.5px solid var(--border)',
-            display:'flex', alignItems:'center', gap: 6,
-            flexShrink: 0,
-          }}>
+          {/* Confirmation de suppression, ou saisie */}
+          {toDelete ? (
+            <div className={s.confirm} role="alertdialog" aria-labelledby="chat-del-title">
+              <p><b id="chat-del-title">{toDelete.author?.uid === uid ? 'Supprimer votre message ?' : 'Supprimer ce message ?'}</b>
+                Il sera remplacé par « Message supprimé » pour toute l'équipe.</p>
+              <div className={s.confirmBtns}>
+                <Button variant="secondary" onClick={() => setToDelete(null)}>Garder</Button>
+                <Button variant="danger" icon={Trash2} autoFocus onClick={confirmDelete}>Supprimer</Button>
+              </div>
+            </div>
+          ) : (
+          <div className={s.composer}>
             {recording ? (
               <>
-                <button onClick={cancelRecord}
-                  style={{ width: 38, height: 38, borderRadius: 8, border:'none', background:'var(--red-light)', color:'var(--red-dark)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <X size={18}/>
+                <button type="button" className={clsx(s.tool, s.cancelRec)} onClick={cancelRecord} aria-label="Annuler l'enregistrement">
+                  <X size={18} aria-hidden="true"/>
                 </button>
-                <div style={{ flex: 1, display:'flex', alignItems:'center', gap:8, padding:'10px 14px', background:'var(--bg2)', borderRadius: 8 }}>
-                  <span style={{ width: 8, height: 8, borderRadius:'50%', background:'#D83030', animation:'pulse 1s infinite' }}/>
-                  <span style={{ fontSize: 13, color:'var(--text)', fontFamily:'monospace' }}>{formatDuration(recordSec)}</span>
-                  <span style={{ fontSize: 11, color:'var(--muted)', marginLeft:'auto' }}>Enregistrement…</span>
+                <div className={s.rec} role="status">
+                  <span className={s.recDot} aria-hidden="true"/>
+                  <span className={s.recTime}>{formatDuration(recordSec)}</span>
+                  <span className={s.recHint}>Enregistrement…</span>
                 </div>
-                <button onClick={stopRecord}
-                  style={{ width: 38, height: 38, borderRadius: 8, border:'none', background: 'var(--brand)', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <Send size={18}/>
+                <button type="button" className={clsx(s.tool, s.sendBtn)} onClick={stopRecord} aria-label="Envoyer le vocal">
+                  <Send size={18} aria-hidden="true"/>
                 </button>
               </>
             ) : (
               <>
-                <button onClick={() => fileInputRef.current?.click()}
-                  title="Joindre une image"
-                  style={{ width: 38, height: 38, borderRadius: 8, border:'1px solid var(--border2)', background:'var(--bg2)', color:'var(--muted)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                  <ImageIcon size={18}/>
+                <button type="button" className={clsx(s.tool, s.attach)} onClick={() => fileInputRef.current?.click()}
+                  aria-label="Joindre une image" title="Joindre une image" disabled={sending}>
+                  <ImageIcon size={18} aria-hidden="true"/>
                 </button>
-                <input ref={fileInputRef} type="file" accept="image/*"
-                  onChange={handleImagePick}
-                  style={{ display:'none' }}/>
+                <input ref={fileInputRef} type="file" accept="image/*" className={s.hidden}
+                  onChange={handleImagePick} tabIndex={-1} aria-hidden="true"/>
                 <input ref={inputRef}
+                  className={s.input}
                   value={text}
                   onChange={(e) => { setText(e.target.value); notifyTyping() }}
                   onKeyDown={handleKey}
                   placeholder="Écrire un message…"
-                  disabled={sending}
-                  style={{
-                    flex: 1, minWidth: 0, boxSizing: 'border-box',
-                    minHeight: 38, padding: '0 14px',
-                    border: '1px solid var(--border2)', borderRadius: 8,
-                    fontSize: 14, color: 'var(--text)',
-                    background: 'var(--bg)', outline: 'none',
-                    fontFamily: 'var(--font)',
-                  }}/>
+                  aria-label="Message"
+                  enterKeyHint="send"
+                  disabled={sending}/>
                 {text.trim() ? (
-                  <button onClick={handleSend} disabled={sending}
-                    style={{ width: 38, height: 38, borderRadius: 8, border:'none', background: 'var(--brand)', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <Send size={18}/>
+                  <button type="button" className={clsx(s.tool, s.sendBtn)} onClick={handleSend} disabled={sending} aria-label="Envoyer le message">
+                    <Send size={18} aria-hidden="true"/>
                   </button>
                 ) : (
-                  <button onMouseDown={startRecord} onTouchStart={startRecord}
-                    title="Appuyer pour enregistrer un vocal"
-                    style={{ width: 38, height: 38, borderRadius: 8, border:'none', background: '#F07848', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                    <Mic size={18}/>
+                  <button type="button" className={clsx(s.tool, s.mic)} onMouseDown={startRecord} onTouchStart={startRecord}
+                    aria-label="Appuyer pour enregistrer un vocal" title="Appuyer pour enregistrer un vocal">
+                    <Mic size={18} aria-hidden="true"/>
                   </button>
                 )}
               </>
             )}
           </div>
+          )}
         </div>
-
-        <style>{`
-          @keyframes pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
-        `}</style>
       </div>
 
       {/* Image plein écran */}
       {fullImage && (
-        <div onClick={() => setFullImage(null)}
-          style={{ position:'fixed', inset:0, zIndex: 1100, background:'rgba(0,0,0,.92)', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding: 20 }}>
-          <img src={fullImage} style={{ maxWidth:'100%', maxHeight:'100%', borderRadius: 10 }}/>
-        </div>
+        <button type="button" className={s.viewer} onClick={() => setFullImage(null)} aria-label="Fermer l'image" autoFocus>
+          <img src={fullImage} alt="Image du chat en grand"/>
+          <span className={s.viewerClose} aria-hidden="true"><X size={20}/></span>
+        </button>
       )}
     </>
   )

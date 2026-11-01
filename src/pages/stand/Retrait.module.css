@@ -1,0 +1,79 @@
+/* Retrait au stand — colonne de 560px max, utilisable à une main sur téléphone */
+.page { display: grid; gap: var(--space-3); max-width: 560px; margin: 0 auto; min-width: 0; color: var(--text); }
+.page:global(.sun) { padding: var(--space-3); border-radius: var(--radius-lg); }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.title { margin: 0; font: 800 var(--fs-18)/1.2 var(--font-display); }
+.sunBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--touch);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: var(--bg2);
+  color: var(--muted);
+  font: 700 var(--fs-13) var(--font);
+  cursor: pointer;
+}
+.sunBtn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.sunOn { background: var(--brand-light); border-color: transparent; color: var(--brand-dark); }
+
+.card {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+.cardHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.cardTitle { margin: 0; font-size: var(--fs-15); font-weight: 700; min-width: 0; }
+.withIcon { display: flex; align-items: center; gap: var(--space-2); }
+.muted { margin: 2px 0 0; font-size: var(--fs-13); color: var(--muted); }
+.close { flex-shrink: 0; min-width: var(--touch); min-height: var(--touch); }
+
+.searching { display: grid; gap: var(--space-2); }
+.err {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius);
+  background: var(--red-light);
+  color: var(--red-dark);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.err svg { flex-shrink: 0; margin-top: 1px; }
+
+/* Réservations du spectateur */
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.resa { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius); border: 1px solid; }
+.resaReady { background: var(--brand-light); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.resaWait  { background: var(--gold-light);  border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+.resaTop { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); }
+.resaItems { min-width: 0; font-size: var(--fs-13); font-weight: 600; line-height: 1.4; }
+.resaTop > span:last-child { flex-shrink: 0; }
+.resaBottom { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+.code { font-family: ui-monospace, monospace; font-size: var(--fs-12); color: var(--muted); }
+.amount { font: 800 var(--fs-18) var(--font-display); font-variant-numeric: tabular-nums; }
+
+/* Retrait validé */
+.done { justify-items: center; text-align: center; padding: var(--space-6) var(--space-4); }
+.doneTitle { margin: var(--space-2) 0 0; font: 800 var(--fs-24)/1.2 var(--font-display); }
+.doneName { margin: 0; font-size: var(--fs-15); color: var(--muted); }
+.doneItems { margin: 0; font-size: var(--fs-13); color: var(--muted); }
+.doneTotal { margin: var(--space-1) 0 var(--space-3); font: 800 var(--fs-32) var(--font-display); color: var(--red); font-variant-numeric: tabular-nums; }
+
+/* Toutes les réservations prêtes */
+.readyList { list-style: none; margin: 0; padding: 0; }
+.readyRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 10px 0; border-bottom: 1px solid var(--border); }
+.readyRow:last-child { border-bottom: none; }
+.readyText { min-width: 0; display: grid; gap: 2px; }
+.readyText b { font-size: var(--fs-13); }
+.readyText span { font-size: var(--fs-12); color: var(--muted); }
+.readyAmount { flex-shrink: 0; font-size: var(--fs-15); font-weight: 800; color: var(--brand-dark); font-variant-numeric: tabular-nums; }

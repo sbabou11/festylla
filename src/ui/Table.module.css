@@ -1,4 +1,5 @@
 .wrap {
+  container-type: inline-size;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
@@ -23,3 +24,46 @@
 .table tbody tr:hover td { background: var(--bg2); }
 .right { text-align: right !important; font-variant-numeric: tabular-nums; }
 .clickable { cursor: pointer; }
+.clickable:focus-visible td { background: var(--brand-light); }
+
+/* Nouvelles lignes : elles glissent en place (une seule fois, à l'insertion) */
+.body tr { animation: rowIn var(--dur-slow) var(--ease) both; }
+.body tr:nth-child(2) { animation-delay: 30ms; }
+.body tr:nth-child(3) { animation-delay: 60ms; }
+.body tr:nth-child(4) { animation-delay: 90ms; }
+.body tr:nth-child(5) { animation-delay: 120ms; }
+.body tr:nth-child(6) { animation-delay: 150ms; }
+.body tr:nth-child(n+7) { animation-delay: 180ms; }
+@keyframes rowIn { from { opacity: 0; transform: translateY(4px); } }
+
+/* ── Vue en cartes quand le tableau n'a pas la place ── */
+@container (max-width: 560px) {
+  .table { min-width: 0; }
+  .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px var(--space-3);
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .table tbody tr:last-child { border-bottom: none; }
+  .table td { padding: 0; border: none; min-width: 0; }
+  .table tbody tr:hover td { background: transparent; }
+  .clickable:active { background: var(--bg2); }
+  .cTitle { grid-column: 1; grid-row: 1; font-weight: 700; font-size: var(--fs-13); overflow-wrap: anywhere; }
+  .cValue { grid-column: 2; grid-row: 1; font-weight: 700; text-align: right !important; white-space: nowrap; }
+  .cField {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--fs-12);
+    color: var(--muted);
+    text-align: right !important;
+  }
+  .cField::before { content: attr(data-label); flex-shrink: 0; font-size: var(--fs-11); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; text-align: left; }
+  .cField:empty { display: none; }
+  .cHide { display: none; }
+}

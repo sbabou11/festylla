@@ -2,11 +2,15 @@
  * components/QrScanner.jsx
  * Scan QR code via la caméra du device (html5-qrcode).
  * Fallback : saisie manuelle de l'ID si la caméra est refusée.
+ * codeLength : la saisie manuelle devient un champ en cases (code court d'un poste, PIN) validé seul.
+ * codeStatus : 'error' fait vibrer les cases (code refusé par l'appelant).
  * Gère les permissions caméra, les erreurs, et le nettoyage au démontage.
  */
 
 import React, { useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, Keyboard } from 'lucide-react'
+import { Tabs, Button, CodeInput } from '../ui'
+import s from './QrScanner.module.css'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
 
@@ -23,6 +27,7 @@ export default function QrScanner({
   parse = parseSpecId,
   hint = 'Pointez la caméra vers le QR code du spectateur',
   simulate = ['FY-4A2B', 'FY-9C7E', 'FY-1F3D'],
+  codeLength, codeStatus = null,
 }) {
   const [mode, setMode] = useState('camera') // 'camera' | 'manual'
   const [camError, setCamError] = useState(null)
@@ -92,8 +97,8 @@ export default function QrScanner({
     if (mountedRef.current) setScanning(false)
   }
 
-  const handleManualSubmit = () => {
-    const val = manualVal.trim().toUpperCase()
+  const handleManualSubmit = (raw = manualVal) => {
+    const val = String(raw).trim().toUpperCase()
     if (!val) return
     if (onScan) onScan(val)
     if (onManual) onManual(val)
@@ -107,66 +112,60 @@ export default function QrScanner({
   }
 
   return (
-    <div style={{ marginBottom: 12 }}>
-      {/* Toggles mode */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-        <button
-          onClick={() => setMode('camera')}
-          style={{ flex: 1, padding: '7px 10px', border: '0.5px solid var(--border2)', borderRadius: 8, background: mode === 'camera' ? 'var(--brand)' : 'var(--bg2)', color: mode === 'camera' ? '#fff' : 'var(--muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <Camera size={14} /> Caméra
-        </button>
-        <button
-          onClick={() => setMode('manual')}
-          style={{ flex: 1, padding: '7px 10px', border: '0.5px solid var(--border2)', borderRadius: 8, background: mode === 'manual' ? 'var(--brand)' : 'var(--bg2)', color: mode === 'manual' ? '#fff' : 'var(--muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <Keyboard size={14} /> Manuel
-        </button>
-      </div>
+    <div className={s.root}>
+      <Tabs
+        label="Mode de lecture"
+        value={mode}
+        onChange={setMode}
+        className={s.modes}
+        items={[
+          { value: 'camera', label: <><Camera size={14} aria-hidden="true" /> Caméra</> },
+          { value: 'manual', label: <><Keyboard size={14} aria-hidden="true" /> Saisie</> },
+        ]}
+      />
 
-      {/* Erreur caméra */}
       {camError && (
-        <div style={{ padding: '8px 12px', background: 'var(--amber-light)', border: '0.5px solid #EF9F27', borderRadius: 8, fontSize: 12, color: 'var(--amber)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <CameraOff size={14} /> {camError}
-        </div>
+        <div className={s.error} role="status"><CameraOff size={14} aria-hidden="true" /> {camError}</div>
       )}
 
-      {/* Zone caméra */}
       {mode === 'camera' && (
         <div>
-          <div
-            id={SCANNER_ID}
-            style={{ borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border2)', minHeight: 200, background: '#000', position: 'relative' }}
-          />
-          {scanning && (
-            <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginTop: 6 }}>
-              {hint}
-            </div>
-          )}
+          <div id={SCANNER_ID} className={s.camera} />
+          {scanning && <p className={s.hint}>{hint}</p>}
           {/* Bouton simulation (développement uniquement) */}
-          {import.meta.env.DEV && simulate?.length > 0 && <button
-            onClick={handleSimulate}
-            style={{ width: '100%', marginTop: 8, padding: '6px 10px', border: '0.5px solid var(--border2)', borderRadius: 8, background: 'var(--bg2)', color: 'var(--muted)', fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font)' }}>
-            Simuler un scan (démo)
-          </button>}
+          {import.meta.env.DEV && simulate?.length > 0 && (
+            <button type="button" onClick={handleSimulate} className={s.simulate}>Simuler un scan (démo)</button>
+          )}
         </div>
       )}
 
-      {/* Saisie manuelle */}
-      {mode === 'manual' && (
-        <div>
+      {mode === 'manual' && (codeLength ? (
+        <div className={s.manualCode}>
+          <CodeInput
+            length={codeLength}
+            value={manualVal}
+            onChange={setManualVal}
+            onComplete={handleManualSubmit}
+            status={codeStatus}
+            autoFocus
+            label={placeholder}
+          />
+          <p className={s.hint}>{placeholder}</p>
+        </div>
+      ) : (
+        <form className={s.manual} onSubmit={e => { e.preventDefault(); handleManualSubmit() }}>
           <input
             value={manualVal}
             onChange={e => setManualVal(e.target.value.toUpperCase())}
-            onKeyDown={e => e.key === 'Enter' && handleManualSubmit()}
             placeholder={placeholder}
-            style={{ width: '100%', padding: '9px 12px', border: '0.5px solid var(--border2)', borderRadius: 8, fontSize: 13, background: 'var(--bg2)', color: 'var(--text)', fontFamily: 'var(--font)', marginBottom: 8 }}
+            aria-label={placeholder}
+            className={s.input}
+            autoCapitalize="characters"
+            autoComplete="off"
           />
-          <button
-            onClick={handleManualSubmit}
-            style={{ width: '100%', padding: 8, background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'var(--font)' }}>
-            Valider
-          </button>
-        </div>
-      )}
+          <Button type="submit" block disabled={!manualVal.trim()}>Valider</Button>
+        </form>
+      ))}
     </div>
   )
 }

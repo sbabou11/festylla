@@ -2,12 +2,16 @@
  * pages/admin/Alertes.jsx
  * Détection d'anomalies financières en temps réel.
  * Vibration + son à chaque nouvelle alerte.
+ * Acquitter se rattrape pendant 5 s (toast « Annuler »).
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { AlertTriangle, CheckCircle, Bell, BellOff } from 'lucide-react'
+import clsx from 'clsx'
+import { AlertTriangle, CheckCircle, Bell, BellOff, ShieldCheck } from 'lucide-react'
 import useAppStore  from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
+import { Button, Card, Badge, Stat, toast } from '../../ui'
+import s from './alertes/alertes.module.css'
 
 const SEUILS = {
   maxDebitSansResa:  500,   // débit > 5€ sans réservation préalable = suspicieux
@@ -186,107 +190,99 @@ export default function Alertes() {
     prevCountRef.current = actives.length
   }, [actives.length])
 
-  const acquitter = (id) => acquitterPersist(new Set([...acquittees, id]))
-  const acquitterTout = () => acquitterPersist(new Set(anomalies.map(a=>a.id)))
+  // Acquitter tout de suite, « Annuler » remet l'ensemble précédent
+  const acquitter = (id) => {
+    const prev = acquittees
+    acquitterPersist(new Set([...acquittees, id]))
+    toast.undo('Alerte acquittée', () => acquitterPersist(prev))
+  }
+  const acquitterTout = () => {
+    const prev = acquittees
+    acquitterPersist(new Set(anomalies.map(a=>a.id)))
+    toast.undo('Toutes les alertes sont acquittées', () => acquitterPersist(prev))
+  }
 
-  const niveauStyle = (n) => n === 'critique'
-    ? { bg:'var(--red-light)',   border:'#F09595',   color:'var(--red)',   label:'Critique' }
-    : { bg:'var(--amber-light)', border:'#EF9F27',   color:'var(--amber)', label:'Attention' }
+  const enAttention = actives.filter(a=>a.niveau==='attention').length
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
-        <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <div style={{fontSize:14,fontWeight:600,color:'var(--text)'}}>
-            Alertes financières en temps réel
-          </div>
+    <div className={s.page}>
+      {/* En-tête */}
+      <div className={s.toolbar}>
+        <div className={s.heading}>
+          <h2 className={s.title}>Alertes financières en temps réel</h2>
           {actives.length>0&&(
-            <span style={{background:'var(--red)',color:'#fff',borderRadius:20,fontSize:11,padding:'2px 10px',fontWeight:700}}>
-              {actives.length} active{actives.length>1?'s':''}
-            </span>
+            <Badge tone="danger">{actives.length} active{actives.length>1?'s':''}</Badge>
           )}
         </div>
-        <div style={{display:'flex',gap:8}}>
-          <button onClick={()=>setSon(v=>!v)}
-            style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',border:'0.5px solid var(--border2)',borderRadius:8,background:'var(--bg)',color:son?'var(--brand-dark)':'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:'var(--font)'}}>
-            {son?<Bell size={13}/>:<BellOff size={13}/>}
+        <div className={s.toolbarActions}>
+          <Button variant="secondary" size="sm" icon={son?Bell:BellOff} aria-pressed={son}
+            className={clsx(son && s.soundOn)} onClick={()=>setSon(v=>!v)}>
             {son?'Son activé':'Son coupé'}
-          </button>
+          </Button>
           {actives.length>0&&(
-            <button onClick={acquitterTout}
-              style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',border:'0.5px solid var(--border2)',borderRadius:8,background:'var(--bg)',color:'var(--muted)',fontSize:12,cursor:'pointer',fontFamily:'var(--font)'}}>
-              <CheckCircle size={13}/> Tout acquitter
-            </button>
+            <Button variant="secondary" size="sm" icon={CheckCircle} onClick={acquitterTout}>Tout acquitter</Button>
           )}
         </div>
       </div>
 
       {/* Stats rapides */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
-        <div style={{background:critiques.length?'var(--red-light)':'var(--bg2)',borderRadius:'var(--radius)',padding:'12px 14px',border:critiques.length?'0.5px solid #F09595':'none'}}>
-          <div style={{fontSize:11,color:critiques.length?'var(--red)':'var(--muted)',marginBottom:4}}>Alertes critiques</div>
-          <div style={{fontSize:22,fontWeight:700,color:critiques.length?'var(--red)':'var(--text)'}}>{critiques.length}</div>
+      <div className={clsx(s.stats, 'yc-stagger')}>
+        <div className={clsx(s.statWrap, critiques.length > 0 && s.statAlert)}>
+          <Stat label="Alertes critiques" value={critiques.length} icon={AlertTriangle} tone={critiques.length ? 'coral' : 'brand'}/>
         </div>
-        <div style={{background:'var(--bg2)',borderRadius:'var(--radius)',padding:'12px 14px'}}>
-          <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>En attention</div>
-          <div style={{fontSize:22,fontWeight:700,color:'var(--amber)'}}>{actives.filter(a=>a.niveau==='attention').length}</div>
-        </div>
-        <div style={{background:'var(--bg2)',borderRadius:'var(--radius)',padding:'12px 14px'}}>
-          <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>Acquittées</div>
-          <div style={{fontSize:22,fontWeight:700,color:'var(--text)'}}>{acquittees.size}</div>
-        </div>
+        <Stat label="En attention" value={enAttention} icon={AlertTriangle} tone="warning"/>
+        <Stat label="Acquittées" value={acquittees.size} icon={CheckCircle}/>
       </div>
 
       {/* Seuils configurés */}
-      <div style={{background:'var(--bg)',border:'0.5px solid var(--border)',borderRadius:'var(--radius-lg)',padding:'12px 16px',marginBottom:14}}>
-        <div style={{fontSize:12,fontWeight:600,color:'var(--text)',marginBottom:8}}>Seuils de détection</div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+      <Card title="Seuils de détection">
+        <dl className={s.thresholds}>
           {[
             ['Débit élevé unique',     '> 50,00€'],
             ['Transactions rapides',    `≥ ${SEUILS.txRapides} tx / spectateur`],
             ['Écart comptable global',  `> ${fmt(SEUILS.ecartSoldeMax)}`],
             ['Solde négatif',           'Interdit'],
           ].map(([l,v])=>(
-            <div key={l} style={{display:'flex',justifyContent:'space-between',fontSize:12,padding:'4px 0',borderBottom:'0.5px solid var(--border)'}}>
-              <span style={{color:'var(--muted)'}}>{l}</span>
-              <span style={{color:'var(--text)',fontWeight:600}}>{v}</span>
+            <div key={l} className={s.threshold}>
+              <dt>{l}</dt>
+              <dd>{v}</dd>
             </div>
           ))}
-        </div>
-      </div>
+        </dl>
+      </Card>
 
       {/* Liste des alertes */}
       {actives.length === 0
         ? (
-          <div style={{background:'var(--brand-light)',border:'0.5px solid #5DCAA5',borderRadius:'var(--radius-lg)',padding:24,textAlign:'center'}}>
-            <CheckCircle size={28} style={{color:'var(--brand-dark)',display:'block',margin:'0 auto 10px'}}/>
-            <div style={{fontSize:14,fontWeight:600,color:'var(--brand-dark)'}}>Aucune anomalie détectée</div>
-            <div style={{fontSize:12,color:'var(--brand-dark)',opacity:.8,marginTop:4}}>Surveillance active en temps réel</div>
+          <div className={s.allClear}>
+            <ShieldCheck size={28} aria-hidden="true"/>
+            <div className={s.allClearTitle}>Aucune anomalie détectée</div>
+            <div className={s.allClearSub}>Surveillance active en temps réel</div>
           </div>
         )
-        : actives.map(a => {
-            const s = niveauStyle(a.niveau)
-            return (
-              <div key={a.id} style={{border:`0.5px solid ${s.border}`,borderRadius:10,padding:14,marginBottom:8,background:s.bg}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <AlertTriangle size={16} style={{color:s.color,flexShrink:0}}/>
-                    <span style={{fontWeight:600,fontSize:13,color:s.color}}>{a.type}</span>
-                    <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:s.color,color:'#fff'}}>{s.label}</span>
+        : (
+          <div className={clsx(s.list, 'yc-stagger')}>
+            {actives.map((a, i) => {
+              const crit = a.niveau === 'critique'
+              return (
+                <article key={a.id || `${a.titre}-${i}`} className={clsx(s.alert, crit && s.critique)}>
+                  <div className={s.alertHead}>
+                    <div className={s.alertTitle}>
+                      <AlertTriangle size={16} aria-hidden="true" className={s.alertIcon}/>
+                      <span className={s.alertType}>{a.type || a.titre}</span>
+                      <Badge tone={crit ? 'danger' : 'warning'}>{crit ? 'Critique' : 'Attention'}</Badge>
+                    </div>
+                    {a.date && <span className={s.alertDate}>{a.date}</span>}
                   </div>
-                  <span style={{fontSize:11,color:s.color,opacity:.8}}>{a.date}</span>
-                </div>
-                <div style={{fontSize:12,color:'var(--text)',marginBottom:10,marginLeft:24}}>{a.detail}</div>
-                <div style={{display:'flex',justifyContent:'flex-end'}}>
-                  <button onClick={()=>acquitter(a.id)}
-                    style={{padding:'4px 12px',border:`0.5px solid ${s.border}`,borderRadius:6,background:'rgba(255,255,255,0.6)',color:s.color,fontSize:11,cursor:'pointer',fontFamily:'var(--font)',display:'flex',alignItems:'center',gap:5}}>
-                    <CheckCircle size={11}/> Acquitter
-                  </button>
-                </div>
-              </div>
-            )
-          })
+                  <p className={s.alertDetail}>{a.detail}</p>
+                  <div className={s.alertFoot}>
+                    <Button variant="secondary" size="sm" icon={CheckCircle} onClick={()=>acquitter(a.id)}>Acquitter</Button>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        )
       }
     </div>
   )

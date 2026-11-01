@@ -1,48 +1,29 @@
 /**
- * pages/public/EspaceArtiste.jsx — v6 Lot C
+ * pages/public/EspaceArtiste.jsx — v6 Lot C, design system lot 8b
  * Espace personnel artiste — URL : /artiste?ev=EVENT_ID&cr=CRENEAU_ID
- * Onglets : Droits, Consos, Réserver, Mes résas, Programme
+ * Onglets (barre du bas, mobile d'abord) : Droits, Consos, Réserver, Mes résas, Programme.
+ * Contenu des onglets : artiste/ArtisteSections.jsx ; styles : artiste/EspaceArtiste.module.css
  */
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
+import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import { getSettings, creerReservationArtiste, annulerReservationArtiste, watchArtistReservations, linkArtistToSpec, unlinkArtistFromSpec } from '../../firebase/service'
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore'
-import { Clock, MapPin, Gift, History, CalendarDays, Bookmark, ShoppingCart, X, Plus, Minus, CheckCircle, AlertCircle, Link2, Unlink, Wallet } from 'lucide-react'
+import { Clock, MapPin, Gift, History, CalendarDays, Bookmark, ShoppingCart, AlertCircle, Link2, Wallet, Mic, Maximize2, Ban } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import ThemeToggle from '../../components/ThemeToggle'
 import NotifBell from '../../components/NotifBell'
 import { useTheme } from '../../hooks/useTheme'
 import { useNotifications } from '../../hooks/useNotifications'
+import { Button, Dialog, Sheet, Empty, Skeleton, toast } from '../../ui'
+import { TYPES, fmtHour, fmtDate } from './artiste/artisteUtils'
+import { DroitsTab, ConsosTab, ReserverTab, ResasTab, ProgrammeTab } from './artiste/ArtisteSections'
+import s from './artiste/EspaceArtiste.module.css'
 
 const BRAND = '#1a6b7a'
 
-const TYPES = {
-  musical:           { icon: '🎵', label: 'Musical',    color: '#1a6b7a' },
-  litteraire:        { icon: '📚', label: 'Littéraire', color: '#534AB7' },
-  cinematographique: { icon: '🎬', label: 'Cinéma',     color: '#BA7517' },
-  autre:             { icon: '🎭', label: 'Autre',       color: '#6b6b6b' },
-}
-
-function fmtHour(ts) {
-  if (!ts) return '—'
-  const d = ts?.toDate ? ts.toDate() : new Date(ts)
-  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-}
-
-function fmtDate(ts) {
-  if (!ts) return '—'
-  const d = ts?.toDate ? ts.toDate() : new Date(ts)
-  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
-}
-
-function fmtDateShort(ts) {
-  if (!ts) return '—'
-  const d = ts?.toDate ? ts.toDate() : new Date(ts)
-  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
-}
-
 export default function EspaceArtiste() {
-  const { theme } = useTheme()
+  const { theme } = useTheme() // active le thème global (sombre / clair) sur cette page
 
   const params  = new URLSearchParams(window.location.search)
   const eventId   = params.get('ev')
@@ -66,6 +47,8 @@ export default function EspaceArtiste() {
   const [linkInput, setLinkInput] = useState('')
   const [linkErr, setLinkErr] = useState('')
   const [linkLoading, setLinkLoading] = useState(false)
+  const [cancelAsk,   setCancelAsk]   = useState(null)  // id de la réservation à annuler
+  const [unlinkAsk,   setUnlinkAsk]   = useState(false)
 
   // Notifications artiste (filtrées par creneauId)
   const { notifications, nonLuCount, marquerToutLu } = useNotifications({
@@ -156,23 +139,36 @@ export default function EspaceArtiste() {
 
   if (loading) {
     return (
-      <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'system-ui', background:'var(--bg2)', color:'var(--muted)' }}>
-        Chargement…
+      <div className={s.page} aria-busy="true">
+        <div className={s.skelHead}><Skeleton width={160} height={20}/></div>
+        <div className={s.wrap}>
+          <div className={s.card}>
+            <div className={s.artist}>
+              <Skeleton width={64} height={64} radius={14}/>
+              <div className={s.skelText}><Skeleton height={20} width="70%"/><Skeleton height={12} width="40%"/></div>
+            </div>
+            <Skeleton height={12} width="80%"/>
+          </div>
+          <div className={s.card}><Skeleton height={164} width={164} radius={12} className={s.skelQr}/></div>
+          <div className={s.card}><Skeleton lines={3} height={16}/></div>
+        </div>
+        <span className={s.srOnly} role="status">Chargement de l'espace artiste…</span>
       </div>
     )
   }
 
   if (!eventId || !creneauId || notFound) {
     return (
-      <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'system-ui', background:'var(--bg2)', color:'var(--muted)', flexDirection:'column', gap:12, padding:20, textAlign:'center' }}>
-        <div style={{ fontSize:40 }}>🎤</div>
-        <div style={{ fontSize:16, fontWeight:600 }}>Espace artiste introuvable</div>
-        <div style={{ fontSize:13 }}>URL attendue : <code>/artiste?ev=EVENT_ID&cr=CRENEAU_ID</code></div>
+      <div className={s.invalid}>
+        <Empty icon={Mic} title="Espace artiste introuvable">
+          Le lien est incomplet ou le créneau n'existe plus. Lien attendu : <code>/artiste?ev=…&cr=…</code>
+        </Empty>
       </div>
     )
   }
 
   const ti = TYPES[creneau.type] || TYPES.autre
+  const TypeIcon = ti.icon
   const av = creneau.avantages || { drinks: 0, meals: 0, eaux: 0, drinkIds: [], mealIds: [], eauIds: [] }
 
   // Compteurs : consos servies + items en résa pending
@@ -223,6 +219,7 @@ export default function EspaceArtiste() {
   const cartTotal = Object.values(cart).reduce((s, q) => s + q, 0)
 
   const qrPayload = JSON.stringify({ ev: eventId, cr: creneauId, type: 'artiste' })
+  const artCode   = 'ART-' + creneauId.slice(-6).toUpperCase()
 
   const isAnnule = creneau.statut === 'annule'
 
@@ -243,20 +240,22 @@ export default function EspaceArtiste() {
     try {
       await creerReservationArtiste(creneau, items, eventId)
       setResaSuccess('Réservation envoyée ! Les caissiers ont été notifiés.')
+      toast.success('Réservation envoyée, les caissiers sont prévenus')
       setCart({})
       setTimeout(() => setResaSuccess(''), 4000)
       setTab('resas')
     } catch (e) {
-      setResaErr('Erreur : ' + e.message)
+      setResaErr("La réservation n'a pas pu être envoyée : " + e.message)
     }
   }
 
+  // Annulation : confirmée dans la fenêtre « Annuler cette réservation ? »
   const handleCancelResa = async (resaId) => {
-    if (!confirm('Annuler cette réservation ?')) return
     try {
       await annulerReservationArtiste(resaId, eventId)
+      toast.success('Réservation annulée')
     } catch (e) {
-      alert('Erreur : ' + e.message)
+      toast.error("Impossible d'annuler la réservation : " + e.message)
     }
   }
 
@@ -294,12 +293,12 @@ export default function EspaceArtiste() {
     }
   }
 
+  // Déliaison : confirmée dans la fenêtre « Délier votre compte spectateur ? »
   const handleUnlinkSpec = async () => {
-    if (!window.confirm('Délier votre compte spectateur ?')) return
     try {
       await unlinkArtistFromSpec(creneauId, eventId)
     } catch (e) {
-      alert('Erreur : ' + e.message)
+      toast.error('Impossible de délier le compte : ' + e.message)
     }
   }
 
@@ -309,411 +308,174 @@ export default function EspaceArtiste() {
     window.location.href = url
   }
 
+  const NAV = [
+    { id: 'droits',    label: 'Droits',    icon: Gift },
+    { id: 'consos',    label: 'Consos',    icon: History },
+    { id: 'reserver',  label: 'Réserver',  icon: ShoppingCart, badge: cartTotal },
+    { id: 'resas',     label: 'Mes résas', icon: Bookmark,     badge: pendingResa.length },
+    { id: 'programme', label: 'Programme', icon: CalendarDays },
+  ]
+
   return (
-    <div style={{ minHeight:'100vh', background:'var(--bg2)', fontFamily:'var(--font)' }}>
-      {/* Header dégradé Maison Ylla */}
-      <div style={{ background:'var(--grad-signature)', padding:'14px 20px 48px', color:'#fff' }}>
-        <div style={{ display:'flex', alignItems:'center', maxWidth:640, margin:'0 auto', gap:10 }}>
-          <div style={{ width:40, height:40, borderRadius:10, background:'rgba(255,255,255,.20)', overflow:'hidden', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+    <div className={s.page}>
+      {/* En-tête */}
+      <header className={s.head}>
+        <div className={s.headInner}>
+          <div className={s.logo}>
             {eventMeta?.logoSrc
-              ? <img src={eventMeta.logoSrc} alt={eventMeta.nom || ''} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-              : <span style={{ fontSize:20 }}>🎤</span>
-            }
+              ? <img src={eventMeta.logoSrc} alt=""/>
+              : <Mic size={16} aria-hidden="true"/>}
           </div>
-          <div style={{ minWidth:0 }}>
-            <div style={{ fontSize:16, fontWeight:800, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{eventMeta?.nom || 'YllaCash'}</div>
-            <div style={{ fontSize:11, opacity:.8 }}>Espace artiste</div>
+          <div className={s.headTitle}>
+            <b>{eventMeta?.nom || 'YllaCash'}</b>
+            <span>Espace artiste</span>
+          </div>
+          <div className={s.headActions}>
+            {creneau.linkedSpecId ? (
+              <button type="button" className={clsx(s.headBtn, s.headBtnOn)} onClick={goToSpectateurSpace}
+                title={'Aller à mon espace spectateur (' + creneau.linkedSpecId + ')'} aria-label="Aller à mon espace spectateur">
+                <Wallet size={16}/>
+              </button>
+            ) : (
+              <button type="button" className={clsx(s.headBtn, s.headBtnDashed)}
+                onClick={() => { setLinkInput(''); setLinkErr(''); setShowLinkModal(true) }}
+                title="Lier mon compte spectateur" aria-label="Lier mon compte spectateur">
+                <Link2 size={16}/>
+              </button>
+            )}
+            <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}/>
+            <ThemeToggle/>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div style={{ maxWidth:640, margin:'-28px auto 0', padding:'0 14px 40px', position:'relative', zIndex:1 }}>
+      <main className={s.wrap}>
         {/* Carte artiste */}
-        <div style={{ background:'var(--bg)', borderRadius:'var(--radius-xl)', padding:'16px', boxShadow:'0 6px 20px rgba(0,48,72,.10)', marginBottom:14, opacity: isAnnule ? 0.7 : 1, border:'0.5px solid var(--border)' }}>
+        <section className={clsx(s.card, isAnnule && s.cardOff)}>
           {isAnnule && (
-            <div className="alert alert-error" style={{ marginBottom:12, textAlign:'center' }}>
-              ❌ Ce créneau a été annulé
-            </div>
+            <div className={s.error} role="alert"><Ban size={16} aria-hidden="true"/><span>Ce créneau a été annulé</span></div>
           )}
-          <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:12 }}>
-            <div style={{ width:64, height:64, borderRadius:14, overflow:'hidden', flexShrink:0, background: ti.color + '22', display:'flex', alignItems:'center', justifyContent:'center', fontSize:30 }}>
+          <div className={s.artist}>
+            <div className={clsx(s.photo, s[ti.tone])}>
               {creneau.photo
-                ? <img src={creneau.photo} alt={creneau.artiste} loading="lazy" style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition: creneau.photoPosition || 'center center' }}/>
-                : ti.icon
-              }
+                ? <img src={creneau.photo} alt={creneau.artiste} loading="lazy" style={{ objectPosition: creneau.photoPosition || 'center center' }}/>
+                : <TypeIcon size={28} aria-hidden="true"/>}
             </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:18, fontWeight:800, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{creneau.artiste}</div>
-              {creneau.titre && <div style={{ fontSize:13, color:'var(--muted)' }}>{creneau.titre}</div>}
-              <div style={{ fontSize:12, color: ti.color, fontWeight:700, marginTop:2 }}>{ti.icon} {ti.label}</div>
-            </div>
-            {/* Switch spectateur + Cloche + Thème (colonne droite, comme bénévole) */}
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0 }}>
-              {creneau.linkedSpecId ? (
-                <button onClick={goToSpectateurSpace}
-                  title={"Aller à mon espace spectateur (" + creneau.linkedSpecId + ")"}
-                  style={{ width:34, height:34, borderRadius:8, border:'none', background:'var(--brand)', color:'#fff', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <Wallet size={16}/>
-                </button>
-              ) : (
-                <button onClick={() => { setLinkInput(''); setLinkErr(''); setShowLinkModal(true) }}
-                  title="Lier mon compte spectateur"
-                  style={{ width:34, height:34, borderRadius:8, border:'1px dashed var(--border)', background:'transparent', color:'var(--muted)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                  <Link2 size={16}/>
-                </button>
-              )}
-              <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}/>
-              <ThemeToggle/>
+            <div className={s.artistText}>
+              <h1>{creneau.artiste}</h1>
+              {creneau.titre && <span className={s.artistSub}>{creneau.titre}</span>}
+              <span className={clsx(s.typeTag, s[ti.tone])}><TypeIcon size={12} aria-hidden="true"/>{ti.label}</span>
             </div>
           </div>
-          <div style={{ display:'flex', flexWrap:'wrap', gap:10, fontSize:12, color:'var(--muted)' }}>
-            <span style={{ display:'flex', alignItems:'center', gap:4 }}><CalendarDays size={12}/> {fmtDate(creneau.debut)}</span>
-            <span style={{ display:'flex', alignItems:'center', gap:4 }}><Clock size={12}/> {fmtHour(creneau.debut)} → {fmtHour(creneau.fin)}</span>
-            {creneau.scene && <span style={{ display:'flex', alignItems:'center', gap:4 }}><MapPin size={12}/> {creneau.scene}</span>}
+          <div className={s.meta}>
+            <span><CalendarDays size={14} aria-hidden="true"/>{fmtDate(creneau.debut)}</span>
+            <span><Clock size={14} aria-hidden="true"/>{fmtHour(creneau.debut)} → {fmtHour(creneau.fin)}</span>
+            {creneau.scene && <span><MapPin size={14} aria-hidden="true"/>{creneau.scene}</span>}
           </div>
-        </div>
+        </section>
 
-        {/* QR code (cliquable plein écran) */}
-        <div style={{ background:'var(--bg)', borderRadius:'var(--radius-xl)', padding:'16px', marginBottom:14, textAlign:'center', boxShadow:'0 4px 16px rgba(0,48,72,.06)', border:'0.5px solid var(--border)' }}>
-          <div style={{ fontSize:12, fontWeight:700, color:'var(--muted)', marginBottom:10, textTransform:'uppercase', letterSpacing:'.05em' }}>Présentez ce code au stand</div>
-          <div onClick={() => setShowQrFull(true)}
-            style={{ display:'inline-block', background:'#FFF8F2', padding:12, borderRadius:'var(--radius-lg)', border:'1px solid var(--border)', cursor:'pointer', transition:'transform .15s' }}
-            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.03)'}
-            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-            title="Cliquer pour agrandir">
-            <QRCodeCanvas value={qrPayload} size={140} fgColor="#003048" bgColor="#FFF8F2"/>
-          </div>
-          <div style={{ fontSize:10, color:'var(--muted)', marginTop:8, fontFamily:'monospace' }}>
-            ART-{creneauId.slice(-6).toUpperCase()} · <span style={{ color:'var(--brand)', fontWeight:700 }}>👆 Toucher pour agrandir</span>
-          </div>
-        </div>
+        {/* QR code (plein écran au toucher) */}
+        <section className={clsx(s.card, s.qrCard)}>
+          <h2 className={s.overline}>Présentez ce code au stand</h2>
+          <button type="button" className={s.qrBtn} onClick={() => setShowQrFull(true)} aria-label="Agrandir mon QR code">
+            <QRCodeCanvas value={qrPayload} size={140} fgColor="#003048" bgColor="#FFFFFF"/>
+          </button>
+          <span className={s.qrCode}>{artCode}</span>
+          <span className={s.qrHint}><Maximize2 size={12} aria-hidden="true"/>Touchez le code pour l'agrandir</span>
+        </section>
 
-        {/* Modale liaison compte spectateur */}
-        {showLinkModal && (
-          <div onClick={(e) => e.target === e.currentTarget && setShowLinkModal(false)}
-            style={{ position:'fixed', inset:0, zIndex:9998, background:'rgba(0,0,0,.55)', display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
-            <div style={{ background:'var(--bg)', borderRadius:18, padding:24, width:'100%', maxWidth:420, boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                <div style={{ fontSize:16, fontWeight:800, color:'var(--text)' }}>🔗 Lier mon compte spectateur</div>
-                <button onClick={() => setShowLinkModal(false)}
-                  style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)' }}>
-                  <X size={18}/>
-                </button>
-              </div>
-              <div style={{ fontSize:12, color:'var(--muted)', marginBottom:18, lineHeight:1.5 }}>
-                Saisissez votre numéro unique spectateur (présent sur votre QR personnel, ex. <code style={{ background:'var(--bg2)', padding:'1px 6px', borderRadius:4 }}>FY-4A2B</code>) pour pouvoir basculer entre votre espace artiste et votre espace spectateur.
-              </div>
-
-              <label style={{ fontSize:11, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', display:'block', marginBottom:6 }}>Numéro spectateur</label>
-              <input type="text" value={linkInput}
-                onChange={(e) => setLinkInput(e.target.value.toUpperCase())}
-                onKeyDown={(e) => e.key === 'Enter' && handleLinkSpec()}
-                placeholder="FY-XXXX"
-                autoFocus
-                style={{ width:'100%', boxSizing:'border-box', padding:'12px 14px', border:'1.5px solid var(--border)', borderRadius:10, fontSize:15, fontFamily:'monospace', textTransform:'uppercase', color:'var(--text)', background:'var(--bg2)', outline:'none', marginBottom:10 }}/>
-
-              {linkErr && (
-                <div style={{ padding:'8px 12px', background:'#FCEBEB', color:'#A32D2D', borderRadius:8, fontSize:12, marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-                  <AlertCircle size={13}/> {linkErr}
-                </div>
-              )}
-
-              <div style={{ display:'flex', gap:8, marginTop:6 }}>
-                <button onClick={() => setShowLinkModal(false)}
-                  style={{ flex:1, padding:'11px', background:'var(--bg2)', color:'var(--text)', border:'1px solid var(--border)', borderRadius:10, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' }}>
-                  Annuler
-                </button>
-                <button onClick={handleLinkSpec} disabled={linkLoading}
-                  style={{ flex:1, padding:'11px', background:'var(--brand)', color:'#fff', border:'none', borderRadius:10, fontSize:13, fontWeight:700, cursor: linkLoading ? 'wait' : 'pointer', fontFamily:'var(--font)' }}>
-                  {linkLoading ? 'Vérification…' : '🔗 Lier mon compte'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modale QR plein écran */}
-        {showQrFull && (
-          <div onClick={() => setShowQrFull(false)}
-            style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,.92)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:'20px' }}>
-            <div style={{ position:'absolute', top:20, right:20, color:'#fff', fontSize:32, fontWeight:300, cursor:'pointer', width:48, height:48, borderRadius:'50%', background:'rgba(255,255,255,.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              ✕
-            </div>
-            <div style={{ background:'#fff', padding:24, borderRadius:20, boxShadow:'0 20px 60px rgba(0,0,0,.5)' }}>
-              <QRCodeCanvas value={qrPayload} size={Math.min(window.innerWidth - 100, 380)} fgColor="#000" bgColor="#fff" level="H"/>
-            </div>
-            <div style={{ color:'#fff', marginTop:24, fontSize:18, fontWeight:700, textAlign:'center' }}>{creneau.artiste}</div>
-            <div style={{ color:'rgba(255,255,255,.7)', marginTop:6, fontSize:14, textAlign:'center' }}>
-              ART-{creneauId.slice(-6).toUpperCase()}
-            </div>
-            <div style={{ color:'rgba(255,255,255,.5)', marginTop:16, fontSize:12, textAlign:'center' }}>
-              Toucher l'écran pour fermer
-            </div>
-          </div>
-        )}
-
-        {/* Onglets — grid 5 colonnes, rectangulaires */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:4, marginBottom:12, background:'var(--bg)', borderRadius:'var(--radius-md)', padding:4, border:'1px solid var(--border)' }}>
-          {[
-            { id:'droits',   icon:<Gift size={18}/>,           label:'Droits' },
-            { id:'consos',   icon:<History size={18}/>,        label:'Consos' },
-            { id:'reserver', icon:<ShoppingCart size={18}/>,   label:'Réserver', badge: cartTotal > 0 ? cartTotal : null },
-            { id:'resas',    icon:<Bookmark size={18}/>,       label:'Mes résa', badge: pendingResa.length > 0 ? pendingResa.length : null },
-            { id:'programme', icon:<CalendarDays size={18}/>,  label:'Programme' },
-          ].map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ minWidth:0, padding:'8px 4px', borderRadius:8, border:'none', cursor:'pointer', background: tab===t.id ? 'var(--brand)' : 'transparent', color: tab===t.id ? (theme.isDark ? '#002438' : '#fff') : 'var(--muted)', fontSize:10, fontWeight:700, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4, fontFamily:'var(--font)', position:'relative' }}>
-              <div style={{ position:'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {t.icon}
-                {t.badge && (
-                  <span style={{ position:'absolute', top:-6, right:-10, minWidth:16, height:16, padding:'0 4px', borderRadius:4, background: tab===t.id ? (theme.isDark ? '#002438' : '#fff') : 'var(--coral)', color: tab===t.id ? 'var(--brand)' : (theme.isDark ? '#2A1810' : '#fff'), fontSize:9, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    {t.badge}
-                  </span>
-                )}
-              </div>
-              <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>{t.label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Mes droits */}
         {tab === 'droits' && (
-          <div style={{ background:'var(--bg)', borderRadius:14, padding:'16px', boxShadow:'0 4px 16px rgba(0,0,0,.05)' }}>
-            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>🎁 Vos avantages aujourd'hui</div>
-            {av.drinks === 0 && av.meals === 0 && av.eaux === 0 ? (
-              <div style={{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:'20px 0' }}>
-                Aucun avantage configuré pour votre créneau.
-              </div>
-            ) : (
-              <>
-                <DroitBar icon="☕" label="Boissons" total={av.drinks || 0} used={consDrinks} pending={pendingDrinks} themeColor={themeColor}/>
-                <DroitBar icon="🍽" label="Repas"    total={av.meals  || 0} used={consMeals}  pending={pendingMeals}  themeColor={themeColor}/>
-                <DroitBar icon="💧" label="Eau"      total={av.eaux   || 0} used={consEaux}   pending={pendingEaux}   themeColor={themeColor}/>
-              </>
-            )}
-          </div>
+          <DroitsTab av={av}
+            used={{ drink: consDrinks, meal: consMeals, eau: consEaux }}
+            pending={{ drink: pendingDrinks, meal: pendingMeals, eau: pendingEaux }}/>
         )}
-
-        {/* Consos */}
-        {tab === 'consos' && (
-          <div style={{ background:'var(--bg)', borderRadius:14, padding:'16px', boxShadow:'0 4px 16px rgba(0,0,0,.05)' }}>
-            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>📋 Historique de vos consommations</div>
-            {consumptions.length === 0 ? (
-              <div style={{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:'20px 0' }}>
-                Aucune consommation enregistrée pour le moment.
-              </div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {consumptions.map(c => {
-                  const t = c.type === 'drink' ? '☕' : c.type === 'meal' ? '🍽' : '💧'
-                  return (
-                    <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:'var(--bg2)', borderRadius:10 }}>
-                      <span style={{ fontSize:22 }}>{t}</span>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{c.articleNom || '—'}</div>
-                        <div style={{ fontSize:11, color:'var(--muted)' }}>
-                          {fmtHour(c.servedAt)} {c.servedBy?.name && '· par ' + c.servedBy.name}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Réserver */}
+        {tab === 'consos' && <ConsosTab consumptions={consumptions}/>}
         {tab === 'reserver' && (
-          <div style={{ background:'var(--bg)', borderRadius:14, padding:'16px', boxShadow:'0 4px 16px rgba(0,0,0,.05)' }}>
-            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:6 }}>🍽 Réserver vos avantages</div>
-            <div style={{ fontSize:11, color:'var(--muted)', marginBottom:14 }}>
-              Préparez votre commande à l'avance. Les caissiers seront notifiés et pourront vous servir directement à votre arrivée.
-            </div>
-
-            {resaErr && (
-              <div style={{ padding:'8px 12px', background:'#FCEBEB', color:'#A32D2D', borderRadius:8, fontSize:12, marginBottom:10 }}>
-                <AlertCircle size={12} style={{ verticalAlign:-1, marginRight:4 }}/>{resaErr}
-              </div>
-            )}
-            {resaSuccess && (
-              <div style={{ padding:'8px 12px', background:'#d1fae5', color:'#065f46', borderRadius:8, fontSize:12, marginBottom:10 }}>
-                <CheckCircle size={12} style={{ verticalAlign:-1, marginRight:4 }}/>{resaSuccess}
-              </div>
-            )}
-
-            {eligibleArticles.length === 0 ? (
-              <div style={{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:'20px 0' }}>
-                {av.drinks + av.meals + av.eaux === 0
-                  ? 'Aucun avantage à réserver.'
-                  : 'Tous vos avantages ont été utilisés ou réservés ✓'}
-              </div>
-            ) : (
-              <>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:10, marginBottom:14 }}>
-                  {eligibleArticles.map(a => {
-                    const key = a.id + '-' + a._type
-                    const qty = cart[key] || 0
-                    return (
-                      <div key={key} style={{ background:'var(--bg2)', border: '1.5px solid ' + (qty > 0 ? themeColor : 'var(--border)'), borderRadius:12, padding:10, textAlign:'center' }}>
-                        <div style={{ fontSize:22, marginBottom:4 }}>{a._typeIcon}</div>
-                        <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:8, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nom}</div>
-                        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                          <button onClick={() => removeFromCart(a)} disabled={qty === 0}
-                            style={{ width:26, height:26, borderRadius:6, border:'none', cursor: qty > 0 ? 'pointer' : 'not-allowed', background: qty > 0 ? 'var(--bg)' : 'var(--bg2)', color:'var(--muted)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                            <Minus size={12}/>
-                          </button>
-                          <span style={{ fontSize:13, fontWeight:800, color:'var(--text)', minWidth:16, textAlign:'center' }}>{qty}</span>
-                          <button onClick={() => addToCart(a)}
-                            style={{ width:26, height:26, borderRadius:6, border:'none', cursor:'pointer', background: themeColor, color:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                            <Plus size={12}/>
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-                {cartTotal > 0 && (
-                  <button onClick={handleReserve}
-                    style={{ width:'100%', padding:'12px 16px', background: themeColor, color:'#fff', border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'system-ui', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                    <ShoppingCart size={14}/> Confirmer la réservation ({cartTotal} article{cartTotal > 1 ? 's' : ''})
-                  </button>
-                )}
-              </>
-            )}
-          </div>
+          <ReserverTab av={av} eligibleArticles={eligibleArticles} cart={cart} cartTotal={cartTotal}
+            remain={{ drink: remainDrinks, meal: remainMeals, eau: remainEaux }}
+            onAdd={addToCart} onRemove={removeFromCart} onReserve={handleReserve} resaErr={resaErr}/>
         )}
+        {tab === 'resas' && <ResasTab reservations={reservations} onCancel={setCancelAsk}/>}
+        {tab === 'programme' && <ProgrammeTab planning={planning} creneauId={creneauId}/>}
 
-        {/* Mes résas */}
-        {tab === 'resas' && (
-          <div style={{ background:'var(--bg)', borderRadius:14, padding:'16px', boxShadow:'0 4px 16px rgba(0,0,0,.05)' }}>
-            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>🔖 Mes réservations</div>
-            {reservations.length === 0 ? (
-              <div style={{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:'20px 0' }}>
-                Aucune réservation pour le moment.
-              </div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {reservations.map(r => {
-                  const itemsLabel = (r.items || []).map(i => {
-                    const ic = i.type === 'drink' ? '☕' : i.type === 'meal' ? '🍽' : '💧'
-                    return ic + ' ' + i.nom
-                  }).join(', ')
-                  const statutColor = r.statut === 'pending' ? '#854F0B' : r.statut === 'servie' ? '#065f46' : '#A32D2D'
-                  const statutBg    = r.statut === 'pending' ? '#FAEEDA' : r.statut === 'servie' ? '#d1fae5' : '#FCEBEB'
-                  const statutLabel = r.statut === 'pending' ? '⏱ En attente' : r.statut === 'servie' ? '✓ Servie' : '✕ Annulée'
-                  return (
-                    <div key={r.id} style={{ padding:'10px 12px', background:'var(--bg2)', borderRadius:10, border:'0.5px solid var(--border)' }}>
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4, gap:8 }}>
-                        <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:6, background: statutBg, color: statutColor }}>
-                          {statutLabel}
-                        </span>
-                        {r.statut === 'pending' && (
-                          <button onClick={() => handleCancelResa(r.id)}
-                            style={{ fontSize:11, padding:'4px 8px', border:'0.5px solid var(--border)', background:'var(--bg)', color:'var(--muted)', borderRadius:6, cursor:'pointer', fontFamily:'var(--font)' }}>
-                            Annuler
-                          </button>
-                        )}
-                      </div>
-                      <div style={{ fontSize:13, color:'var(--text)' }}>{itemsLabel}</div>
-                      <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>
-                        {r.servedAt ? 'Servie à ' + fmtHour(r.servedAt) : r.createdAt ? 'Demandée à ' + fmtHour(r.createdAt) : ''}
-                        {r.servedBy?.name && ' · par ' + r.servedBy.name}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        <footer className={s.footer}>
+          <b>YllaCash v1.0 · 05/2026</b>
+          <span>Développée par Maison Ylla</span>
+        </footer>
+      </main>
 
-        {/* Programme */}
-        {tab === 'programme' && (
-          <div style={{ background:'var(--bg)', borderRadius:14, padding:'16px', boxShadow:'0 4px 16px rgba(0,0,0,.05)' }}>
-            <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:14 }}>📅 Programme festival</div>
-            {planning.length === 0 ? (
-              <div style={{ fontSize:13, color:'var(--muted)', textAlign:'center', padding:'20px 0' }}>
-                Programme à venir.
-              </div>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {[...planning].sort((a, b) => {
-                  const ta = a.debut?.toMillis ? a.debut.toMillis() : new Date(a.debut || 0).getTime()
-                  const tb = b.debut?.toMillis ? b.debut.toMillis() : new Date(b.debut || 0).getTime()
-                  return ta - tb
-                }).map(p => {
-                  const pt = TYPES[p.type] || TYPES.autre
-                  const isMe = p.id === creneauId
-                  const isAnnulePrg = p.statut === 'annule'
-                  return (
-                    <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background: isMe ? pt.color + '22' : 'var(--bg2)', borderRadius:10, border: isMe ? '1.5px solid ' + pt.color : '0.5px solid var(--border)', opacity: isAnnulePrg ? 0.5 : 1 }}>
-                      <div style={{ fontSize:22, flexShrink:0 }}>{pt.icon}</div>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
-                          <span style={{ fontSize:13, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.artiste}</span>
-                          {isMe && (
-                            <span style={{ fontSize:9, fontWeight:800, padding:'2px 6px', borderRadius:4, background: pt.color, color:'#fff' }}>VOUS</span>
-                          )}
-                          {isAnnulePrg && (
-                            <span style={{ fontSize:9, fontWeight:800, padding:'2px 6px', borderRadius:4, background:'#A32D2D', color:'#fff' }}>ANNULÉ</span>
-                          )}
-                        </div>
-                        <div style={{ fontSize:11, color:'var(--muted)', display:'flex', flexWrap:'wrap', gap:6 }}>
-                          <span>{fmtDateShort(p.debut)}</span>
-                          <span>· {fmtHour(p.debut)} → {fmtHour(p.fin)}</span>
-                          {p.scene && <span>· {p.scene}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
+      {/* Barre d'onglets */}
+      <nav className={s.nav} aria-label="Navigation">
+        {NAV.map(item => {
+          const Icon = item.icon
+          const on = tab === item.id
+          return (
+            <button key={item.id} type="button" className={clsx(s.navItem, on && s.navOn)}
+              onClick={() => setTab(item.id)} aria-current={on ? 'page' : undefined}>
+              <span className={s.navIcon}>
+                <Icon size={20} aria-hidden="true"/>
+                {item.badge > 0 && <span className={s.navBadge}>{item.badge}</span>}
+              </span>
+              <span className={s.navLabel}>{item.label}</span>
+            </button>
+          )
+        })}
+      </nav>
 
-        {/* Footer */}
-        <div style={{ textAlign:'center', padding:'28px 0 0', marginTop:20, borderTop:'0.5px solid var(--border)' }}>
-          <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)' }}>YllaCash v1.0 · 05/2026</div>
-          <div style={{ fontSize:10, color:'var(--muted)', opacity:.6, marginTop:2 }}>Développée par <strong>Maison Ylla</strong></div>
+      {/* Liaison au compte spectateur */}
+      <Sheet open={showLinkModal} onClose={() => setShowLinkModal(false)} title="Lier mon compte spectateur"
+        footer={<>
+          <Button variant="secondary" onClick={() => setShowLinkModal(false)}>Annuler</Button>
+          <Button icon={Link2} onClick={handleLinkSpec} loading={linkLoading}>
+            {linkLoading ? 'Vérification…' : 'Lier mon compte'}
+          </Button>
+        </>}>
+        <div className={s.form}>
+          <p className={s.muted}>
+            Saisissez votre numéro spectateur (écrit sous votre QR personnel, par exemple <code>FY-4A2B</code>)
+            pour passer d'un espace à l'autre en un geste.
+          </p>
+          <label className={s.field}>
+            <span>Numéro spectateur</span>
+            <input type="text" className={s.input} value={linkInput}
+              onChange={(e) => setLinkInput(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === 'Enter' && handleLinkSpec()}
+              placeholder="FY-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false}
+              autoFocus aria-invalid={!!linkErr || undefined}/>
+          </label>
+          {linkErr && (
+            <div className={s.error} role="alert"><AlertCircle size={16} aria-hidden="true"/><span>{linkErr}</span></div>
+          )}
         </div>
-      </div>
-    </div>
-  )
-}
+      </Sheet>
 
-function DroitBar({ icon, label, total, used, pending = 0, themeColor }) {
-  const remain = Math.max(0, total - used - pending)
-  const usedPct = total > 0 ? Math.min(100, (used / total) * 100) : 0
-  const pendingPct = total > 0 ? Math.min(100 - usedPct, (pending / total) * 100) : 0
-  const allConsumed = total > 0 && remain === 0
+      {/* Confirmation d'annulation */}
+      <Dialog open={!!cancelAsk} onClose={() => setCancelAsk(null)} title="Annuler cette réservation ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setCancelAsk(null)}>Garder</Button>
+          <Button variant="danger" onClick={() => { const id = cancelAsk; setCancelAsk(null); handleCancelResa(id) }}>Annuler la réservation</Button>
+        </>}>
+        <p className={s.muted}>Les articles réservés seront de nouveau disponibles dans vos avantages.</p>
+      </Dialog>
 
-  if (total === 0) {
-    return (
-      <div style={{ marginBottom:10, opacity:.5 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-          <span style={{ fontSize:13, fontWeight:600, color:'var(--muted)' }}>{icon} {label}</span>
-          <span style={{ fontSize:11, color:'var(--muted)' }}>Non offert</span>
-        </div>
-      </div>
-    )
-  }
+      {/* Confirmation de déliaison (aucun bouton ne l'ouvre pour l'instant, comme avant) */}
+      <Dialog open={unlinkAsk} onClose={() => setUnlinkAsk(false)} title="Délier votre compte spectateur ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setUnlinkAsk(false)}>Garder le lien</Button>
+          <Button variant="danger" onClick={() => { setUnlinkAsk(false); handleUnlinkSpec() }}>Délier</Button>
+        </>}>
+        <p className={s.muted}>Vous ne pourrez plus passer directement à votre espace spectateur depuis cette page.</p>
+      </Dialog>
 
-  return (
-    <div style={{ marginBottom:12 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-        <span style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{icon} {label}</span>
-        <span style={{ fontSize:12, fontWeight:700, color: allConsumed ? '#A32D2D' : themeColor }}>
-          {remain}/{total}
-          {pending > 0 && <span style={{ fontSize:10, color:'#854F0B', marginLeft:6 }}>({pending} en attente)</span>}
-          {allConsumed && ' · Tout utilisé ✓'}
-        </span>
-      </div>
-      <div style={{ height:8, background:'var(--bg2)', borderRadius:4, overflow:'hidden', display:'flex' }}>
-        <div style={{ width:usedPct + '%', height:'100%', background: themeColor, transition:'width .3s' }}/>
-        <div style={{ width:pendingPct + '%', height:'100%', background: '#854F0B', opacity:.5, transition:'width .3s' }}/>
-      </div>
+      {/* QR plein écran : toujours fond blanc pour la lecture */}
+      {showQrFull && (
+        <button type="button" className={s.qrFull} onClick={() => setShowQrFull(false)} aria-label="Fermer le QR code">
+          <b>{creneau.artiste}</b>
+          <span>Artiste · {artCode}</span>
+          <QRCodeCanvas value={qrPayload} size={Math.min(window.innerWidth - 100, 380)} fgColor="#000" bgColor="#fff" level="H"/>
+          <span>Touchez l'écran pour fermer</span>
+        </button>
+      )}
     </div>
   )
 }

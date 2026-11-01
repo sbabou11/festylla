@@ -12,7 +12,7 @@ import { fmt } from '../../utils/helpers'
 import { computeKPIs } from '../../utils/kpis'
 import { dayStats, hourlyFlow, topSellers, dashboardAlerts, txTime } from '../../utils/dashboardData'
 import { stockForecast } from '../../utils/analyticsData'
-import { Stat, Card, Tabs, Button, Empty, Dialog, toast } from '../../ui'
+import { Stat, Card, Tabs, Button, Empty, Dialog, AnimatedNumber, toast } from '../../ui'
 import FlowChart  from './dashboard/FlowChart'
 import GoalRing   from './dashboard/GoalRing'
 import ResaKanban from './dashboard/ResaKanban'
@@ -86,25 +86,25 @@ export default function Dashboard({ onNavigate, view }) {
       {/* Indicateurs */}
       <div className={s.stats}>
         <Stat
-          label="Recettes du jour" value={fmt(day.revenue)} icon={ShoppingCart} tone="coral" trend={day.trend}
+          label="Recettes du jour" value={<AnimatedNumber value={day.revenue} format={fmt} />} icon={ShoppingCart} tone="coral" trend={day.trend}
           delta={day.revenueDelta != null
             ? { value: `${signed(day.revenueDelta)} %`, direction: day.revenueDelta > 0 ? 'up' : day.revenueDelta < 0 ? 'down' : 'flat', label: vsYesterday }
             : undefined}
           sub={day.revenueDelta == null ? `${day.salesCount} vente${day.salesCount > 1 ? 's' : ''} depuis 6h` : undefined}
         />
         <Stat
-          label="Soldes en circulation" value={fmt(kpis.totalSoldes)} icon={Wallet} tone="success"
+          label="Soldes en circulation" value={<AnimatedNumber value={kpis.totalSoldes} format={fmt} />} icon={Wallet} tone="success"
           sub={`${wallets} portefeuille${wallets > 1 ? 's' : ''} actif${wallets > 1 ? 's' : ''} · ${fmt(day.credits)} rechargés aujourd'hui`}
         />
         <Stat
-          label="Panier moyen du jour" value={fmt(Math.round(day.basket))} icon={Users} tone="brand"
+          label="Panier moyen du jour" value={<AnimatedNumber value={Math.round(day.basket)} format={fmt} />} icon={Users} tone="brand"
           delta={day.basketDiff != null
             ? { value: `${day.basketDiff >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(day.basketDiff)))}`, direction: day.basketDiff > 0 ? 'up' : day.basketDiff < 0 ? 'down' : 'flat', label: vsYesterday }
             : undefined}
           sub={day.basketDiff == null ? `${day.salesCount} encaissement${day.salesCount > 1 ? 's' : ''}` : undefined}
         />
         <Stat
-          label="Réservations" value={kpis.activeResas.length} icon={Bookmark} tone="warning"
+          label="Réservations" value={<AnimatedNumber value={kpis.activeResas.length} />} icon={Bookmark} tone="warning"
           sub={kpis.resaReady > 0 ? `${kpis.resaReady} prête${kpis.resaReady > 1 ? 's' : ''} à retirer` : kpis.resaPending > 0 ? `${kpis.resaPending} en attente` : 'Aucune en cours'}
         />
       </div>

@@ -22,7 +22,7 @@ import { useNotifications } from '../../hooks/useNotifications'
 import NotifBell from '../../components/NotifBell'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
-import { Button, Badge, Empty, Tabs, Dialog } from '../../ui'
+import { Button, Badge, Empty, Tabs, Dialog, AnimatedNumber } from '../../ui'
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
 import sp from './spectateur/SoldePage.module.css'
@@ -450,7 +450,7 @@ export default function SoldePage({ demo = null }) {
               <section className={sp.wallet} aria-label="Mon solde">
                 <span className={sp.walletLabel}>Mon solde</span>
                 <div className={sp.walletRow}>
-                  <b className={sp.walletValue}>{fmt(spec.solde || 0)}</b>
+                  <b className={sp.walletValue}><AnimatedNumber value={spec.solde || 0} format={fmt} /></b>
                   {qrDataUrl && (
                     <button type="button" className={sp.walletQr} onClick={openQr} aria-label="Agrandir mon QR code">
                       <img src={qrDataUrl} alt="" />

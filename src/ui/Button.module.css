@@ -48,3 +48,9 @@
   animation: spin .7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Écrans tactiles : les petits boutons gardent une zone de 40 px */
+@media (pointer: coarse) {
+  .sm { min-height: 40px; }
+  .iconOnly.sm { width: 40px; }
+}

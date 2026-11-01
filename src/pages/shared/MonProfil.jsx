@@ -2,6 +2,7 @@
  * pages/shared/MonProfil.jsx — v5
  * Fix : affiche un loader tant que person n'est pas chargé (au lieu de page blanche)
  * Fix : responsive mobile
+ * Design system : cartes ui/Card, champs et tuiles dans MonProfil.module.css, squelette au chargement.
  */
 import React, { useState, useRef, useEffect } from 'react'
 import useAppStore  from '../../store/useAppStore'
@@ -9,8 +10,10 @@ import useAuthStore from '../../store/useAuthStore'
 import { fmt }      from '../../utils/helpers'
 import { compressImage } from '../../utils/imageUtils'
 import Avatar from '../../components/Avatar'
-import { KeyRound, Save, Camera, User } from 'lucide-react'
-import { PasswordStrength } from '../../ui'
+import { KeyRound, Save, Camera, Check, AlertCircle } from 'lucide-react'
+import clsx from 'clsx'
+import { Button, Card, Skeleton, PasswordStrength, toast } from '../../ui'
+import st from './MonProfil.module.css'
 
 export default function MonProfil({ view }) {
   const { spectateurs, staff, reservations, currentSpecId,
@@ -52,11 +55,15 @@ export default function MonProfil({ view }) {
     if (person?.nom) setNom(person.nom)
   }, [person?.nom])
 
-  // ── Loader tant que les données ne sont pas là ──────────────────
+  // ── Squelette tant que les données ne sont pas là ───────────────
   if (!person) return (
-    <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
-      <User size={36} style={{ opacity: .3, marginBottom: 12, display: 'block', margin: '0 auto 12px' }}/>
-      <div style={{ fontSize: 14 }}>Chargement du profil…</div>
+    <div className={st.wrap} aria-busy="true" aria-label="Chargement du profil">
+      <div className={clsx(st.card, st.hero)}>
+        <Skeleton width={80} height={80} radius="50%"/>
+        <Skeleton width="50%" height={18}/>
+        <Skeleton width="30%" height={12}/>
+      </div>
+      <div className={st.card}><Skeleton lines={3} height={16}/></div>
     </div>
   )
 
@@ -67,7 +74,7 @@ export default function MonProfil({ view }) {
       const src = await compressImage(file, 200, 0.7)
       if (isSpec) await setSpecAvatar(person.id, src)
       else        await setStaffAvatar(person.id, src)
-    } catch (err) { setUploadErr('Erreur : ' + err.message) }
+    } catch (err) { setUploadErr('Photo non enregistrée : ' + err.message); toast.error('Photo non enregistrée : ' + err.message) }
     finally { setUploading(false); e.target.value = '' }
   }
 
@@ -88,111 +95,98 @@ export default function MonProfil({ view }) {
   }
 
   const resas = isSpec ? reservations.filter(r => r.specId === person.id) : []
-
-  const card = {
-    background: 'var(--bg)', border: '0.5px solid var(--border)',
-    borderRadius: 'var(--radius-lg)', padding: '14px 16px', marginBottom: 12,
-  }
-  const inp = {
-    width: '100%', padding: '10px 12px', boxSizing: 'border-box',
-    border: '0.5px solid var(--border2)', borderRadius: 8,
-    fontSize: 14, background: 'var(--bg2)', color: 'var(--text)',
-    fontFamily: 'var(--font)', WebkitAppearance: 'none',
-  }
+  const pwdTone = pwdMsg.startsWith('✓') ? 'ok' : pwdMsg === 'Modification en cours…' ? 'info' : 'err'
 
   return (
-    <div style={{ maxWidth: 420, margin: '0 auto', padding: '0 0 40px' }}>
+    <div className={st.wrap}>
 
       {/* Avatar */}
-      <div style={{ ...card, padding: 24, textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-          <div style={{ position: 'relative', display: 'inline-block' }}>
-            <Avatar nom={person.nom} src={person.avatar} size={80}/>
-            <button onClick={() => fileRef.current?.click()} disabled={uploading}
-              style={{ position: 'absolute', bottom: 0, right: 0, width: 28, height: 28, borderRadius: '50%', background: 'var(--brand)', border: '2px solid var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}>
-              <Camera size={13} color="#fff"/>
-            </button>
-          </div>
+      <section className={clsx(st.card, st.hero)}>
+        <div className={st.avatarWrap}>
+          <Avatar nom={person.nom} src={person.avatar} size={80}/>
+          <button type="button" className={st.camera} onClick={() => fileRef.current?.click()} disabled={uploading}
+            aria-label="Changer la photo de profil" title="Changer la photo">
+            <Camera size={15} aria-hidden="true"/>
+          </button>
         </div>
-        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', marginBottom: 3 }}>{person.nom}</div>
-        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>{isSpec ? person.id : (person.role || 'Staff')}</div>
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={handleFileChange}/>
-        {uploading && <div style={{ fontSize: 12, color: 'var(--muted)' }}>Compression en cours…</div>}
-        {uploadErr && <div style={{ marginTop: 8, padding: '7px 12px', background: 'var(--red-light)', borderRadius: 8, fontSize: 12, color: 'var(--red)' }}>{uploadErr}</div>}
-      </div>
+        <div>
+          <h1 className={st.name}>{person.nom}</h1>
+          <p className={clsx(st.muted, isSpec && st.mono)}>{isSpec ? person.id : (person.role || 'Staff')}</p>
+        </div>
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" className={st.hidden} onChange={handleFileChange} tabIndex={-1} aria-hidden="true"/>
+        {uploading && <p className={st.muted} role="status">Compression en cours…</p>}
+        {uploadErr && <p className={clsx(st.msg, st.err)}><AlertCircle size={14} aria-hidden="true"/>{uploadErr}</p>}
+      </section>
 
       {/* Informations */}
-      <div style={card}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: 'var(--text)' }}>Informations</div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>Nom complet</label>
-          <input value={nom} onChange={e => setNom(e.target.value)} style={{ ...inp, borderColor: saved ? 'var(--brand)' : 'var(--border2)', transition: 'border-color .2s' }}/>
+      <Card title="Informations">
+        <div className={st.form}>
+          <label className={st.field}>
+            <span className={st.label}>Nom complet</span>
+            <input className={clsx(st.input, saved && st.inputSaved)} value={nom} onChange={e => setNom(e.target.value)} autoComplete="name"/>
+          </label>
+          {isSpec && (
+            <label className={st.field}>
+              <span className={st.label}>ID QR</span>
+              <input className={clsx(st.input, st.readOnly, st.mono)} value={person.id} readOnly/>
+            </label>
+          )}
+          {!isSpec && person.email && (
+            <label className={st.field}>
+              <span className={st.label}>Email</span>
+              <input className={clsx(st.input, st.readOnly)} value={person.email} readOnly/>
+            </label>
+          )}
+          <div>
+            <Button icon={saved ? Check : Save} onClick={handleSave}>
+              {saved ? 'Sauvegardé' : 'Sauvegarder'}
+            </Button>
+          </div>
         </div>
-        {isSpec && (
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>ID QR</label>
-            <input value={person.id} readOnly style={{ ...inp, color: 'var(--muted)', fontFamily: 'monospace', fontSize: 13 }}/>
-          </div>
-        )}
-        {!isSpec && person.email && (
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>Email</label>
-            <input value={person.email} readOnly style={{ ...inp, color: 'var(--muted)', fontSize: 13 }}/>
-          </div>
-        )}
-        <button onClick={handleSave}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 16px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
-          <Save size={14}/> {saved ? '✓ Sauvegardé' : 'Sauvegarder'}
-        </button>
-      </div>
+      </Card>
 
       {/* Mot de passe (staff uniquement) */}
       {!isSpec && (
-        <div style={card}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: pwdOpen ? 12 : 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <KeyRound size={14} style={{ color: 'var(--muted)' }}/> Mot de passe
-            </div>
-            <button onClick={() => { setPwdOpen(v => !v); setPwdMsg('') }}
-              style={{ fontSize: 12, color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font)', minHeight: 'auto' }}>
+        <Card
+          title={<span className={st.titleIcon}><KeyRound size={15} aria-hidden="true"/> Mot de passe</span>}
+          actions={
+            <Button size="sm" variant="ghost" aria-expanded={pwdOpen} onClick={() => { setPwdOpen(v => !v); setPwdMsg('') }}>
               {pwdOpen ? 'Annuler' : 'Changer'}
-            </button>
-          </div>
-          {pwdOpen && (
-            <div>
-              <div style={{ marginBottom: 10 }}>
-                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>Nouveau mot de passe</label>
-                <input type="password" value={pwd} onChange={e => setPwd(e.target.value)} style={inp} placeholder="minimum 6 caractères"/>
+            </Button>
+          }
+        >
+          {pwdOpen ? (
+            <div className={st.form}>
+              <label className={st.field}>
+                <span className={st.label}>Nouveau mot de passe</span>
+                <input className={st.input} type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="minimum 6 caractères" autoComplete="new-password"/>
                 <PasswordStrength value={pwd}/>
-              </div>
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>Confirmer</label>
-                <input type="password" value={pwd2} onChange={e => setPwd2(e.target.value)} style={inp} placeholder="répéter le mot de passe"/>
-              </div>
+              </label>
+              <label className={st.field}>
+                <span className={st.label}>Confirmer</span>
+                <input className={st.input} type="password" value={pwd2} onChange={e => setPwd2(e.target.value)} placeholder="répéter le mot de passe" autoComplete="new-password"/>
+              </label>
               {pwdMsg && (
-                <div style={{ marginBottom: 10, padding: '8px 12px', background: pwdMsg.startsWith('✓') ? 'var(--brand-light)' : 'var(--red-light)', borderRadius: 8, fontSize: 12, color: pwdMsg.startsWith('✓') ? 'var(--brand-dark)' : 'var(--red)' }}>
-                  {pwdMsg}
-                </div>
+                <p className={clsx(st.msg, st[pwdTone])} role={pwdTone === 'err' ? 'alert' : 'status'}>{pwdMsg}</p>
               )}
-              <button onClick={handlePwd}
-                style={{ width: '100%', padding: '10px 16px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
-                Enregistrer le mot de passe
-              </button>
+              <Button block onClick={handlePwd}>Enregistrer le mot de passe</Button>
             </div>
+          ) : (
+            <p className={st.muted}>Modifiez le mot de passe de votre compte staff.</p>
           )}
-        </div>
+        </Card>
       )}
 
       {/* Stats spectateur */}
       {isSpec && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div style={{ background: 'var(--bg2)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Solde</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--brand-dark)' }}>{fmt(person.solde || 0)}</div>
+        <div className={st.tiles}>
+          <div className={st.tile}>
+            <span className={st.tileLabel}>Solde</span>
+            <b className={clsx(st.tileValue, st.tileBrand)}>{fmt(person.solde || 0)}</b>
           </div>
-          <div style={{ background: 'var(--bg2)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>Réservations</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>{resas.length}</div>
+          <div className={st.tile}>
+            <span className={st.tileLabel}>Réservations</span>
+            <b className={st.tileValue}>{resas.length}</b>
           </div>
         </div>
       )}

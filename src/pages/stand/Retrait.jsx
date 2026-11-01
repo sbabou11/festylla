@@ -1,20 +1,29 @@
 /**
- * pages/stand/Retrait.jsx — ergonomie optimisée
+ * pages/stand/Retrait.jsx — retrait des réservations au stand
+ * Scanner le QR du spectateur → ses réservations actives → valider le retrait (débit).
+ * Plein soleil disponible dans la barre d'outils (préférence de l'appareil).
  */
 import React, { useState } from 'react'
+import clsx from 'clsx'
 import useAppStore from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import useAuthStore from '../../store/useAuthStore'
+import useSunMode from '../../store/useSunMode'
 import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore'
 import { fmt } from '../../utils/helpers'
 import QrScanner from '../../components/QrScanner'
-import { CheckCircle, RefreshCw, Package } from 'lucide-react'
+import { RefreshCw, Package, Sun, X, AlertCircle } from 'lucide-react'
+import { Button, Badge, Skeleton, SuccessCheck } from '../../ui'
+import s from './Retrait.module.css'
+
+const itemsLabel = (items) => (items || []).map(i => `${i.nom} ×${i.qty}`).join(' · ')
 
 export default function Retrait() {
   const { reservations, spectateurs, validerRetrait } = useAppStore()
   const { currentEventId, events } = useEventStore()
   const { user } = useAuthStore()
+  const { sun, toggleSun } = useSunMode()
   const [specId, setSpecId]   = useState(null)
   const [specNom, setSpecNom] = useState('')
   const [myResas, setMyResas] = useState([])
@@ -62,7 +71,7 @@ export default function Retrait() {
       }
       setErr('Compte introuvable : ' + uid)
     } catch(e) {
-      setErr('Erreur de recherche : ' + e.message)
+      setErr('Recherche impossible : ' + e.message)
     }
     setSearching(false)
   }
@@ -82,82 +91,103 @@ export default function Retrait() {
   // myResas est maintenant géré dans findById (état local)
   const readyResas = reservations.filter(r => r.status === 'ready')
 
-  if (done) return (
-    <div style={{ maxWidth:400, margin:'0 auto', padding:'24px 0' }}>
-      <div style={{ textAlign:'center', padding:'32px 20px', background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:'var(--radius-lg)' }}>
-        <CheckCircle size={52} style={{ color:'var(--brand)', marginBottom:16 }}/>
-        <div style={{ fontSize:22, fontWeight:700, color:'var(--text)', marginBottom:4 }}>Retrait validé !</div>
-        <div style={{ fontSize:15, color:'var(--muted)', marginBottom:10 }}>{done.nom}</div>
-        <div style={{ fontSize:13, color:'var(--muted)', marginBottom:6 }}>{(done.items||[]).map(i=>`${i.nom} ×${i.qty}`).join(' · ')}</div>
-        <div style={{ fontSize:24, fontWeight:700, color:'var(--red)', marginBottom:24 }}>−{fmt(done.total)}</div>
-        <button onClick={reset} className="btn-primary" style={{ width:'100%' }}>
-          <RefreshCw size={16}/> Client suivant
+  return (
+    <div className={clsx(s.page, sun && 'sun')}>
+      {/* Barre d'outils */}
+      <div className={s.toolbar}>
+        <h2 className={s.title}>Retrait des réservations</h2>
+        <button type="button" className={clsx(s.sunBtn, sun && s.sunOn)} onClick={toggleSun}
+          aria-pressed={sun} title={sun ? 'Plein soleil activé' : "Plein soleil : contraste fort pour l'extérieur"}>
+          <Sun size={16} aria-hidden="true" /> Plein soleil
         </button>
       </div>
-    </div>
-  )
 
-  return (
-    <div style={{ maxWidth:520, margin:'0 auto' }}>
-
-      {/* Scanner */}
-      {!specId && (
-        <div className="card">
-          <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:4 }}>Scanner le QR code</div>
-          <div style={{ fontSize:13, color:'var(--muted)', marginBottom:14 }}>Scannez pour voir les réservations du spectateur</div>
-          <QrScanner onScan={findById} placeholder="FY-XXXX"/>
-          {searching && <div style={{ marginTop:10, padding:'10px 14px', background:'var(--brand-light)', borderRadius:'var(--radius)', fontSize:13, color:'var(--brand-dark)', fontWeight:500 }}>🔍 Recherche en cours…</div>}
-          {err && <div style={{ marginTop:10, padding:'10px 14px', background:'var(--red-light)', borderRadius:'var(--radius)', fontSize:13, color:'var(--red)', fontWeight:500 }}>{err}</div>}
-        </div>
-      )}
-
-      {/* Réservations du spectateur scanné */}
-      {specId && myResas.length > 0 && (
-        <div className="card">
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-            <div style={{ fontSize:15, fontWeight:700, color:'var(--text)' }}>Réservations de {specNom}</div>
-            <button onClick={() => { setSpecId(null); setSpecNom(''); setMyResas([]); setErr('') }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)', fontSize:18 }}>✕</button>
-          </div>
-          {myResas.map(r => (
-            <div key={r.id} style={{ padding:14, background:r.status==='ready'?'var(--brand-light)':'var(--amber-light)', border:`1px solid ${r.status==='ready'?'#5DCAA5':'#EF9F27'}`, borderRadius:'var(--radius)', marginBottom:10 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-                <span style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{(r.items||[]).map(i=>`${i.nom} ×${i.qty}`).join(' · ')}</span>
-                <span style={{ fontSize:12, fontWeight:700, color:r.status==='ready'?'var(--brand-dark)':'var(--amber)' }}>
-                  {r.status==='ready'?'✓ Prêt':'En attente'}
-                </span>
-              </div>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontFamily:'monospace', fontSize:12, color:'var(--muted)' }}>{r.code}</span>
-                <span style={{ fontSize:18, fontWeight:700, color:'var(--text)' }}>{fmt(r.total||0)}</span>
-              </div>
-              {r.status === 'ready' && (
-                <button onClick={() => doRetrait(r)} disabled={loading===r.id} className="btn-primary"
-                  style={{ width:'100%', marginTop:10 }}>
-                  {loading===r.id ? 'Traitement…' : `Valider le retrait — débiter ${fmt(r.total||0)}`}
-                </button>
-              )}
+      {done ? (
+        <section className={clsx(s.card, s.done)} role="status" aria-live="polite">
+          <SuccessCheck size={72} play={done} />
+          <h3 className={s.doneTitle}>Retrait validé</h3>
+          <p className={s.doneName}>{done.nom}</p>
+          <p className={s.doneItems}>{itemsLabel(done.items)}</p>
+          <p className={s.doneTotal}>−{fmt(done.total)}</p>
+          <Button size="lg" block icon={RefreshCw} onClick={reset} autoFocus>Client suivant</Button>
+        </section>
+      ) : (<>
+        {/* Scanner */}
+        {!specId && (
+          <section className={s.card}>
+            <div>
+              <h3 className={s.cardTitle}>Scanner le QR code</h3>
+              <p className={s.muted}>Les réservations du spectateur s'affichent ici.</p>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Toutes les réservations prêtes */}
-      {readyResas.length > 0 && !specId && (
-        <div className="card">
-          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', marginBottom:10, display:'flex', alignItems:'center', gap:8 }}>
-            <Package size={16}/> Prêtes à retirer ({readyResas.length})
-          </div>
-          {readyResas.map(r => (
-            <div key={r.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 0', borderBottom:'0.5px solid var(--border)' }}>
-              <div>
-                <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{r.specNom}</div>
-                <div style={{ fontSize:11, color:'var(--muted)' }}>{(r.items||[]).map(i=>`${i.nom} ×${i.qty}`).join(' · ')}</div>
+            <QrScanner onScan={findById} placeholder="FY-XXXX" />
+            {searching && (
+              <div className={s.searching} role="status" aria-label="Recherche en cours">
+                <Skeleton height={16} width="55%" />
+                <Skeleton height={48} radius="var(--radius)" />
               </div>
-              <span style={{ fontSize:14, fontWeight:700, color:'var(--brand-dark)' }}>{fmt(r.total||0)}</span>
+            )}
+            {err && (
+              <div className={s.err} role="alert"><AlertCircle size={16} aria-hidden="true" /> <span>{err}</span></div>
+            )}
+          </section>
+        )}
+
+        {/* Réservations du spectateur scanné */}
+        {specId && myResas.length > 0 && (
+          <section className={s.card}>
+            <div className={s.cardHead}>
+              <h3 className={s.cardTitle}>Réservations de {specNom}</h3>
+              <Button variant="ghost" iconOnly icon={X} className={s.close} aria-label="Fermer et scanner un autre client"
+                onClick={() => { setSpecId(null); setSpecNom(''); setMyResas([]); setErr('') }} />
             </div>
-          ))}
-        </div>
-      )}
+            {err && (
+              <div className={s.err} role="alert"><AlertCircle size={16} aria-hidden="true" /> <span>{err}</span></div>
+            )}
+            <ul className={clsx(s.list, 'yc-stagger')}>
+              {myResas.map(r => {
+                const ready = r.status === 'ready'
+                return (
+                  <li key={r.id} className={clsx(s.resa, ready ? s.resaReady : s.resaWait)}>
+                    <div className={s.resaTop}>
+                      <span className={s.resaItems}>{itemsLabel(r.items)}</span>
+                      <Badge tone={ready ? 'success' : 'warning'}>{ready ? 'Prêt' : 'En attente'}</Badge>
+                    </div>
+                    <div className={s.resaBottom}>
+                      <span className={s.code}>{r.code}</span>
+                      <span className={s.amount}>{fmt(r.total||0)}</span>
+                    </div>
+                    {ready && (
+                      <Button size="lg" block onClick={() => doRetrait(r)} loading={loading===r.id}>
+                        {loading===r.id ? 'Traitement…' : `Valider le retrait · débiter ${fmt(r.total||0)}`}
+                      </Button>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
+
+        {/* Toutes les réservations prêtes */}
+        {readyResas.length > 0 && !specId && (
+          <section className={s.card}>
+            <h3 className={clsx(s.cardTitle, s.withIcon)}>
+              <Package size={16} aria-hidden="true" /> Prêtes à retirer ({readyResas.length})
+            </h3>
+            <ul className={s.readyList}>
+              {readyResas.map(r => (
+                <li key={r.id} className={s.readyRow}>
+                  <div className={s.readyText}>
+                    <b>{r.specNom}</b>
+                    <span>{itemsLabel(r.items)}</span>
+                  </div>
+                  <span className={s.readyAmount}>{fmt(r.total||0)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </>)}
     </div>
   )
 }

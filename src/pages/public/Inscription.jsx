@@ -5,6 +5,7 @@
  * Crée automatiquement un compte spectateur dans Firebase
  * et affiche le QR code personnel unique.
  * Aucune app, aucun login requis — juste la caméra du téléphone.
+ * Mobile d'abord : colonne de 440px max, styles dans inscription/Inscription.module.css.
  */
 
 import React, { useState, useEffect } from 'react'
@@ -14,13 +15,16 @@ import { nowStr } from '../../utils/helpers'
 import QRCode from 'qrcode'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
+import { AlertCircle, ArrowRight, Wallet, Download, CreditCard, ShoppingBag, ClipboardList } from 'lucide-react'
+import clsx from 'clsx'
+import { Button, Skeleton, SuccessCheck } from '../../ui'
+import s from './inscription/Inscription.module.css'
 
 // Génère un ID unique de type FY-XXXX
 const genId = () => 'FY-' + Math.random().toString(36).slice(2, 6).toUpperCase()
 
+// Couleur du QR (image exportée, indépendante du thème)
 const BRAND   = '#1a6b7a'
-const BRAND_L = '#E1F5EE'
-const BRAND_D = '#0F6E56'
 
 export default function Inscription() {
   useTheme()
@@ -176,214 +180,157 @@ export default function Inscription() {
     }
   }
 
-  const inp = {
-    width: '100%', padding: '12px 14px',
-    border: '1.5px solid var(--border2)', borderRadius: 'var(--radius)',
-    fontSize: 16, color: 'var(--text)', outline: 'none',
-    fontFamily: 'var(--font)',
-    background: 'var(--bg)',
-  }
+  const creating = step === 'creating'
+  const soldeHref = `/solde?id=${spec?.id}${eventId ? '&ev=' + eventId : ''}`
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg2)', fontFamily: 'var(--font)' }}>
+    <div className={s.page}>
 
-      {/* Header dégradé Maison Ylla */}
-      <div style={{ position:'relative', background:'var(--grad-signature)', padding: '24px 16px 56px', textAlign: 'center', color: '#fff' }}>
-        <div style={{ position:'absolute', top:10, right:12, zIndex:10 }}><ThemeToggle variant="dark"/></div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 8 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.20)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img src="/logo.png" alt="YllaCash" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              onError={e => { e.target.style.display = 'none' }}/>
-          </div>
-          <span style={{ fontSize: 22, fontWeight: 800 }}>YllaCash</span>
+      {/* En-tête dégradé Maison Ylla */}
+      <header className={s.hero}>
+        <div className={s.heroTheme}><ThemeToggle variant="dark"/></div>
+        <div className={s.heroBrand}>
+          <span className={s.logo}>
+            <img src="/logo.png" alt="" onError={e => { e.target.style.display = 'none' }}/>
+          </span>
+          <span className={s.brandName}>YllaCash</span>
         </div>
-        <div style={{ fontSize: 14, opacity: 0.90, fontWeight: 500 }}>
+        {eventMeta?.nom && <span className={s.event}>{eventMeta.nom}</span>}
+        <p className={s.heroSub}>
           {step === 'done' ? 'Votre espace est prêt !' : 'Créez votre espace festival'}
-        </div>
-      </div>
+        </p>
+      </header>
 
-      <div style={{ maxWidth: 420, margin: '-32px auto 0', padding: '0 16px 40px', position: 'relative', zIndex: 1 }}>
+      <main className={s.wrap}>
 
         {/* ── Formulaire ── */}
-        {(step === 'form' || step === 'creating') && (
-          <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 16, padding: 24, boxShadow: '0 4px 24px rgba(0,0,0,0.08)' }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#0d2d33', marginBottom: 6 }}>
-              Bienvenue au festival !
-            </div>
-            <div style={{ fontSize: 13, color: '#6b6b6b', marginBottom: 20, lineHeight: 1.5 }}>
-              Entrez votre nom pour créer votre espace cashless. Vous recevrez un QR code personnel pour payer et réserver.
+        {(step === 'form' || creating) && (
+          <form className={s.card} onSubmit={e => { e.preventDefault(); handleCreate() }} noValidate>
+            <div className={s.intro}>
+              <h1 className={s.title}>Bienvenue au festival !</h1>
+              <p className={s.muted}>
+                Entrez votre nom pour créer votre espace cashless. Vous recevrez un QR code personnel pour payer et réserver.
+              </p>
             </div>
 
-            <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 12, color: '#6b6b6b', display: 'block', marginBottom: 6 }}>Prénom</label>
+            <label className={s.field}>
+              <span className={s.label}>Prénom</span>
               <input
+                className={s.input}
                 value={prenom}
                 onChange={e => setPrenom(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && document.getElementById('inp-nom')?.focus()}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('inp-nom')?.focus() } }}
                 placeholder="ex : Marie"
-                disabled={step === 'creating'}
-                style={inp}
+                autoComplete="given-name"
+                disabled={creating}
                 autoFocus
               />
-            </div>
+            </label>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: '#6b6b6b', display: 'block', marginBottom: 6 }}>Nom</label>
+            <label className={s.field}>
+              <span className={s.label}>Nom</span>
               <input
                 id="inp-nom"
+                className={s.input}
                 value={nom}
                 onChange={e => setNom(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreate()}
                 placeholder="ex : Dupont"
-                disabled={step === 'creating'}
-                style={inp}
+                autoComplete="family-name"
+                disabled={creating}
               />
-            </div>
+            </label>
 
             {err && (
-              <div style={{ padding: '10px 14px', background: '#FCEBEB', borderRadius: 8, fontSize: 13, color: '#A32D2D', marginBottom: 16 }}>
-                {err}
-              </div>
+              <p className={s.err} role="alert"><AlertCircle size={16} aria-hidden="true"/>{err}</p>
             )}
 
-            <button
-              onClick={handleCreate}
-              disabled={step === 'creating'}
-              style={{
-                width: '100%', padding: '14px 0',
-                background: step === 'creating' ? '#ccc' : BRAND,
-                color: '#fff', border: 'none',
-                borderRadius: 10, fontSize: 15,
-                fontWeight: 600, cursor: step === 'creating' ? 'not-allowed' : 'pointer',
-                fontFamily: 'system-ui,sans-serif',
-                transition: 'background .15s',
-              }}
-            >
-              {step === 'creating' ? 'Création en cours…' : 'Créer mon espace →'}
-            </button>
+            <Button type="submit" size="lg" block loading={creating} icon={ArrowRight}>
+              {creating ? 'Création en cours…' : 'Créer mon espace'}
+            </Button>
 
-            <div style={{ marginTop: 14, fontSize: 11, color: '#6b6b6b', textAlign: 'center', lineHeight: 1.5 }}>
-              Aucune app à installer · Aucun mot de passe · Gratuit
-            </div>
-          </div>
+            <p className={s.small}>Aucune app à installer · Aucun mot de passe · Gratuit</p>
+          </form>
         )}
 
         {/* ── Compte créé ── */}
         {step === 'done' && spec && (
           <>
-            {/* Confirmation */}
-            <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 16, padding: 24, boxShadow: '0 4px 24px rgba(0,0,0,0.08)', textAlign: 'center', marginBottom: 14 }}>
-
-              {/* Check animé */}
-              <div style={{ width: 60, height: 60, borderRadius: '50%', background: BRAND_L, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 28 }}>
-                ✓
+            <section className={clsx(s.card, s.done)}>
+              <SuccessCheck size={64}/>
+              <div>
+                <h1 className={s.title}>Bonjour {spec.nom} !</h1>
+                <p className={s.mono}>{spec.id}</p>
               </div>
 
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#0d2d33', marginBottom: 4 }}>
-                Bonjour {spec.nom} !
-              </div>
-              <div style={{ fontSize: 12, color: '#6b6b6b', fontFamily: 'monospace', marginBottom: 20 }}>
-                {spec.id}
+              {/* QR code : toujours sur fond blanc pour la lecture */}
+              {qrDataUrl ? (
+                <div className={s.qr}>
+                  <img src={qrDataUrl} alt={`QR code ${spec.id}`}/>
+                </div>
+              ) : (
+                <Skeleton width={224} height={224} radius={12}/>
+              )}
+
+              <div className={s.intro}>
+                <p className={s.capture}>Faites une capture d'écran de ce QR code !</p>
+                <p className={s.muted}>
+                  Présentez-le aux stands pour payer et réserver. Il vous suffit de le scanner pour consulter votre solde à tout moment.
+                </p>
               </div>
 
-              {/* QR code */}
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                {qrDataUrl ? (
-                  <div style={{ padding: 12, background: '#fff', borderRadius: 12, border: `2px solid ${BRAND}`, display: 'inline-block' }}>
-                    <img src={qrDataUrl} alt={`QR code ${spec.id}`} style={{ width: 200, height: 200, display: 'block' }}/>
-                  </div>
-                ) : (
-                  <div style={{ width: 224, height: 224, background: '#f5f5f5', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b6b6b', fontSize: 13 }}>
-                    Génération…
-                  </div>
-                )}
-              </div>
-
-              <div style={{ fontSize: 13, color: BRAND_D, fontWeight: 500, marginBottom: 6 }}>
-                Faites une capture d'écran de ce QR code !
-              </div>
-              <div style={{ fontSize: 12, color: '#6b6b6b', lineHeight: 1.5, marginBottom: 20 }}>
-                Présentez-le aux stands pour payer et réserver. Il vous suffit de le scanner pour consulter votre solde à tout moment.
-              </div>
-
-              {/* Infos */}
-              <div style={{ background: '#f0f8f9', borderRadius: 10, padding: '12px 16px', marginBottom: 16, textAlign: 'left' }}>
+              <dl className={s.infos}>
                 {[
                   ['Votre nom',  spec.nom],
                   ['Votre ID',   spec.id],
                   ['Solde',      '0,00€ (rechargeable à la billetterie)'],
                 ].map(([k, v]) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '0.5px solid #ddd', fontSize: 13 }}>
-                    <span style={{ color: '#6b6b6b' }}>{k}</span>
-                    <span style={{ color: '#0d2d33', fontWeight: 600, fontFamily: k === 'Votre ID' ? 'monospace' : 'inherit' }}>{v}</span>
+                  <div key={k} className={s.infoRow}>
+                    <dt>{k}</dt>
+                    <dd className={clsx(k === 'Votre ID' && s.monoValue)}>{v}</dd>
                   </div>
                 ))}
-              </div>
+              </dl>
 
-              {/* Actions */}
-              <div style={{ display: 'flex', gap: 10 }}>
-                <button
-                  onClick={() => { window.location.href = `/solde?id=${spec.id}${eventId ? '&ev=' + eventId : ''}` }}
-                  style={{
-                    flex: 1, padding: '12px 0',
-                    background: BRAND, color: '#fff',
-                    border: 'none', borderRadius: 10,
-                    fontSize: 14, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'system-ui,sans-serif',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                >
+              <div className={s.actions}>
+                <Button block icon={Wallet} onClick={() => { window.location.href = soldeHref }}>
                   Consulter mon solde
-                </button>
-                <button
-                  onClick={handlePrint}
-                  style={{
-                    flex: 1, padding: '12px 0',
-                    background: '#fff', color: BRAND_D,
-                    border: `0.5px solid ${BRAND}`,
-                    borderRadius: 10, fontSize: 14, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'system-ui,sans-serif',
-                  }}
-                >
+                </Button>
+                <Button block variant="secondary" icon={Download} onClick={handlePrint}>
                   Télécharger mon QR code (PDF)
-                </button>
+                </Button>
               </div>
-            </div>
+            </section>
 
             {/* Astuce */}
-            <div style={{ background: '#fff', border: '0.5px solid #ddd', borderRadius: 12, padding: '14px 16px' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#0d2d33', marginBottom: 8 }}>
-                Comment ça marche ?
-              </div>
-              {[
-                ['💳', 'Rechargez', 'Donnez votre QR code à la billetterie pour recharger votre solde en espèces ou carte.'],
-                ['🍺', 'Payez', 'Présentez votre QR code aux stands pour payer directement.'],
-                ['📋', 'Réservez', 'Réservez depuis votre espace en ligne et récupérez quand c\'est prêt.'],
-              ].map(([icon, titre, desc]) => (
-                <div key={titre} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '0.5px solid #eee' }}>
-                  <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#0d2d33', marginBottom: 2 }}>{titre}</div>
-                    <div style={{ fontSize: 12, color: '#6b6b6b', lineHeight: 1.5 }}>{desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <section className={s.card}>
+              <h2 className={s.subtitle}>Comment ça marche ?</h2>
+              <ul className={clsx(s.steps, 'yc-stagger')}>
+                {[
+                  [CreditCard,   'Rechargez', 'Donnez votre QR code à la billetterie pour recharger votre solde en espèces ou carte.'],
+                  [ShoppingBag,  'Payez',     'Présentez votre QR code aux stands pour payer directement.'],
+                  [ClipboardList,'Réservez',  'Réservez depuis votre espace en ligne et récupérez quand c\'est prêt.'],
+                ].map(([Icon, titre, desc]) => (
+                  <li key={titre} className={s.stepItem}>
+                    <span className={s.stepIcon}><Icon size={18} aria-hidden="true"/></span>
+                    <div>
+                      <b>{titre}</b>
+                      <p className={s.muted}>{desc}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
           </>
         )}
 
-      </div>
+      </main>
 
-      {/* Footer À propos */}
-      <div style={{ textAlign:'center', padding:'24px 16px 32px', fontFamily:'system-ui,sans-serif' }}>
-        <div style={{ fontSize:12, fontWeight:700, color:'#64748b' }}>YllaCash v1.0 · 05/2026</div>
-        <div style={{ fontSize:11, color:'#94a3b8', marginTop:2 }}>
-          Développée par <strong style={{ color:'#64748b' }}>Maison Ylla</strong>
-        </div>
-        <div style={{ fontSize:10, color:'#cbd5e1', marginTop:6, fontStyle:'italic' }}>
-          "Toute la gestion financière de votre événement en un seul endroit, et bien plus encore"
-        </div>
-      </div>
+      {/* Pied de page À propos */}
+      <footer className={s.footer}>
+        <b>YllaCash v1.0 · 05/2026</b>
+        <span>Développée par <strong>Maison Ylla</strong></span>
+        <i>"Toute la gestion financière de votre événement en un seul endroit, et bien plus encore"</i>
+      </footer>
     </div>
   )
 }

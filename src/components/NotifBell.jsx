@@ -1,12 +1,15 @@
 /**
- * components/NotifBell.jsx
- * Desktop  → dropdown depuis la cloche (haut droite)
- * Mobile   → bottom sheet (remonte depuis le bas) avec backdrop semi-transparent
+ * components/NotifBell.jsx — v2 (design system)
+ * Desktop  → menu déroulant depuis la cloche (haut droite)
+ * Mobile   → feuille du bas avec fond assombri
+ * Échap ferme le panneau. Styles : NotifBell.module.css (tokens, clair / sombre / plein soleil).
  */
 import React, { useState, useEffect, useRef } from 'react'
+import clsx from 'clsx'
 import { Bell, X, CheckCheck } from 'lucide-react'
 import { NOTIF_TYPES } from '../hooks/useNotifications'
 import { useBreakpoint } from '../hooks/useBreakpoint'
+import s from './NotifBell.module.css'
 
 export default function NotifBell({ notifications, nonLuCount, onMarkAllRead }) {
   const [open, setOpen]   = useState(false)
@@ -61,216 +64,100 @@ export default function NotifBell({ notifications, nonLuCount, onMarkAllRead }) 
     } catch { return '' }
   }
 
-  // ── Contenu partagé entre desktop et mobile ───────────────────
-  const PanelContent = () => (
-    <>
-      {/* Handle mobile */}
-      {isMobile && (
-        <div style={{ width: 40, height: 4, borderRadius: 2, background: 'var(--border2)', margin: '12px auto 4px' }}/>
-      )}
+  // Échap ferme le panneau (bureau et mobile)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open])
 
-      {/* Header */}
-      <div style={{
-        padding: isMobile ? '12px 20px 14px' : '14px 16px',
-        borderBottom: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Bell size={16} style={{ color: 'var(--brand)' }}/>
-          <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Notifications</span>
-          {notifications.length > 0 && (
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>({notifications.length})</span>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          {nonLuCount > 0 && (
-            <button onClick={onMarkAllRead}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', border: '1px solid var(--border2)', borderRadius: 8, background: 'var(--bg2)', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', minHeight: 'auto' }}>
-              <CheckCheck size={13}/> Tout lire
-            </button>
-          )}
-          <button onClick={close}
-            style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 8, background: 'var(--bg2)', color: 'var(--muted)', cursor: 'pointer', flexShrink: 0, minHeight: 'auto' }}>
-            <X size={15}/>
+  // ── Contenu partagé entre desktop et mobile ───────────────────
+  const panel = (
+    <>
+      {isMobile && <div className={s.handle} aria-hidden="true"/>}
+
+      <div className={s.head}>
+        <h2 id="notif-title">
+          <Bell size={16} aria-hidden="true"/> Notifications
+          {notifications.length > 0 && <span className={s.total}>({notifications.length})</span>}
+        </h2>
+        {nonLuCount > 0 && (
+          <button type="button" className={s.readAll} onClick={onMarkAllRead}>
+            <CheckCheck size={14} aria-hidden="true"/> Tout lire
           </button>
-        </div>
+        )}
+        <button type="button" className={s.close} onClick={close} aria-label="Fermer les notifications">
+          <X size={16} aria-hidden="true"/>
+        </button>
       </div>
 
-      {/* Liste */}
-      <div style={{ overflowY: 'auto', flex: 1 }}>
-        {notifications.length === 0 ? (
-          <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--muted)' }}>
-            <Bell size={36} style={{ opacity: .25, marginBottom: 12, display: 'block', margin: '0 auto 12px' }}/>
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Aucune notification</div>
-            <div style={{ fontSize: 13 }}>Les alertes apparaîtront ici</div>
-          </div>
-        ) : (
-          notifications.map((n, i) => {
+      {notifications.length === 0 ? (
+        <div className={s.empty}>
+          <span className={s.emptyIcon}><Bell size={22} aria-hidden="true"/></span>
+          <b>Aucune notification</b>
+          <p>Les alertes apparaîtront ici</p>
+        </div>
+      ) : (
+        <ul className={clsx(s.list, 'yc-stagger')}>
+          {notifications.map((n) => {
             const cfg = NOTIF_TYPES[n.type] || { icon: '🔔', color: 'var(--muted)' }
             return (
-              <div key={n.id} style={{
-                padding: isMobile ? '14px 20px' : '12px 16px',
-                borderBottom: i < notifications.length - 1 ? '1px solid var(--border)' : 'none',
-                display: 'flex', gap: 12, alignItems: 'flex-start',
-                background: !n.lu ? cfg.color + '0c' : 'transparent',
-                animation: `fadeInItem .2s ease ${i * 0.04}s both`,
-              }}>
-                {/* Icône */}
-                <div style={{
-                  width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                  background: cfg.color + '18',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 18,
-                }}>
-                  {cfg.icon}
+              <li key={n.id} className={clsx(s.item, !n.lu && s.unread)} style={{ '--notif': cfg.color }}>
+                <span className={s.icon} aria-hidden="true">{cfg.icon}</span>
+                <div className={s.text}>
+                  <b>{n.titre}</b>
+                  <p className={s.msg}>{n.message}</p>
+                  {n.resaCode && <span className={s.code}>Code : {n.resaCode}</span>}
+                  <span className={s.time}>{formatTime(n.timestamp)}</span>
                 </div>
-
-                {/* Texte */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: n.lu ? 500 : 700, color: 'var(--text)', marginBottom: 3, lineHeight: 1.3 }}>
-                    {n.titre}
-                  </div>
-                  <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.45 }}>
-                    {n.message}
-                  </div>
-                  {n.resaCode && (
-                    <div style={{ marginTop: 5, fontSize: 12, fontFamily: 'monospace', color: cfg.color, fontWeight: 700 }}>
-                      Code : {n.resaCode}
-                    </div>
-                  )}
-                  <div style={{ marginTop: 5, fontSize: 11, color: 'var(--muted)', opacity: .65 }}>
-                    {formatTime(n.timestamp)}
-                  </div>
-                </div>
-
-                {/* Point non-lu */}
-                {!n.lu && (
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#DC2626', flexShrink: 0, marginTop: 6 }}/>
-                )}
-              </div>
+                {!n.lu && <span className={s.dot} aria-label="Non lue"/>}
+              </li>
             )
-          })
-        )}
-      </div>
+          })}
+        </ul>
+      )}
 
-      {/* Footer */}
       {notifications.length > 0 && (
-        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)', textAlign: 'center', flexShrink: 0 }}>
-          Notifications de cette session
-        </div>
+        <div className={s.foot}>Notifications de cette session</div>
       )}
     </>
   )
 
+  const label = nonLuCount > 0 ? `Notifications, ${nonLuCount} non lue${nonLuCount > 1 ? 's' : ''}` : 'Notifications'
+
   return (
     <>
-      {/* ── CSS animations ── */}
-      <style>{`
-        @keyframes bellShake {
-          0%,100% { transform: rotate(0deg);   }
-          15%      { transform: rotate(-12deg); }
-          30%      { transform: rotate(10deg);  }
-          45%      { transform: rotate(-8deg);  }
-          60%      { transform: rotate(6deg);   }
-          75%      { transform: rotate(-4deg);  }
-          90%      { transform: rotate(2deg);   }
-        }
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-10px) scale(0.96); }
-          to   { opacity: 1; transform: translateY(0)     scale(1);    }
-        }
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to   { transform: translateY(0);    }
-        }
-        @keyframes fadeInItem {
-          from { opacity: 0; transform: translateX(-5px); }
-          to   { opacity: 1; transform: translateX(0);    }
-        }
-        @keyframes fadeInBackdrop {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-      `}</style>
-
       {/* ── Bouton cloche ── */}
-      <div ref={dropdownRef} style={{ position: 'relative' }}>
+      <div ref={dropdownRef} className={s.wrap}>
         <button
+          type="button"
           onClick={handleOpen}
-          className="btn-icon nav-btn"
+          className={clsx('btn-icon nav-btn', s.bell, open && s.bellOpen, shake && s.shake)}
           title="Notifications"
-          style={{
-            width: 36, height: 36,
-            position: 'relative',
-            animation: shake ? 'bellShake .5s ease' : 'none',
-            background: open ? 'var(--brand-light)' : undefined,
-            borderColor: open ? 'var(--brand)' : undefined,
-            color: open ? 'var(--brand)' : undefined,
-          }}
+          aria-label={label}
+          aria-expanded={open}
+          aria-haspopup="dialog"
         >
-          <Bell size={16}/>
+          <Bell size={16} aria-hidden="true"/>
           {nonLuCount > 0 && (
-            <span style={{
-              position: 'absolute', top: -3, right: -3,
-              minWidth: 17, height: 17,
-              borderRadius: 10, background: '#DC2626', color: '#fff',
-              fontSize: 10, fontWeight: 800,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              padding: '0 3px', border: '2px solid var(--bg)', lineHeight: 1,
-            }}>
-              {nonLuCount > 9 ? '9+' : nonLuCount}
-            </span>
+            <span className={s.count} aria-hidden="true">{nonLuCount > 9 ? '9+' : nonLuCount}</span>
           )}
         </button>
 
-        {/* ── Desktop : dropdown ── */}
+        {/* ── Desktop : menu déroulant ── */}
         {!isMobile && open && (
-          <div style={{
-            position: 'absolute',
-            top: 'calc(100% + 10px)',
-            right: 0,
-            width: 340,
-            maxHeight: 500,
-            background: 'var(--bg)',
-            border: '1px solid var(--border)',
-            borderRadius: 16,
-            boxShadow: '0 16px 48px rgba(0,0,0,0.16)',
-            zIndex: 200,
-            animation: 'slideDown .18s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}>
-            <PanelContent/>
+          <div className={s.dropdown} role="dialog" aria-labelledby="notif-title">
+            {panel}
           </div>
         )}
       </div>
 
-      {/* ── Mobile : bottom sheet avec backdrop ── */}
+      {/* ── Mobile : feuille du bas avec fond ── */}
       {isMobile && open && (
-        <div
-          onClick={close}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 210,
-            background: 'rgba(0,0,0,0.5)',
-            animation: 'fadeInBackdrop .2s ease',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              position: 'absolute', bottom: 0, left: 0, right: 0,
-              maxHeight: '85vh',
-              background: 'var(--bg)',
-              borderRadius: '20px 20px 0 0',
-              boxShadow: '0 -8px 40px rgba(0,0,0,0.25)',
-              display: 'flex', flexDirection: 'column',
-              animation: 'slideUp .25s cubic-bezier(.4,0,.2,1)',
-              overflow: 'hidden',
-            }}
-          >
-            <PanelContent/>
+        <div className={s.backdrop} onClick={close}>
+          <div className={s.sheet} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="notif-title">
+            {panel}
           </div>
         </div>
       )}

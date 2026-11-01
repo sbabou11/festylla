@@ -1,21 +1,33 @@
 /**
- * pages/admin/Reservations.jsx — v3
+ * pages/admin/Reservations.jsx — v4
  * Statuts : pending → processing → ready → collected / cancelled
  * Droits  : seul le staff assigné (ou admin) peut changer le statut après processing
+ * Annulation (motif) et suppression définitive passent par une fenêtre du design system.
  */
 import React, { useState, useMemo } from 'react'
+import clsx from 'clsx'
 import useAppStore  from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt }      from '../../utils/helpers'
-import { Clock, ChefHat, CheckCircle, Package, XCircle, Loader } from 'lucide-react'
+import { Clock, ChefHat, CheckCircle, Package, XCircle, Trash2, ShoppingBag } from 'lucide-react'
+import { Button, Badge, Tabs, Empty, Dialog, HoldButton } from '../../ui'
+import s from './reservations/reservations.module.css'
 
 const STATUTS = {
-  pending:    { label: 'En revue',           color: '#BA7517', bg: '#FEF3C7', icon: Clock       },
-  processing: { label: 'En préparation',     color: '#F07848', bg: '#EDE9FE', icon: ChefHat     },
-  ready:      { label: 'Prête',              color: '#065f46', bg: '#D1FAE5', icon: CheckCircle  },
-  collected:  { label: 'Retirée',            color: '#64748b', bg: '#F1F5F9', icon: Package      },
-  cancelled:  { label: 'Annulée',            color: '#DC2626', bg: '#FEE2E2', icon: XCircle      },
+  pending:    { label: 'En revue',           tone: 'warning', icon: Clock       },
+  processing: { label: 'En préparation',     tone: 'coral',   icon: ChefHat     },
+  ready:      { label: 'Prête',              tone: 'success', icon: CheckCircle  },
+  collected:  { label: 'Retirée',            tone: 'neutral', icon: Package      },
+  cancelled:  { label: 'Annulée',            tone: 'danger',  icon: XCircle      },
 }
+
+const SORTS = [
+  ['date_desc',    'Plus récentes'],
+  ['date_asc',     'Plus anciennes'],
+  ['statut',       'Statut'],
+  ['montant_desc', 'Montant décroissant'],
+  ['montant_asc',  'Montant croissant'],
+]
 
 // Label dynamique pour les annulations
 const getCancelLabel = (resa) => {
@@ -104,219 +116,185 @@ export default function Reservations() {
     finally { setLoading(null) }
   }
 
-  const card  = { background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'14px 16px', marginBottom:10 }
-  const btn   = (color, bg) => ({ padding:'6px 12px', border:`1px solid ${color}`, borderRadius:8, background:bg, color, fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)', display:'flex', alignItems:'center', gap:5 })
-  const inp   = { width:'100%', padding:'8px 10px', border:'1px solid var(--border2)', borderRadius:8, fontSize:13, background:'var(--bg2)', color:'var(--text)', fontFamily:'var(--font)', boxSizing:'border-box' }
+  // Suppression définitive (remplace window.confirm)
+  const [pendingDel, setPendingDel] = useState(null)  // réservation à supprimer
+  const confirmDelete = async () => {
+    const resa = pendingDel
+    setPendingDel(null)
+    if (resa) await act(() => deleteReservation(resa.id), resa.id)
+  }
+
+  const closeAnnul = () => { setAnnulModal(null); setErr('') }
+
+  // Total affiché : celui de la résa, sinon recalculé depuis les articles (résa bénévole)
+  const totalOf = (resa) => {
+    if (resa.total && !isNaN(resa.total)) return fmt(resa.total)
+    const total = (resa.items||[]).reduce((acc, item) => {
+      const menuItem = menu.find(m => m.id === item.id)
+      return acc + ((menuItem?.prix || item.prix || 0) * (item.qty || 1))
+    }, 0)
+    return total > 0 ? fmt(total) : '—'
+  }
 
   return (
-    <div>
-      {/* Filtres */}
-      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:14 }}>
-        {[['all','Toutes'], ...Object.entries(STATUTS).map(([k,v]) => [k, v.label])].map(([k,l]) => (
-          <button key={k} onClick={() => setFilter(k)}
-            style={{ padding:'5px 12px', borderRadius:20, border:'none', cursor:'pointer', fontFamily:'var(--font)', fontSize:12, fontWeight:filter===k?700:400, background:filter===k?'var(--brand)':'var(--bg2)', color:filter===k?'#fff':'var(--muted)' }}>
-            {l} {k !== 'all' && `(${reservations.filter(r => r.status === k).length})`}
-          </button>
-        ))}
+    <div className={s.page}>
+      {/* Filtres + tri */}
+      <div className={s.toolbar}>
+        <Tabs
+          label="Filtrer par statut"
+          size="sm"
+          value={filter}
+          onChange={setFilter}
+          items={[
+            { value: 'all', label: 'Toutes' },
+            ...Object.entries(STATUTS).map(([k, v]) => ({ value: k, label: v.label, count: reservations.filter(r => r.status === k).length })),
+          ]}
+        />
+        <label className={s.sort}>
+          <span className={s.sortLabel}>Trier par</span>
+          <select className={s.select} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+            {SORTS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+          </select>
+        </label>
       </div>
 
-      {/* Tri */}
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
-        <span style={{ fontSize:12, color:'var(--muted)', fontWeight:600 }}>Trier par :</span>
-        {[
-          ['date_desc', '⬇ Plus récentes'],
-          ['date_asc',  '⬆ Plus anciennes'],
-          ['statut',    '📋 Statut'],
-          ['montant_desc', '💰 Montant ⬇'],
-          ['montant_asc',  '💰 Montant ⬆'],
-        ].map(([val, label]) => (
-          <button key={val} onClick={() => setSortBy(val)}
-            style={{ padding:'4px 10px', borderRadius:16, border:'none', cursor:'pointer', fontFamily:'var(--font)', fontSize:11, fontWeight:sortBy===val?700:400, background:sortBy===val?'var(--brand-dark)':'var(--bg2)', color:sortBy===val?'#fff':'var(--muted)', transition:'all .12s' }}>
-            {label}
-          </button>
-        ))}
+      {err && !annulModal && <div className={s.error} role="alert">{err}</div>}
+
+      {sorted.length === 0 && <Empty icon={ShoppingBag} title="Aucune réservation"/>}
+
+      <div className={clsx(s.list, 'yc-stagger')}>
+        {sorted.slice(0, visible).map(resa => {
+          const st   = STATUTS[resa.status] || STATUTS.pending
+          const cancelLabel = getCancelLabel(resa)
+          const can  = canAct(resa)
+          const items = (resa.items||[]).map(i => i.nom + (i.qty>1?` ×${i.qty}`:'')).join(', ')
+          const isLoading = loading === resa.id
+
+          return (
+            <article key={resa.id} className={s.card}>
+              {/* En-tête */}
+              <div className={s.head}>
+                <div className={s.headLeft}>
+                  <Badge tone={st.tone} icon={st.icon}>{resa.status === 'cancelled' ? cancelLabel : st.label}</Badge>
+                  <span className={s.code}>#{resa.code}</span>
+                </div>
+                <span className={s.date}>{resa.date}</span>
+              </div>
+
+              {/* Infos */}
+              <div className={s.info}>
+                <div className={s.nameRow}>
+                  <span className={s.name}>{resa.benevoleNom || resa.specNom}</span>
+                  {resa.isBenev && <Badge tone="coral">Bénévole</Badge>}
+                </div>
+                <div className={s.items}>{items}</div>
+                <div className={s.total}>{totalOf(resa)}</div>
+                {resa.assignedStaff && resa.status !== 'pending' && (
+                  <div className={s.assigned}>
+                    <ChefHat size={13} aria-hidden="true"/> Pris en charge par <strong>{resa.assignedStaff}</strong>
+                  </div>
+                )}
+                {resa.status === 'cancelled' && resa.motifAnnulation && (
+                  <div className={s.motif}>Motif : {resa.motifAnnulation}</div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className={s.actions}>
+                {/* Pending → Prendre en charge ou Annuler */}
+                {resa.status === 'pending' && (
+                  <>
+                    <Button variant="coral" size="sm" icon={ChefHat} loading={isLoading}
+                      onClick={() => act(() => prendreEnCharge(resa.id), resa.id)}>Prendre en charge</Button>
+                    <Button variant="danger" size="sm" icon={XCircle} onClick={() => setAnnulModal(resa.id)}>Annuler</Button>
+                  </>
+                )}
+
+                {/* Processing → Marquer prête ou Annuler (si droits) */}
+                {resa.status === 'processing' && can && (
+                  <>
+                    <Button size="sm" icon={CheckCircle} loading={isLoading}
+                      onClick={() => act(() => marquerResaPrete(resa.id), resa.id)}>Marquer prête</Button>
+                    <Button variant="danger" size="sm" icon={XCircle} onClick={() => setAnnulModal(resa.id)}>Annuler</Button>
+                  </>
+                )}
+
+                {/* Processing mais pas les droits */}
+                {resa.status === 'processing' && !can && (
+                  <p className={s.locked}>En charge par {resa.assignedStaff} — vous ne pouvez pas modifier</p>
+                )}
+
+                {/* Ready → Valider retrait */}
+                {resa.status === 'ready' && can && (
+                  <Button size="sm" icon={Package} loading={isLoading}
+                    onClick={() => act(() => validerRetrait(resa.id), resa.id)}>Valider le retrait</Button>
+                )}
+
+                {/* Supprimer (admin uniquement, après annulation ou retrait) */}
+                {isAdmin && (resa.status === 'cancelled' || resa.status === 'collected') && (
+                  <Button variant="ghost" size="sm" icon={Trash2} loading={isLoading} className={s.deleteBtn}
+                    onClick={() => setPendingDel(resa)}>Supprimer</Button>
+                )}
+              </div>
+            </article>
+          )
+        })}
       </div>
-
-      {err && <div style={{ padding:'8px 12px', background:'var(--red-light)', color:'var(--red)', borderRadius:8, fontSize:13, marginBottom:10 }}>{err}</div>}
-
-      {sorted.length === 0 && (
-        <div style={{ padding:'40px', textAlign:'center', color:'var(--muted)', fontSize:14 }}>Aucune réservation</div>
-      )}
-
-      {sorted.slice(0, visible).map(resa => {
-        const st   = STATUTS[resa.status] || STATUTS.pending
-        const cancelLabel = getCancelLabel(resa)
-        const Icon = st.icon
-        const can  = canAct(resa)
-        const items = (resa.items||[]).map(i => i.nom + (i.qty>1?` ×${i.qty}`:'')).join(', ')
-        const isLoading = loading === resa.id
-
-        return (
-          <div key={resa.id} style={card}>
-            {/* Header */}
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div style={{ padding:'3px 10px', borderRadius:20, background:st.bg, color:st.color, fontSize:11, fontWeight:700, display:'flex', alignItems:'center', gap:4 }}>
-                  <Icon size={11}/> {resa.status === 'cancelled' ? cancelLabel : st.label}
-                </div>
-                <span style={{ fontSize:12, fontFamily:'monospace', color:'var(--muted)' }}>#{resa.code}</span>
-              </div>
-              <span style={{ fontSize:12, color:'var(--muted)' }}>{resa.date}</span>
-            </div>
-
-            {/* Infos */}
-            <div style={{ marginBottom:10 }}>
-              <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:3, display:'flex', alignItems:'center', gap:8 }}>
-                {resa.benevoleNom || resa.specNom}
-                {resa.isBenev && <span style={{ fontSize:10, padding:'2px 7px', borderRadius:10, background:'#EDE9FE', color:'#F07848', fontWeight:700 }}>Bénévole</span>}
-              </div>
-              <div style={{ fontSize:13, color:'var(--muted)', marginBottom:4 }}>{items}</div>
-              <div style={{ fontSize:14, fontWeight:700, color:'var(--brand-dark)' }}>
-                {(() => {
-                  if (resa.total && !isNaN(resa.total)) return fmt(resa.total)
-                  // Calculer depuis les articles si total manquant (résa bénévole)
-                  const total = (resa.items||[]).reduce((acc, item) => {
-                    const menuItem = menu.find(m => m.id === item.id)
-                    return acc + ((menuItem?.prix || item.prix || 0) * (item.qty || 1))
-                  }, 0)
-                  return total > 0 ? fmt(total) : '—'
-                })()}
-              </div>
-              {resa.assignedStaff && resa.status !== 'pending' && (
-                <div style={{ fontSize:12, color:'#F07848', marginTop:4 }}>
-                  👨‍🍳 Pris en charge par <strong>{resa.assignedStaff}</strong>
-                </div>
-              )}
-              {resa.status === 'cancelled' && resa.motifAnnulation && (
-                <div style={{ fontSize:12, color:'var(--red)', marginTop:4 }}>
-                  Motif : {resa.motifAnnulation}
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-              {/* Pending → Prendre en charge ou Annuler */}
-              {resa.status === 'pending' && (
-                <>
-                  <button onClick={() => act(() => prendreEnCharge(resa.id), resa.id)} disabled={isLoading}
-                    style={btn('#F07848', '#EDE9FE')}>
-                    {isLoading ? <Loader size={11}/> : <ChefHat size={11}/>} Prendre en charge
-                  </button>
-                  <button onClick={() => setAnnulModal(resa.id)}
-                    style={btn('#DC2626', '#FEE2E2')}>
-                    <XCircle size={11}/> Annuler
-                  </button>
-                </>
-              )}
-
-              {/* Processing → Marquer prête ou Annuler (si droits) */}
-              {resa.status === 'processing' && can && (
-                <>
-                  <button onClick={() => act(() => marquerResaPrete(resa.id), resa.id)} disabled={isLoading}
-                    style={btn('#065f46', '#D1FAE5')}>
-                    {isLoading ? <Loader size={11}/> : <CheckCircle size={11}/>} Marquer prête
-                  </button>
-                  <button onClick={() => setAnnulModal(resa.id)}
-                    style={btn('#DC2626', '#FEE2E2')}>
-                    <XCircle size={11}/> Annuler
-                  </button>
-                </>
-              )}
-
-              {/* Processing mais pas les droits */}
-              {resa.status === 'processing' && !can && (
-                <div style={{ fontSize:12, color:'var(--muted)', fontStyle:'italic' }}>
-                  En charge par {resa.assignedStaff} — vous ne pouvez pas modifier
-                </div>
-              )}
-
-              {/* Ready → Valider retrait */}
-              {resa.status === 'ready' && can && (
-                <button onClick={() => act(() => validerRetrait(resa.id), resa.id)} disabled={isLoading}
-                  style={btn('#009090', '#CCFBF1')}>
-                  {isLoading ? <Loader size={11}/> : <Package size={11}/>} Valider le retrait
-                </button>
-              )}
-
-              {/* Supprimer (admin uniquement, après annulation ou retrait) */}
-              {isAdmin && (resa.status === 'cancelled' || resa.status === 'collected') && (
-                <button onClick={() => {
-                  if (window.confirm('Supprimer définitivement cette réservation ?')) {
-                    act(() => deleteReservation(resa.id), resa.id)
-                  }
-                }} disabled={isLoading}
-                  style={btn('#DC2626', '#FEE2E2')}>
-                  {isLoading ? <Loader size={11}/> : <XCircle size={11}/>} Supprimer
-                </button>
-              )}
-            </div>
-          </div>
-        )
-      })}
 
       {/* Pagination */}
       {sorted.length > 10 && (
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, padding:'14px 0', flexWrap:'wrap' }}>
-          <span style={{ fontSize:12, color:'var(--muted)' }}>
-            {Math.min(visible, sorted.length)} / {sorted.length} réservations
-          </span>
+        <div className={s.pager}>
+          <span className={s.muted}>{Math.min(visible, sorted.length)} / {sorted.length} réservations</span>
           {visible < sorted.length && (
-            <button onClick={() => setVisible(v => v + 10)}
-              style={{ padding:'7px 18px', border:'0.5px solid var(--brand)', borderRadius:20, background:'var(--brand-light)', color:'var(--brand-dark)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' }}>
-              Afficher 10 de plus
-            </button>
+            <Button variant="secondary" size="sm" onClick={() => setVisible(v => v + 10)}>Afficher 10 de plus</Button>
           )}
           {visible > 10 && (
-            <button onClick={() => setVisible(10)}
-              style={{ padding:'7px 18px', border:'0.5px solid var(--border2)', borderRadius:20, background:'var(--bg2)', color:'var(--muted)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)' }}>
-              Afficher moins
-            </button>
+            <Button variant="ghost" size="sm" onClick={() => setVisible(10)}>Afficher moins</Button>
           )}
         </div>
       )}
 
-      {/* Modale annulation */}
-      {annulModal && (
-        <div onClick={() => setAnnulModal(null)}
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-          <div onClick={e => e.stopPropagation()}
-            style={{ background:'var(--bg)', borderRadius:16, padding:24, width:'100%', maxWidth:380, boxShadow:'0 20px 60px rgba(0,0,0,.25)' }}>
-            <div style={{ fontSize:15, fontWeight:700, color:'var(--text)', marginBottom:16 }}>Motif d'annulation</div>
-
-            <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
-              {MOTIFS.map((m, i) => (
-                <label key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:10, border:`1.5px solid ${motifIdx===i?'var(--brand)':'var(--border)'}`, background:motifIdx===i?'var(--brand-light)':'var(--bg2)', cursor:'pointer' }}>
-                  <input type="radio" checked={motifIdx===i} onChange={() => setMotifIdx(i)} style={{ accentColor:'var(--brand)' }}/>
-                  <span style={{ fontSize:13, color:'var(--text)', fontWeight:motifIdx===i?600:400 }}>{m}</span>
-                </label>
-              ))}
-            </div>
-
-            {motifIdx === 2 && (
-              <div style={{ marginBottom:16 }}>
-                <textarea value={motifTexte} onChange={e => setMotifTexte(e.target.value)}
-                  placeholder="Précisez le motif…"
-                  rows={3}
-                  style={{ ...inp, resize:'vertical' }}/>
-              </div>
-            )}
-
-            {err && <div style={{ padding:'8px 12px', background:'var(--red-light)', color:'var(--red)', borderRadius:8, fontSize:12, marginBottom:12 }}>{err}</div>}
-
-            <div style={{ display:'flex', gap:8 }}>
-              <button onClick={doAnnuler} disabled={loading === annulModal || (motifIdx === 2 && !motifTexte.trim())}
-                style={{ flex:1, padding:'10px', background:'var(--red)', color:'#fff', border:'none', borderRadius:10, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'var(--font)', opacity: loading===annulModal ? .6 : 1 }}>
-                {loading === annulModal ? 'Annulation\u2026' : "Confirmer l\u2019annulation"}
-              </button>
-              <button onClick={() => { setAnnulModal(null); setErr('') }}
-                style={{ padding:'10px 16px', border:'1px solid var(--border2)', borderRadius:10, background:'var(--bg2)', color:'var(--text)', fontSize:13, cursor:'pointer', fontFamily:'var(--font)' }}>
-                Retour
-              </button>
-            </div>
+      {/* Annulation : choix du motif */}
+      <Dialog open={!!annulModal} onClose={() => setAnnulModal(null)} title="Motif d'annulation"
+        footer={<>
+          <Button variant="secondary" onClick={closeAnnul}>Retour</Button>
+          <Button variant="danger" icon={XCircle} onClick={doAnnuler} loading={loading === annulModal}
+            disabled={motifIdx === 2 && !motifTexte.trim()}>
+            Confirmer l’annulation
+          </Button>
+        </>}>
+        <div className={s.dialogStack}>
+          <div className={s.motifs} role="radiogroup" aria-label="Motif">
+            {MOTIFS.map((m, i) => (
+              <label key={i} className={clsx(s.motifOpt, motifIdx === i && s.motifOn)}>
+                <input type="radio" name="resa-motif" checked={motifIdx===i} onChange={() => setMotifIdx(i)}/>
+                <span>{m}</span>
+              </label>
+            ))}
           </div>
+
+          {motifIdx === 2 && (
+            <div className={s.field}>
+              <label className={s.label} htmlFor="resa-motif-texte">Précisez le motif</label>
+              <textarea id="resa-motif-texte" className={s.textarea} value={motifTexte} rows={3} autoFocus
+                onChange={e => setMotifTexte(e.target.value)} placeholder="Précisez le motif…"/>
+            </div>
+          )}
+
+          {err && <div className={s.error} role="alert">{err}</div>}
         </div>
-      )}
+      </Dialog>
+
+      {/* Suppression définitive (irréversible) */}
+      <Dialog open={!!pendingDel} onClose={() => setPendingDel(null)} title="Supprimer cette réservation ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setPendingDel(null)}>Annuler</Button>
+          <HoldButton tone="danger" icon={Trash2} onConfirm={confirmDelete}>Maintenir pour supprimer</HoldButton>
+        </>}>
+        <p className={s.dialogText}>
+          La réservation <b>#{pendingDel?.code}</b> sera supprimée définitivement. Cette action est irréversible.
+        </p>
+      </Dialog>
     </div>
   )
 }

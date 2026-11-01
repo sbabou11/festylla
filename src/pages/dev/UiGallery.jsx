@@ -3,8 +3,10 @@
  * Ne dépend ni de Firebase ni des stores : s'ouvre sans connexion.
  */
 import React, { useState } from 'react'
-import { Users, Wallet, ShoppingCart, Bookmark, Plus, Trash2, Inbox, Moon, Sun } from 'lucide-react'
-import { Button, Card, Badge, Stat, Tabs, Table, Empty, Skeleton, Dialog, Sheet, toast } from '../../ui'
+import { Users, Wallet, ShoppingCart, Bookmark, Plus, Trash2, Inbox, Moon, Sun, Undo2 } from 'lucide-react'
+import { Button, Card, Badge, Stat, Tabs, Table, Empty, Skeleton, Dialog, Sheet, toast,
+  CodeInput, HoldButton, AnimatedNumber, SuccessCheck, ConnectionBar } from '../../ui'
+import { fmt } from '../../utils/helpers'
 
 const ROWS = [
   { id: 1, heure: '23:12', label: 'Bar Scène A · 2 Bière, 1 Eco-cup', type: 'debit',  montant: '−11,00 €' },
@@ -26,6 +28,13 @@ export default function UiGallery() {
   const [tab, setTab]     = useState('jour')
   const [dialog, setDialog] = useState(false)
   const [sheet, setSheet]   = useState(false)
+  const [code, setCode]     = useState('')
+  const [codeStatus, setCodeStatus] = useState(null)
+  const [solde, setSolde]   = useState(2400)
+  const [checkKey, setCheckKey] = useState(0)
+  const [net, setNet]       = useState({ online: true, pending: 0 })
+  const [sun, setSun]       = useState(false)
+  const [tblLoading, setTblLoading] = useState(false)
 
   const toggleDark = () => { document.body.classList.toggle('dark', !dark); setDark(!dark) }
 
@@ -81,11 +90,12 @@ export default function UiGallery() {
             <Table
               columns={[
                 { key: 'heure', label: 'Heure' },
-                { key: 'label', label: 'Opération' },
+                { key: 'label', label: 'Opération', card: 'title' },
                 { key: 'type', label: 'Type', render: r => <Badge tone={TYPE_BADGE[r.type][0]}>{TYPE_BADGE[r.type][1]}</Badge> },
                 { key: 'montant', label: 'Montant', align: 'right' },
               ]}
               rows={ROWS}
+              loading={tblLoading}
             />
           </Card>
         </Section>
@@ -95,6 +105,50 @@ export default function UiGallery() {
             <Card><Empty icon={Inbox} title="Aucune réservation" action={<Button size="sm" icon={Plus}>Créer une réservation</Button>}>Les commandes passées depuis l'appli spectateur apparaîtront ici.</Empty></Card>
             <Card><div style={{ display: 'grid', gap: 'var(--space-3)' }}><Skeleton height={24} width="40%" /><Skeleton lines={3} /></div></Card>
           </div>
+        </Section>
+
+        <Section title="Lot 6 · nouvelles briques">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-3)' }}>
+            <Card title="Champ de code" subtitle="Essayez BAR2">
+              <CodeInput value={code} onChange={(v) => { setCode(v); setCodeStatus(null) }} label="Code du poste"
+                onComplete={(v) => setCodeStatus(v === 'BAR2' ? 'ok' : 'error')} status={codeStatus} />
+            </Card>
+            <Card title="Bouton à maintenir">
+              <HoldButton block icon={Undo2} doneLabel="Transaction annulée" onConfirm={() => toast.success('Spectateur recrédité de 12,50 €')}>
+                Maintenir pour annuler · 12,50 €
+              </HoldButton>
+            </Card>
+            <Card title="Montant et coche">
+              <div style={{ display: 'grid', justifyItems: 'center', gap: 'var(--space-2)' }}>
+                <SuccessCheck play={checkKey} />
+                <b style={{ font: '800 var(--fs-32) var(--font-display)' }}><AnimatedNumber value={solde} format={fmt} /></b>
+                <Button onClick={() => { setSolde(v => v + 2000); setCheckKey(k => k + 1) }}>Recharger 20 €</Button>
+              </div>
+            </Card>
+            <Card title="Toast « Annuler »">
+              <Button variant="secondary" icon={Trash2} onClick={() => toast.undo('Bissap retiré du ticket', () => toast.info('Bissap remis'), { onExpire: () => toast.success('Retrait confirmé') })}>
+                Retirer un article
+              </Button>
+            </Card>
+            <Card title="Connexion">
+              <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                <ConnectionBar online={net.online} pending={net.pending} always />
+                <Row>
+                  <Button size="sm" variant="secondary" onClick={() => setNet(n => ({ ...n, online: false }))}>Couper</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setNet(n => ({ ...n, pending: n.online ? n.pending : n.pending + 1 }))}>Encaisser</Button>
+                  <Button size="sm" onClick={() => { setNet(n => ({ ...n, online: true })); setTimeout(() => setNet({ online: true, pending: 0 }), 1500) }}>Rétablir</Button>
+                </Row>
+              </div>
+            </Card>
+            <Card title="Plein soleil" className={sun ? 'sun' : undefined}>
+              <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                <Stat label="Total du ticket" value="11,50 €" tone="coral" />
+                <Button variant="coral" block>Encaisser</Button>
+                <Button size="sm" variant="secondary" icon={Sun} aria-pressed={sun} onClick={() => setSun(v => !v)}>{sun ? 'Thème normal' : 'Plein soleil'}</Button>
+              </div>
+            </Card>
+          </div>
+          <Row><Button size="sm" variant="secondary" onClick={() => setTblLoading(v => !v)}>{tblLoading ? 'Afficher les données' : 'Simuler le chargement du tableau'}</Button></Row>
         </Section>
 
         <Section title="Fenêtres et messages">

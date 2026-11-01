@@ -1,0 +1,57 @@
+/* pages/admin/alertes — anomalies financières en temps réel */
+.page { display: grid; gap: var(--space-4); min-width: 0; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.heading { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-width: 0; }
+.title { margin: 0; font: 800 var(--fs-18) var(--font-display); color: var(--text); }
+.toolbarActions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.soundOn { color: var(--brand-dark); }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.statWrap { display: grid; border-radius: var(--radius-lg); }
+.statAlert { box-shadow: 0 0 0 1.5px var(--red); }
+
+/* Seuils */
+.thresholds { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 var(--space-4); }
+.threshold { display: flex; justify-content: space-between; gap: var(--space-3); padding: 8px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-12); }
+.threshold dt { color: var(--muted); }
+.threshold dd { margin: 0; color: var(--text); font-weight: 600; text-align: right; }
+
+/* Rien à signaler */
+.allClear {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  padding: var(--space-6);
+  border: 1px solid var(--brand);
+  border-radius: var(--radius-lg);
+  background: var(--brand-light);
+  color: var(--brand-dark);
+  text-align: center;
+}
+.allClearTitle { margin-top: var(--space-2); font-size: var(--fs-15); font-weight: 700; }
+.allClearSub { font-size: var(--fs-12); opacity: .8; }
+
+/* Alertes : attention (or) par défaut, critique en rouge */
+.list { display: grid; gap: var(--space-2); }
+.alert {
+  --tone: var(--gold-dark);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--gold);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background: var(--gold-light);
+}
+.critique { --tone: var(--red-dark); border-color: var(--red); background: var(--red-light); }
+.alertHead { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2) var(--space-3); flex-wrap: wrap; }
+.alertTitle { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-width: 0; }
+.alertIcon { color: var(--tone); flex-shrink: 0; }
+.alertType { font-size: var(--fs-13); font-weight: 700; color: var(--tone); overflow-wrap: anywhere; }
+.alertDate { font-size: var(--fs-11); color: var(--tone); opacity: .8; font-variant-numeric: tabular-nums; }
+.alertDetail { margin: 0 0 0 24px; font-size: var(--fs-12); color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
+.alertFoot { display: flex; justify-content: flex-end; }
+
+@media (max-width: 480px) {
+  .alertDetail { margin-left: 0; }
+}

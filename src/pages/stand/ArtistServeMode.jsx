@@ -1,23 +1,38 @@
 /**
- * pages/stand/ArtistServeMode.jsx — v6
- * Mode "Servir un artiste" dans Debit.
+ * pages/stand/ArtistServeMode.jsx — v7
+ * Mode « Servir un artiste » dans la caisse (Debit, qui applique le plein soleil).
+ * - Réservations artistes en attente, servies en un geste
  * - Scanner QR ou recherche par nom
- * - Affiche les droits restants
- * - Permet de servir un article éligible (décrément automatique)
+ * - Droits restants affichés en bocaux
+ * - Servir un article éligible (décrément automatique), coche de succès
  */
 import React, { useState, useEffect, useMemo } from 'react'
+import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, onSnapshot, doc, getDoc } from 'firebase/firestore'
 import { serveArtistItem, watchArtistReservations, servirReservationArtiste } from '../../firebase/service'
 import QrScanner from '../../components/QrScanner'
-import { Search, X, Clock, MapPin, CheckCircle, AlertCircle, Bell } from 'lucide-react'
+import {
+  Search, X, Clock, MapPin, AlertCircle, Bell, Coffee, UtensilsCrossed, Droplets,
+  Music, BookOpen, Clapperboard, Drama,
+} from 'lucide-react'
+import { Button, Badge, Empty, Jar, SuccessCheck } from '../../ui'
+import s from './ArtistServeMode.module.css'
 
 const TYPES = {
-  musical:           { icon: '🎵', color: '#1a6b7a' },
-  litteraire:        { icon: '📚', color: '#534AB7' },
-  cinematographique: { icon: '🎬', color: '#BA7517' },
-  autre:             { icon: '🎭', color: '#6b6b6b' },
+  musical:           { icon: Music,        tone: 'brand' },
+  litteraire:        { icon: BookOpen,     tone: 'gold' },
+  cinematographique: { icon: Clapperboard, tone: 'coral' },
+  autre:             { icon: Drama,        tone: 'neutral' },
 }
+
+// Catégories d'avantages : icône + couleur du bocal
+const CONSO = {
+  drink: { icon: Coffee,          label: 'Boissons', color: 'var(--gold)' },
+  meal:  { icon: UtensilsCrossed, label: 'Repas',    color: 'var(--coral)' },
+  eau:   { icon: Droplets,        label: 'Eau',      color: 'var(--brand)' },
+}
+const consoOf = (type) => CONSO[type] || CONSO.eau
 
 function fmtHour(ts) {
   if (!ts) return '—'
@@ -124,7 +139,7 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
         }
         setCreneau({ ...snap.data(), id: snap.id })
       } catch (e) {
-        setErr('Erreur : ' + e.message)
+        setErr('Lecture du QR impossible : ' + e.message)
       }
     }
   }
@@ -155,19 +170,19 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
     if (remainDrinks > 0) {
       (av.drinkIds || []).forEach(id => {
         const a = menu.find(m => m.id === id)
-        if (a) out.push({ ...a, _type: 'drink', _typeIcon: '☕' })
+        if (a) out.push({ ...a, _type: 'drink' })
       })
     }
     if (remainMeals > 0) {
       (av.mealIds || []).forEach(id => {
         const a = menu.find(m => m.id === id)
-        if (a) out.push({ ...a, _type: 'meal', _typeIcon: '🍽' })
+        if (a) out.push({ ...a, _type: 'meal' })
       })
     }
     if (remainEaux > 0) {
       (av.eauIds || []).forEach(id => {
         const a = menu.find(m => m.id === id)
-        if (a) out.push({ ...a, _type: 'eau', _typeIcon: '💧' })
+        if (a) out.push({ ...a, _type: 'eau' })
       })
     }
     return out
@@ -177,10 +192,10 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
     setLoading(true); setErr(''); setFeedback('')
     try {
       await servirReservationArtiste(resa, staffNom, staffId, eventId)
-      setFeedback('✓ Réservation servie : ' + resa.artisteNom)
+      setFeedback('Réservation servie : ' + resa.artisteNom)
       setTimeout(() => setFeedback(''), 3000)
     } catch (e) {
-      setErr('Erreur : ' + e.message)
+      setErr('Service impossible : ' + e.message)
     } finally {
       setLoading(false)
     }
@@ -191,10 +206,10 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
     setLoading(true); setErr(''); setFeedback('')
     try {
       await serveArtistItem(creneau, article, article._type, staffNom, staffId, eventId)
-      setFeedback('✓ ' + article.nom + ' servi à ' + creneau.artiste)
+      setFeedback(article.nom + ' servi à ' + creneau.artiste)
       setTimeout(() => setFeedback(''), 3000)
     } catch (e) {
-      setErr('Erreur : ' + e.message)
+      setErr('Service impossible : ' + e.message)
     } finally {
       setLoading(false)
     }
@@ -214,222 +229,194 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
   const canServe = isToday || forceServeAnyDay
   const isAnnule = creneau?.statut === 'annule'
   const ti       = creneau ? (TYPES[creneau.type] || TYPES.autre) : null
+  const TypeIcon = ti?.icon
 
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-      {!creneau ? (
-        // ── Aucun artiste sélectionné : scan ou recherche ──
-        <>
-          {/* Réservations en attente */}
-          {pendingResas.length > 0 && (
-            <div style={{ background:'#FAEEDA', border:'1.5px solid #BA7517', borderRadius:14, padding:14 }}>
-              <div style={{ fontSize:13, fontWeight:800, color:'#854F0B', marginBottom:10, display:'flex', alignItems:'center', gap:6 }}>
-                <Bell size={14}/> {pendingResas.length} réservation{pendingResas.length > 1 ? 's' : ''} artiste en attente
-              </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {pendingResas.map(r => {
-                  const itemsLabel = (r.items || []).map(i => {
-                    const ic = i.type === 'drink' ? '☕' : i.type === 'meal' ? '🍽' : '💧'
-                    return ic + ' ' + i.nom
-                  }).join(', ')
-                  return (
-                    <div key={r.id} style={{ background:'var(--bg)', borderRadius:10, padding:'10px 12px', display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.artisteNom || '—'}</div>
-                        <div style={{ fontSize:11, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{itemsLabel}</div>
-                      </div>
-                      <button onClick={() => handleServeResa(r)} disabled={loading}
-                        style={{ padding:'8px 12px', background:'#065f46', color:'#fff', border:'none', borderRadius:8, fontSize:12, fontWeight:700, cursor: loading ? 'wait' : 'pointer', fontFamily:'var(--font)', whiteSpace:'nowrap' }}>
-                        ✓ Servir
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+  const errBox = err && (
+    <div className={clsx(s.notice, s.noticeRed)} role="alert">
+      <AlertCircle size={16} aria-hidden="true" /> <span>{err}</span>
+    </div>
+  )
 
-          <div style={{ background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:14, padding:16 }}>
-            <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', marginBottom:10 }}>Scanner le QR de l'artiste</div>
-            <QrScanner onScan={handleScan}/>
-          </div>
+  // Succès : coche dessinée, rejouée à chaque nouveau service
+  const okBox = feedback && (
+    <div className={s.success} role="status" aria-live="polite">
+      <SuccessCheck size={40} play={feedback} />
+      <b>{feedback}</b>
+    </div>
+  )
 
-          <div style={{ background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:14, padding:16 }}>
-            <div style={{ fontSize:14, fontWeight:600, color:'var(--text)', marginBottom:10 }}>Ou rechercher par nom</div>
-            <div style={{ position:'relative' }}>
-              <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'var(--muted)' }}/>
-              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Nom de l'artiste..."
-                style={{ width:'100%', minWidth:0, boxSizing:'border-box', minHeight:40, padding:'0 10px 0 32px', border:'1px solid var(--border)', borderRadius:10, fontSize:13, background:'var(--bg2)', color:'var(--text)', outline:'none', fontFamily:'var(--font)' }}/>
-            </div>
-            {searchResults.length > 0 && (
-              <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:6, maxHeight:'40vh', overflowY:'auto' }}>
-                {searchResults.map(cr => {
-                  const ct = TYPES[cr.type] || TYPES.autre
-                  return (
-                    <button key={cr.id} onClick={() => { setCreneau(cr); setSearchQuery('') }}
-                      style={{ padding:'10px 12px', background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:10, textAlign:'left', cursor:'pointer', fontFamily:'var(--font)', display:'flex', alignItems:'center', gap:10 }}>
-                      <span style={{ fontSize:22 }}>{ct.icon}</span>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{cr.artiste}</div>
-                        <div style={{ fontSize:11, color:'var(--muted)' }}>
-                          {fmtDate(cr.debut)} · {fmtHour(cr.debut)} {cr.scene && '· ' + cr.scene}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {searchQuery && searchResults.length === 0 && (
-              <div style={{ marginTop:8, padding:'10px', color:'var(--muted)', fontSize:13, textAlign:'center' }}>
-                Aucun artiste trouvé.
-              </div>
-            )}
-          </div>
+  if (!creneau) return (
+    // ── Aucun artiste sélectionné : réservations, scan ou recherche ──
+    <div className={s.wrap}>
+      {okBox}
 
-          {err && (
-            <div style={{ padding:'10px 14px', background:'#FCEBEB', color:'#A32D2D', borderRadius:8, fontSize:13, fontWeight:600 }}>
-              <AlertCircle size={14} style={{ verticalAlign:-2, marginRight:6 }}/>
-              {err}
-            </div>
-          )}
-        </>
-      ) : (
-        // ── Artiste sélectionné : fiche + actions ──
-        <>
-          <div style={{ background: ti.color + '22', border:'1.5px solid ' + ti.color, borderRadius:14, padding:'14px 16px', display:'flex', alignItems:'center', gap:12 }}>
-            <div style={{ width:54, height:54, borderRadius:12, overflow:'hidden', flexShrink:0, background:'rgba(255,255,255,.3)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:24 }}>
-              {creneau.photo
-                ? <img src={creneau.photo} alt={creneau.artiste} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition: creneau.photoPosition || 'center center' }}/>
-                : ti.icon
-              }
-            </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:16, fontWeight:800, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{creneau.artiste}</div>
-              <div style={{ fontSize:11, color:'var(--muted)', display:'flex', gap:8, flexWrap:'wrap', marginTop:2 }}>
-                <span><Clock size={11} style={{ verticalAlign:-1 }}/> {fmtDate(creneau.debut)} · {fmtHour(creneau.debut)}</span>
-                {creneau.scene && <span><MapPin size={11} style={{ verticalAlign:-1 }}/> {creneau.scene}</span>}
-              </div>
-            </div>
-            <button onClick={reset}
-              style={{ background:'rgba(255,255,255,.5)', border:'none', borderRadius:8, width:30, height:30, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--muted)' }}>
-              <X size={14}/>
-            </button>
-          </div>
+      {pendingResas.length > 0 && (
+        <section className={clsx(s.card, s.pending)} aria-label="Réservations artistes en attente">
+          <h3 className={s.pendingHead}>
+            <Bell size={15} aria-hidden="true" /> {pendingResas.length} réservation{pendingResas.length > 1 ? 's' : ''} artiste en attente
+          </h3>
+          <ul className={clsx(s.list, 'yc-stagger')}>
+            {pendingResas.map(r => (
+              <li key={r.id} className={s.pendingRow}>
+                <div className={s.rowText}>
+                  <b>{r.artisteNom || '—'}</b>
+                  <span className={s.items}>
+                    {(r.items || []).map((i, k) => {
+                      const Ic = consoOf(i.type).icon
+                      return <span key={k} className={s.item}><Ic size={12} aria-hidden="true" />{i.nom}</span>
+                    })}
+                  </span>
+                </div>
+                <Button onClick={() => handleServeResa(r)} disabled={loading} className={s.serveBtn}>Servir</Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-          {/* Alertes : annulé, mauvais jour */}
-          {isAnnule && (
-            <div style={{ padding:'10px 14px', background:'#FCEBEB', color:'#A32D2D', borderRadius:10, fontSize:13, fontWeight:600, display:'flex', alignItems:'center', gap:8 }}>
-              <AlertCircle size={16}/> Ce créneau est annulé — service non recommandé.
-            </div>
-          )}
-          {!isToday && !forceServeAnyDay && (
-            <div style={{ padding:'10px 14px', background:'#FAEEDA', color:'#854F0B', borderRadius:10, fontSize:13, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              <AlertCircle size={16}/>
-              <span style={{ flex:1 }}>Ce créneau n'est pas aujourd'hui ({fmtDate(creneau.debut)}). Les avantages sont normalement valables seulement le jour du créneau.</span>
-              <button onClick={() => setForceServeAnyDay(true)}
-                style={{ padding:'4px 10px', background:'#854F0B', color:'#fff', border:'none', borderRadius:6, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'var(--font)' }}>
-                Forcer
-              </button>
-            </div>
-          )}
+      <section className={s.card}>
+        <h3 className={s.cardTitle}>Scanner le QR de l'artiste</h3>
+        <QrScanner onScan={handleScan} />
+      </section>
 
-          {/* Compteurs droits */}
-          <div style={{ background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:12, padding:'12px 14px', display:'flex', gap:10, flexWrap:'wrap', justifyContent:'space-around' }}>
-            <DroitMini icon="☕" label="Boissons" remain={remainDrinks} total={av.drinks || 0}/>
-            <DroitMini icon="🍽" label="Repas"    remain={remainMeals}  total={av.meals  || 0}/>
-            <DroitMini icon="💧" label="Eau"      remain={remainEaux}   total={av.eaux   || 0}/>
-          </div>
-
-          {/* Feedback */}
-          {feedback && (
-            <div style={{ padding:'10px 14px', background:'#d1fae5', color:'#065f46', borderRadius:10, fontSize:13, fontWeight:700, display:'flex', alignItems:'center', gap:8 }}>
-              <CheckCircle size={16}/> {feedback}
-            </div>
-          )}
-          {err && (
-            <div style={{ padding:'10px 14px', background:'#FCEBEB', color:'#A32D2D', borderRadius:8, fontSize:13, fontWeight:600 }}>
-              <AlertCircle size={14} style={{ verticalAlign:-2, marginRight:6 }}/>
-              {err}
-            </div>
-          )}
-
-          {/* Articles éligibles à servir */}
-          <div style={{ background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:14, padding:14 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:'var(--muted)', marginBottom:10, textTransform:'uppercase' }}>
-              Articles disponibles ({eligibleArticles.length})
-            </div>
-            {!canServe ? (
-              <div style={{ textAlign:'center', padding:'20px', color:'var(--muted)', fontSize:13 }}>
-                Le service est bloqué (mauvais jour).
-              </div>
-            ) : eligibleArticles.length === 0 ? (
-              <div style={{ textAlign:'center', padding:'20px', color:'var(--muted)', fontSize:13 }}>
-                {av.drinks + av.meals + av.eaux === 0
-                  ? 'Aucun avantage configuré pour cet artiste.'
-                  : 'Tous les avantages ont été utilisés ✓'}
-              </div>
-            ) : (
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:10 }}>
-                {eligibleArticles.map(a => (
-                  <button key={a.id + '-' + a._type} onClick={() => handleServe(a)} disabled={loading}
-                    style={{ padding:'12px 10px', background:'var(--bg2)', border:'1.5px solid var(--border)', borderRadius:12, cursor: loading ? 'wait' : 'pointer', fontFamily:'var(--font)', textAlign:'center', opacity: loading ? 0.6 : 1 }}>
-                    <div style={{ fontSize:24, marginBottom:6 }}>{a._typeIcon}</div>
-                    <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{a.nom}</div>
-                    <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>Gratuit</div>
+      <section className={s.card}>
+        <label htmlFor="artist-search" className={s.cardTitle}>Ou rechercher par nom</label>
+        <div className={s.search}>
+          <Search size={16} aria-hidden="true" />
+          <input id="artist-search" type="search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Nom de l'artiste ou du spectacle" autoComplete="off" />
+        </div>
+        {searchResults.length > 0 && (
+          <ul className={s.results}>
+            {searchResults.map(cr => {
+              const ct = TYPES[cr.type] || TYPES.autre
+              const Ic = ct.icon
+              return (
+                <li key={cr.id}>
+                  <button type="button" className={s.result} onClick={() => { setCreneau(cr); setSearchQuery('') }}>
+                    <span className={clsx(s.typeIcon, s[ct.tone])}><Ic size={18} aria-hidden="true" /></span>
+                    <span className={s.rowText}>
+                      <b>{cr.artiste}</b>
+                      <span>{fmtDate(cr.debut)} · {fmtHour(cr.debut)}{cr.scene && ' · ' + cr.scene}</span>
+                    </span>
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {searchQuery && searchResults.length === 0 && (
+          <p className={s.none}>Aucun artiste trouvé.</p>
+        )}
+      </section>
 
-          {/* Historique récent */}
-          {consumptions.length > 0 && (
-            <div style={{ background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:14, padding:14 }}>
-              <div style={{ fontSize:12, fontWeight:700, color:'var(--muted)', marginBottom:8, textTransform:'uppercase' }}>
-                Déjà servi ({consumptions.length})
-              </div>
-              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                {consumptions.map(c => {
-                  const icon = c.type === 'drink' ? '☕' : c.type === 'meal' ? '🍽' : '💧'
-                  return (
-                    <div key={c.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', background:'var(--bg2)', borderRadius:8, fontSize:12 }}>
-                      <span style={{ fontSize:16 }}>{icon}</span>
-                      <span style={{ flex:1, color:'var(--text)' }}>{c.articleNom}</span>
-                      <span style={{ color:'var(--muted)', fontSize:11 }}>
-                        {fmtHour(c.servedAt)} · {c.servedBy?.name || '—'}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </>
+      {errBox}
+    </div>
+  )
+
+  // ── Artiste sélectionné : fiche + actions ──
+  return (
+    <div className={s.wrap}>
+      <section className={clsx(s.artist, s[ti.tone])}>
+        <div className={s.photo}>
+          {creneau.photo
+            ? <img src={creneau.photo} alt="" style={{ objectPosition: creneau.photoPosition || 'center center' }} />
+            : <TypeIcon size={24} aria-hidden="true" />}
+        </div>
+        <div className={s.artistText}>
+          <h3>{creneau.artiste}</h3>
+          <div className={s.meta}>
+            <span><Clock size={12} aria-hidden="true" /> {fmtDate(creneau.debut)} · {fmtHour(creneau.debut)}</span>
+            {creneau.scene && <span><MapPin size={12} aria-hidden="true" /> {creneau.scene}</span>}
+          </div>
+        </div>
+        <Button variant="ghost" iconOnly icon={X} onClick={reset} aria-label="Changer d'artiste" className={s.close} />
+      </section>
+
+      {/* Alertes : annulé, mauvais jour */}
+      {isAnnule && (
+        <div className={clsx(s.notice, s.noticeRed)}>
+          <AlertCircle size={16} aria-hidden="true" /> <span>Ce créneau est annulé : service non recommandé.</span>
+        </div>
+      )}
+      {!isToday && !forceServeAnyDay && (
+        <div className={clsx(s.notice, s.noticeGold)}>
+          <AlertCircle size={16} aria-hidden="true" />
+          <span>Ce créneau n'est pas aujourd'hui ({fmtDate(creneau.debut)}). Les avantages valent normalement le jour du créneau seulement.</span>
+          <button type="button" onClick={() => setForceServeAnyDay(true)}>Servir quand même</button>
+        </div>
+      )}
+
+      {/* Compteurs droits */}
+      <section className={clsx(s.card, s.jars)} aria-label="Droits restants">
+        <Droit type="drink" remain={remainDrinks} total={av.drinks || 0} />
+        <Droit type="meal"  remain={remainMeals}  total={av.meals  || 0} />
+        <Droit type="eau"   remain={remainEaux}   total={av.eaux   || 0} />
+      </section>
+
+      {okBox}
+      {errBox}
+
+      {/* Articles éligibles à servir */}
+      <section className={s.card}>
+        <h3 className={s.label}>Articles disponibles ({eligibleArticles.length})</h3>
+        {!canServe ? (
+          <p className={s.none}>Service bloqué : ce n'est pas le jour du créneau.</p>
+        ) : eligibleArticles.length === 0 ? (
+          <Empty icon={UtensilsCrossed} title={av.drinks + av.meals + av.eaux === 0
+            ? 'Aucun avantage prévu pour cet artiste'
+            : 'Tous les avantages ont été utilisés'} />
+        ) : (
+          <div className={s.grid}>
+            {eligibleArticles.map(a => {
+              const c = consoOf(a._type)
+              const Ic = c.icon
+              return (
+                <button key={a.id + '-' + a._type} type="button" className={s.article} onClick={() => handleServe(a)}
+                  disabled={loading} aria-busy={loading || undefined}>
+                  <span className={clsx(s.articleIcon, s['t_' + a._type])}><Ic size={20} aria-hidden="true" /></span>
+                  <b>{a.nom}</b>
+                  <Badge tone="success">Gratuit</Badge>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Historique récent */}
+      {consumptions.length > 0 && (
+        <section className={s.card}>
+          <h3 className={s.label}>Déjà servi ({consumptions.length})</h3>
+          <ul className={s.list}>
+            {consumptions.map(c => {
+              const Ic = consoOf(c.type).icon
+              return (
+                <li key={c.id} className={s.histRow}>
+                  <Ic size={15} aria-hidden="true" className={s.histIcon} />
+                  <span className={s.histName}>{c.articleNom}</span>
+                  <span className={s.histMeta}>{fmtHour(c.servedAt)} · {c.servedBy?.name || '—'}</span>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
       )}
     </div>
   )
 }
 
-function DroitMini({ icon, label, remain, total }) {
+function Droit({ type, remain, total }) {
+  const c = CONSO[type]
   if (total === 0) {
+    const Ic = c.icon
     return (
-      <div style={{ textAlign:'center', opacity:.4 }}>
-        <div style={{ fontSize:20 }}>{icon}</div>
-        <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{label}</div>
-        <div style={{ fontSize:11, color:'var(--muted)', fontWeight:700 }}>—</div>
+      <div className={s.droitOff}>
+        <Ic size={18} aria-hidden="true" />
+        <span>{c.label}</span>
+        <b>Non prévu</b>
       </div>
     )
   }
-  const allConsumed = remain === 0
-  return (
-    <div style={{ textAlign:'center' }}>
-      <div style={{ fontSize:20 }}>{icon}</div>
-      <div style={{ fontSize:10, color:'var(--muted)', marginTop:2 }}>{label}</div>
-      <div style={{ fontSize:13, fontWeight:800, color: allConsumed ? '#A32D2D' : 'var(--brand)' }}>
-        {remain}/{total}
-      </div>
-    </div>
-  )
+  return <Jar value={remain} max={total} label={c.label} color={c.color} icon={c.icon} />
 }

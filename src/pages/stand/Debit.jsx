@@ -2,9 +2,10 @@
  * pages/stand/Debit.jsx — v3 caisse du stand (lot 2)
  * Grille d'articles + ticket + scan client. Mode rush (8 meilleures ventes, grosses tuiles),
  * scan continu, retour plein écran, annulation pendant 10 s (débit retenu, voir pendingSales).
+ * Lot 6 : thème « plein soleil » (préférence de l'appareil) et bandeau de connexion.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Zap, Volume2, VolumeX, Vibrate, WifiOff, AlertTriangle, RotateCcw, Undo2 } from 'lucide-react'
+import { Zap, Volume2, VolumeX, Vibrate, Sun, AlertTriangle, RotateCcw, Undo2 } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
@@ -14,7 +15,8 @@ import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firesto
 import { fmt } from '../../utils/helpers'
 import { dayStart, txTime } from '../../utils/dashboardData'
 import { holdSale, cancelSale, dismissSale, retrySale, subscribe } from '../../utils/pendingSales'
-import { Tabs, toast } from '../../ui'
+import { Tabs, toast, ConnectionBar } from '../../ui'
+import useSunMode    from '../../store/useSunMode'
 import ArtistServeMode from './ArtistServeMode'
 import ProductGrid     from './pos/ProductGrid'
 import Ticket          from './pos/Ticket'
@@ -46,6 +48,7 @@ export default function Debit() {
   const { currentEventId, events }  = useEventStore()
   const { user }                    = useAuthStore()
   const staffNom = user?.nom || 'Stand'
+  const { sun, toggleSun }          = useSunMode()
 
   const [mode, setMode]         = useState('client') // client | artiste
   const [prefs, setPrefs]       = useState(loadPrefs)
@@ -207,13 +210,17 @@ export default function Debit() {
   const standName = staffNom
 
   return (
-    <div className={s.page}>
+    <div className={clsx(s.page, sun && 'sun')}>
       {/* Barre d'outils */}
       <div className={s.toolbar}>
         <Tabs label="Type de vente" value={mode} onChange={(v) => { setMode(v); setClient(null); setQtys({}) }}
           items={[{ value: 'client', label: 'Vente client' }, { value: 'artiste', label: 'Artiste' }]} />
-        {mode === 'client' && (
-          <div className={s.prefs}>
+        <div className={s.prefs}>
+          <button type="button" className={clsx(s.prefIcon, sun && s.prefOn)} onClick={toggleSun}
+            aria-pressed={sun} aria-label="Plein soleil" title={sun ? 'Plein soleil activé' : "Plein soleil : contraste fort pour l'extérieur"}>
+            <Sun size={15} />
+          </button>
+          {mode === 'client' && (<>
             <button type="button" className={clsx(s.pref, prefs.rush && s.prefOn)} onClick={() => setPref('rush', !prefs.rush)} aria-pressed={prefs.rush}>
               <Zap size={15} /> Mode rush
             </button>
@@ -227,8 +234,8 @@ export default function Debit() {
                 <Vibrate size={15} />
               </button>
             )}
-          </div>
-        )}
+          </>)}
+        </div>
       </div>
 
       {mode === 'artiste' && (
@@ -237,11 +244,8 @@ export default function Debit() {
 
       {mode === 'client' && (<>
         {/* Bandeaux d'état : hors ligne, annulation possible, échecs */}
-        {!online && (
-          <div className={clsx(s.notice, s.noticeGold)} role="status">
-            <WifiOff size={15} /> Hors ligne : les encaissements sont gardés sur cet appareil{waiting.length ? ` (${waiting.length} en attente)` : ''}. Les soldes ne sont pas vérifiés.
-          </div>
-        )}
+        <ConnectionBar online={online} pending={waiting.length}
+          offlineText="Hors ligne · les encaissements sont gardés sur cet appareil, les soldes ne sont pas vérifiés" />
         {holding.map(p => (
           <div key={p.id} className={clsx(s.notice, s.noticeBrand)} role="status">
             <span>{p.specNom || p.specId} · −{fmt(p.total)} · enregistré dans {Math.max(0, Math.ceil((p.commitAt - Date.now()) / 1000))} s</span>

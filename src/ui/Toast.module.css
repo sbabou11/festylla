@@ -2,7 +2,7 @@
   position: fixed;
   z-index: 300;
   left: 50%;
-  bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--space-4) + max(var(--bottom-nav, 0px), env(safe-area-inset-bottom, 0px)));
   transform: translateX(-50%);
   width: min(420px, calc(100vw - 32px));
   display: grid;
@@ -10,6 +10,8 @@
   pointer-events: none;
 }
 .toast {
+  position: relative;
+  overflow: hidden;
   pointer-events: auto;
   display: flex;
   align-items: center;
@@ -39,4 +41,7 @@
 .action { font-weight: 800; font-size: var(--fs-13); padding: 4px 8px; border-radius: 6px; color: var(--brand); }
 .close { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; opacity: .7; }
 .action:hover, .close:hover { background: rgba(127,127,127,.18); opacity: 1; }
+/* Temps restant pour « Annuler » */
+.timer { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--brand); transform-origin: left; animation: drain linear forwards; }
+@keyframes drain { to { transform: scaleX(0); } }
 @keyframes rise { from { transform: translateY(16px); opacity: 0; } }

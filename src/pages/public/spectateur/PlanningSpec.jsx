@@ -4,6 +4,7 @@
  */
 import React, { useEffect } from 'react'
 import { fmt } from '../../../utils/helpers'
+import { toast } from '../../../ui'
 import { BRAND, AMBER, RED, GREEN, GREEN_L } from './colors'
 
 // ── Composant planning espace spectateur ──────────────────────────────
@@ -144,7 +145,7 @@ function CarteArtisteSpec({ cr, onClose, isFav, onToggleFav, themeColor }) {
               if (navigator.share) {
                 navigator.share({ title: cr.artiste, text, url: window.location.href }).catch(() => {})
               } else {
-                navigator.clipboard?.writeText(text + '\n' + window.location.href).then(() => alert('Lien copié !')).catch(() => {})
+                navigator.clipboard?.writeText(text + '\n' + window.location.href).then(() => toast.success('Lien copié')).catch(() => {})
               }
             }}
               style={{ flex:'1 1 140px', display:'flex', alignItems:'center', gap:6, padding:'8px 12px', background:'var(--bg2)', border:'0.5px solid var(--border)', borderRadius:10, fontSize:13, fontWeight:600, color:'var(--text)', cursor:'pointer', fontFamily:'system-ui', justifyContent:'center' }}>

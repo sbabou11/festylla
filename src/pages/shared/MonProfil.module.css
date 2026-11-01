@@ -1,0 +1,77 @@
+/* Mon profil (spectateur ou staff) — colonne de 440px max, cartes empilées */
+.wrap { max-width: 440px; margin: 0 auto; padding-bottom: var(--space-8); display: grid; gap: var(--space-3); min-width: 0; }
+.muted { margin: 0; color: var(--muted); font-size: var(--fs-12); line-height: 1.5; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .03em; }
+.hidden { display: none; }
+
+.card { padding: var(--space-6) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); }
+.hero { display: grid; justify-items: center; gap: var(--space-3); text-align: center; }
+.avatarWrap { position: relative; display: inline-block; }
+.camera {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 34px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--on-brand);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+.camera:disabled { opacity: .5; cursor: progress; }
+/* zone tactile élargie autour du petit bouton photo */
+.camera::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
+.name { margin: 0 0 2px; font: 800 var(--fs-18)/1.2 var(--font-display); overflow-wrap: anywhere; }
+
+.titleIcon { display: inline-flex; align-items: center; gap: var(--space-2); }
+.titleIcon svg { color: var(--muted); }
+
+/* Champs */
+.form { display: grid; gap: var(--space-3); }
+.field { display: grid; gap: 6px; min-width: 0; }
+.label { font-size: var(--fs-11); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.input {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0 12px;
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: 500 16px var(--font);
+  outline: none;
+  -webkit-appearance: none;
+  transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
+.inputSaved { border-color: var(--green); }
+.readOnly { background: var(--bg2); color: var(--muted); font-size: var(--fs-13); }
+
+.msg {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.msg svg { flex-shrink: 0; margin-top: 1px; }
+.ok   { background: var(--green-light); color: var(--green-dark); }
+.info { background: var(--bg2); color: var(--muted); }
+.err  { background: var(--red-light); color: var(--red-dark); }
+
+/* Tuiles spectateur */
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.tile { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg2); min-width: 0; }
+.tileLabel { font-size: var(--fs-11); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.tileValue { font: 800 var(--fs-24)/1.1 var(--font-display); font-variant-numeric: tabular-nums; color: var(--text); overflow-wrap: anywhere; }
+.tileBrand { color: var(--brand-dark); }

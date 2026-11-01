@@ -475,3 +475,73 @@ input, select { min-height: var(--touch); }
   from { transform: translateY(100%); }
   to   { transform: translateY(0); }
 }
+
+/* ── Thème « plein soleil » (stands en extérieur) ─────────────────
+   Posé sur le conteneur d'un écran (class="sun"), par-dessus le clair ou le sombre :
+   fond blanc, texte noir, bordures épaisses, chiffres plus gros. */
+.sun {
+  --brand:       #006060;
+  --brand-dark:  #003838;
+  --brand-light: #CDEDED;
+  --coral:       #B83A08;
+  --coral-dark:  #7A2400;
+  --coral-light: #FFD9C4;
+  --gold:        #8A5A00;
+  --gold-dark:   #4A3000;
+  --gold-light:  #FFE8B8;
+  --red:         #B00000;
+  --red-dark:    #7A0000;
+  --red-light:   #FFD6D6;
+  --green:       #006B4F;
+  --green-dark:  #003D2D;
+  --green-light: #C8F0E0;
+  --bg:      #FFFFFF;
+  --bg2:     #F2F2F2;
+  --bg3:     #E4E4E4;
+  --text:    #000000;
+  --muted:   #1A1A1A;
+  --marine:  #000000;
+  --border:  rgba(0,0,0,.55);
+  --border2: #000000;
+  --on-brand: #FFFFFF;
+  --on-coral: #FFFFFF;
+  --shadow-sm: none;
+  --shadow-md: 0 0 0 2px #000;
+  --fs-11: 13px;
+  --fs-12: 14px;
+  --fs-13: 15px;
+  --fs-15: 17px;
+  --fs-18: 21px;
+  --fs-24: 28px;
+  --fs-32: 38px;
+  background: var(--bg);
+  color: var(--text);
+  color-scheme: light;
+}
+.sun button, .sun input { border-width: 2px; }
+
+/* ── Apparition en cascade d'une liste (une fois, à l'insertion des éléments) ── */
+.yc-stagger > * { animation: yc-in var(--dur-slow) var(--ease) both; }
+.yc-stagger > :nth-child(2) { animation-delay: 30ms; }
+.yc-stagger > :nth-child(3) { animation-delay: 60ms; }
+.yc-stagger > :nth-child(4) { animation-delay: 90ms; }
+.yc-stagger > :nth-child(5) { animation-delay: 120ms; }
+.yc-stagger > :nth-child(6) { animation-delay: 150ms; }
+.yc-stagger > :nth-child(n+7) { animation-delay: 180ms; }
+@keyframes yc-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* ── Transitions entre pages (API View Transitions, ignorée si absente) ──
+   Seul le contenu (view-transition-name: page) glisse ; le rail et la barre restent fixes. */
+::view-transition-old(page) { animation: yc-page-out 160ms var(--ease) both; }
+::view-transition-new(page) { animation: yc-page-in 240ms var(--ease) both; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+@keyframes yc-page-out { to { opacity: 0; transform: translateY(-6px); } }
+@keyframes yc-page-in { from { opacity: 0; transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(page), ::view-transition-new(page) { animation: none; }
+}
+
+/* ── Écrans tactiles : cibles d'au moins 40 px ── */
+@media (pointer: coarse) {
+  .nav-btn { min-height: var(--touch); }
+}

@@ -1,14 +1,18 @@
 /**
  * pages/dev/DevDashboard.jsx — aperçu du shell + tableau de bord avec données d'exemple
- * Développement uniquement (route /ui/dashboard, ?page=analytics|cloture|planning|staff|menu|settings).
+ * Développement uniquement (route /ui/dashboard, ?page=analytics|cloture|planning|staff|menu|settings|transactions|alertes).
+ * Sous 641 px : barre du bas et menu « Plus », comme l'app staff.
  * Aucune écriture Firebase voulue (les écrans admin qui écrivent directement échoueront sans compte) :
  * les stores sont remplis localement et les actions de réservation sont simulées.
  */
 import React, { useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Search } from 'lucide-react'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import Sidebar from '../../components/Sidebar'
+import BottomNav from '../../components/BottomNav'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import CommandPalette from '../../components/CommandPalette'
 import Dashboard from '../admin/Dashboard'
 import Analytics from '../admin/Analytics'
@@ -17,6 +21,8 @@ import Planning from '../admin/Planning'
 import Staff from '../admin/Staff'
 import Menu from '../admin/Menu'
 import Settings from '../admin/Settings'
+import Transactions from '../admin/Transactions'
+import Alertes from '../admin/Alertes'
 import shell from '../../App.module.css'
 
 const H = 3600 * 1000
@@ -24,8 +30,8 @@ const NAMES = ['Léa Martin', 'Karim Benali', 'Inès Diallo', 'Tom Robert', 'Awa
 const ITEMS = [['Bière pression', 500], ['Limonade maison', 350], ['Bissap', 300], ['Crêpe', 400], ['Burger', 900], ['Eau 50 cl', 150]]
 const STAFF = ['Bar Scène A', 'Stand Crêpes', 'Bar Scène B']
 const CAISSES = ['Caisse Awa', 'Caisse Karim']
-const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, staff: Staff, menu: Menu, settings: Settings }
-const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres' }
+const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, staff: Staff, menu: Menu, settings: Settings, transactions: Transactions, alertes: Alertes }
+const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres', transactions: 'Transactions', alertes: 'Alertes financières' }
 
 function sampleData(now) {
   const spectateurs = NAMES.map((nom, i) => ({ id: `YT-${(4100 + i * 37).toString(16).toUpperCase()}`, nom, solde: i === 6 ? -150 : 500 + i * 650 }))
@@ -86,7 +92,15 @@ function sampleData(now) {
 export default function DevDashboard() {
   const [ready, setReady] = useState(false)
   const [palette, setPalette] = useState(false)
-  const [page, setPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'dashboard')
+  const [page, setPageRaw] = useState(() => new URLSearchParams(window.location.search).get('page') || 'dashboard')
+  const [drawer, setDrawer] = useState(false)
+  const { isMobile } = useBreakpoint()
+  // Même transition de page que l'app staff
+  const setPage = (p) => {
+    const go = () => { setPageRaw(p); setDrawer(false) }
+    if (p !== page && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(() => flushSync(go))
+    else go()
+  }
 
   useEffect(() => {
     const data = sampleData(Date.now())
@@ -120,20 +134,22 @@ export default function DevDashboard() {
   return (
     <div className={shell.app}>
       <div className={shell.shell}>
-        <Sidebar view="admin" currentPage={page} onNavigate={setPage} alertCount={2} onLogout={() => {}} onToggleDark={() => document.body.classList.toggle('dark')} />
+        <Sidebar view="admin" currentPage={page} onNavigate={setPage} alertCount={2} onLogout={() => {}} onToggleDark={() => document.body.classList.toggle('dark')}
+          mobileOpen={drawer} onMobileClose={() => setDrawer(false)} />
         <div className={shell.main}>
           <header className={shell.bar}>
             <h1 className={shell.title}>{TITLES[page] || 'Tableau de bord'}</h1>
-            <span className={shell.event}>Festylla 2026 · démo</span>
-            <span className={shell.stateOn}>En direct</span>
-            <button type="button" className={shell.search} onClick={() => setPalette(true)}>
-              <Search size={16} /><span className={shell.searchText}>Chercher un spectateur, un article…</span><kbd className={shell.kbd}>Ctrl K</kbd>
+            {!isMobile && <span className={shell.event}>Festylla 2026 · démo</span>}
+            {!isMobile && <span className={shell.stateOn}>En direct</span>}
+            <button type="button" className={isMobile ? `${shell.iconBtn} ${shell.pushRight}` : shell.search} onClick={() => setPalette(true)} aria-label="Rechercher">
+              <Search size={16} />{!isMobile && <><span className={shell.searchText}>Chercher un spectateur, un article…</span><kbd className={shell.kbd}>Ctrl K</kbd></>}
             </button>
           </header>
           <main className={shell.content}>
             {(() => { const P = PAGES[page]; return P ? <P /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
           </main>
         </div>
+        {isMobile && <BottomNav role="admin" currentPage={page} onNavigate={setPage} onMore={() => setDrawer(true)} canAccess={() => true} badges={{ alertes: 2 }} />}
       </div>
       <CommandPalette open={palette} onClose={() => setPalette(false)} onNavigate={setPage} canAccessPage={() => true} />
     </div>

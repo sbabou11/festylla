@@ -1,0 +1,24 @@
+.code { display: flex; gap: var(--space-2); justify-content: center; }
+.cell {
+  width: 48px;
+  height: 58px;
+  min-height: 0;
+  padding: 0;
+  text-align: center;
+  font: 800 var(--fs-24) var(--font-display);
+  text-transform: uppercase;
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  caret-color: var(--brand);
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast), transform var(--dur-base) var(--ease);
+}
+.cell:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); transform: translateY(-2px); }
+.cell:disabled { opacity: .5; }
+.ok .cell { border-color: var(--green); background: var(--green-light); color: var(--green-dark); }
+.error { animation: shake .35s; }
+.error .cell { border-color: var(--red); }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+@media (max-width: 380px) { .cell { width: 42px; height: 52px; } }

@@ -2,10 +2,13 @@
  * components/Studio.jsx
  * Panneau de personnalisation visuelle (admin uniquement).
  * Couleurs, typographie, logo, QR code, thèmes prédéfinis.
+ * Ordinateur : panneau latéral de 260px ; mobile : pleine largeur (dans le plein écran du shell).
  */
 
 import React from 'react'
-import { Wand2, RefreshCw, Upload } from 'lucide-react'
+import { Wand2, RefreshCw, Upload, Trash2 } from 'lucide-react'
+import { toast } from '../ui'
+import s from './Studio.module.css'
 import { useTheme } from '../hooks/useTheme'
 import { fileToBase64, PRESETS } from '../utils/helpers'
 import { compressImage } from '../utils/imageUtils'
@@ -23,17 +26,16 @@ const FONTS = [
 ]
 
 const Row = ({ label, children }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-    <span style={{ fontSize: 12, color: 'var(--text)' }}>{label}</span>
+  <div className={s.row}>
+    <span className={s.rowLabel}>{label}</span>
     {children}
   </div>
 )
 
-const ColorPicker = ({ value, onChange }) => (
-  <div style={{ width: 28, height: 28, borderRadius: 6, border: '0.5px solid var(--border2)', overflow: 'hidden', padding: 0, background: 'none', cursor: 'pointer' }}>
-    <input type="color" value={value} onChange={e => onChange(e.target.value)}
-      style={{ width: '200%', height: '200%', margin: '-50%', border: 'none', cursor: 'pointer' }} />
-  </div>
+const ColorPicker = ({ value, onChange, label }) => (
+  <span className={s.swatch}>
+    <input type="color" value={value} onChange={e => onChange(e.target.value)} aria-label={label} />
+  </span>
 )
 
 export default function Studio({ onClose }) {
@@ -49,6 +51,7 @@ export default function Studio({ onClose }) {
       updateTheme({ [field]: b64 })
     } catch (e) {
       console.warn('Compression image impossible :', e)
+      toast.error('Image non importée : format non pris en charge ou fichier illisible')
     }
   }
 
@@ -61,115 +64,100 @@ export default function Studio({ onClose }) {
   }
 
   const sectionTitle = (label) => (
-    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 10 }}>
-      {label}
-    </div>
+    <h3 className={s.sectionTitle}>{label}</h3>
   )
 
   const section = (children) => (
-    <div style={{ padding: '12px 14px', borderBottom: '0.5px solid var(--border)' }}>
+    <section className={s.section}>
       {children}
-    </div>
+    </section>
   )
 
   const uploadZone = (label, field) => (
-    <label style={{ display: 'block', border: '2px dashed var(--border2)', borderRadius: 10, padding: 12, textAlign: 'center', cursor: 'pointer', transition: 'border-color .15s' }}>
-      <Upload size={18} style={{ color: 'var(--muted)', display: 'block', margin: '0 auto 4px' }} />
-      <span style={{ fontSize: 12, color: 'var(--muted)' }}>{label}</span>
-      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={e => uploadFile(field, e.target.files[0])} />
+    <label className={s.upload}>
+      <Upload size={18} aria-hidden="true" />
+      <span>{label}</span>
+      <input type="file" accept="image/*" className={s.fileInput} onChange={e => uploadFile(field, e.target.files[0])} />
     </label>
   )
 
+  const removeBtn = (label, onClick) => (
+    <button type="button" className={s.remove} onClick={onClick}>
+      <Trash2 size={13} aria-hidden="true" /> {label}
+    </button>
+  )
+
   return (
-    <div style={{
-      width: 260, flexShrink: 0,
-      background: 'var(--bg2)', borderLeft: '0.5px solid var(--border)',
-      display: 'flex', flexDirection: 'column', overflowY: 'auto',
-      transition: 'background .25s',
-    }}>
-      {/* Header */}
-      <div style={{ padding: '12px 14px', borderBottom: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)', fontWeight: 600, fontSize: 13 }}>
-        <Wand2 size={16} style={{ color: 'var(--brand)' }} />
+    <aside className={s.panel} aria-label="Studio de personnalisation">
+      {/* En-tête */}
+      <div className={s.head}>
+        <Wand2 size={16} aria-hidden="true" />
         Studio de personnalisation
       </div>
 
       {/* Logo & identité */}
       {section(<>
         {sectionTitle('Logo & identité')}
-        <div style={{ marginBottom: 10 }}>
-          <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Nom du festival</label>
+        <label className={s.field}>
+          <span className={s.label}>Nom du festival</span>
           <input
-            style={{ width: '100%', padding: '7px 10px', border: '0.5px solid var(--border2)', borderRadius: 8, fontSize: 12, background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font)' }}
+            className={s.input}
             value={theme.festName || ''}
             onChange={e => updateTheme({ festName: e.target.value })}
           />
-        </div>
+        </label>
         {uploadZone('Importer un logo', 'logoSrc')}
-        {theme.logoSrc && (
-          <button onClick={() => updateTheme({ logoSrc: null })}
-            style={{ marginTop: 6, fontSize: 11, color: 'var(--red)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
-            Supprimer le logo
-          </button>
-        )}
+        {theme.logoSrc && removeBtn('Supprimer le logo', () => updateTheme({ logoSrc: null }))}
       </>)}
 
       {/* Couleurs */}
       {section(<>
         {sectionTitle('Couleurs')}
-        <Row label="Couleur principale"><ColorPicker value={theme.brand || '#1D9E75'} onChange={v => updateTheme({ brand: v, qrColor: v })} /></Row>
-        <Row label="Couleur secondaire"><ColorPicker value={theme.purple || '#534AB7'} onChange={v => updateTheme({ purple: v })} /></Row>
-        <Row label="Fond application"><ColorPicker value={theme.bg || '#ffffff'} onChange={v => updateTheme({ bg: v })} /></Row>
-        <Row label="Fond sidebar/cards"><ColorPicker value={theme.bg2 || '#f5f5f3'} onChange={v => updateTheme({ bg2: v })} /></Row>
-        <Row label="Texte principal"><ColorPicker value={theme.text || '#1a1a1a'} onChange={v => updateTheme({ text: v })} /></Row>
+        <Row label="Couleur principale"><ColorPicker label="Couleur principale" value={theme.brand || '#1D9E75'} onChange={v => updateTheme({ brand: v, qrColor: v })} /></Row>
+        <Row label="Couleur secondaire"><ColorPicker label="Couleur secondaire" value={theme.purple || '#534AB7'} onChange={v => updateTheme({ purple: v })} /></Row>
+        <Row label="Fond application"><ColorPicker label="Fond application" value={theme.bg || '#ffffff'} onChange={v => updateTheme({ bg: v })} /></Row>
+        <Row label="Fond sidebar/cards"><ColorPicker label="Fond sidebar/cards" value={theme.bg2 || '#f5f5f3'} onChange={v => updateTheme({ bg2: v })} /></Row>
+        <Row label="Texte principal"><ColorPicker label="Texte principal" value={theme.text || '#1a1a1a'} onChange={v => updateTheme({ text: v })} /></Row>
       </>)}
 
       {/* Typographie */}
       {section(<>
         {sectionTitle('Typographie')}
-        <div style={{ marginBottom: 10 }}>
-          <label style={{ fontSize: 12, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Police</label>
+        <label className={s.field}>
+          <span className={s.label}>Police</span>
           <select
+            className={s.input}
             value={theme.font}
             onChange={e => updateTheme({ font: e.target.value })}
-            style={{ width: '100%', padding: '6px 8px', border: '0.5px solid var(--border2)', borderRadius: 8, fontSize: 12, background: 'var(--bg)', color: 'var(--text)' }}
           >
             {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
-        </div>
+        </label>
         <Row label="Taille de base">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input type="number" min={11} max={17} value={theme.fontSize || 13}
-              onChange={e => updateTheme({ fontSize: parseInt(e.target.value) })}
-              style={{ width: 52, padding: '4px 6px', border: '0.5px solid var(--border2)', borderRadius: 6, fontSize: 12, background: 'var(--bg)', color: 'var(--text)', textAlign: 'center' }} />
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>px</span>
-          </div>
+          <span className={s.unit}>
+            <input type="number" min={11} max={17} value={theme.fontSize || 13} className={s.number} aria-label="Taille de base (px)"
+              onChange={e => updateTheme({ fontSize: parseInt(e.target.value) })} />
+            px
+          </span>
         </Row>
         <Row label="Rayon des coins">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <input type="number" min={0} max={24} value={theme.radius || 10}
-              onChange={e => updateTheme({ radius: parseInt(e.target.value) })}
-              style={{ width: 52, padding: '4px 6px', border: '0.5px solid var(--border2)', borderRadius: 6, fontSize: 12, background: 'var(--bg)', color: 'var(--text)', textAlign: 'center' }} />
-            <span style={{ fontSize: 12, color: 'var(--muted)' }}>px</span>
-          </div>
+          <span className={s.unit}>
+            <input type="number" min={0} max={24} value={theme.radius || 10} className={s.number} aria-label="Rayon des coins (px)"
+              onChange={e => updateTheme({ radius: parseInt(e.target.value) })} />
+            px
+          </span>
         </Row>
       </>)}
 
       {/* QR Code */}
       {section(<>
         {sectionTitle('QR Code')}
-        <Row label="Couleur QR"><ColorPicker value={theme.qrColor || '#1D9E75'} onChange={v => updateTheme({ qrColor: v })} /></Row>
-        <Row label="Fond QR"><ColorPicker value={theme.qrBg || '#ffffff'} onChange={v => updateTheme({ qrBg: v })} /></Row>
-        <div style={{ marginTop: 8 }}>
-          {uploadZone('Logo centré (PNG transparent)', 'qrLogoSrc')}
-          {theme.qrLogoSrc && (
-            <button onClick={() => updateTheme({ qrLogoSrc: null })}
-              style={{ marginTop: 4, fontSize: 11, color: 'var(--red)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
-              Supprimer le logo QR
-            </button>
-          )}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 12, background: 'var(--bg)', borderRadius: 10, border: '0.5px solid var(--border)', marginTop: 10 }}>
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>Aperçu QR</span>
+        <Row label="Couleur QR"><ColorPicker label="Couleur QR" value={theme.qrColor || '#1D9E75'} onChange={v => updateTheme({ qrColor: v })} /></Row>
+        <Row label="Fond QR"><ColorPicker label="Fond QR" value={theme.qrBg || '#ffffff'} onChange={v => updateTheme({ qrBg: v })} /></Row>
+        {uploadZone('Logo centré (PNG transparent)', 'qrLogoSrc')}
+        {theme.qrLogoSrc && removeBtn('Supprimer le logo QR', () => updateTheme({ qrLogoSrc: null }))}
+        <div className={s.preview}>
+          <span>Aperçu QR</span>
           <QrCode key={theme.qrLogoSrc + theme.qrColor + theme.qrBg} value="FY-DEMO" size={80} />
         </div>
       </>)}
@@ -180,33 +168,29 @@ export default function Studio({ onClose }) {
         {uploadZone('Bannière dashboard', 'bannerSrc')}
         {theme.bannerSrc && (
           <>
-            <div style={{ marginTop: 8, borderRadius: 8, overflow: 'hidden', height: 56 }}>
-              <img src={theme.bannerSrc} alt="Bannière" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div className={s.banner}>
+              <img src={theme.bannerSrc} alt="Bannière" />
             </div>
-            <button onClick={() => updateTheme({ bannerSrc: null })}
-              style={{ marginTop: 4, fontSize: 11, color: 'var(--red)', background: 'transparent', border: 'none', cursor: 'pointer' }}>
-              Supprimer la bannière
-            </button>
+            {removeBtn('Supprimer la bannière', () => updateTheme({ bannerSrc: null }))}
           </>
         )}
       </>)}
 
-      {/* Presets */}
+      {/* Thèmes prédéfinis */}
       {section(<>
         {sectionTitle('Thèmes prédéfinis')}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+        <div className={s.presets}>
           {PRESETS.map(p => (
-            <button key={p.name} onClick={() => applyPreset(p)}
-              style={{ padding: '6px 4px', border: '0.5px solid var(--border2)', borderRadius: 8, background: 'var(--bg)', color: 'var(--text)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)' }}>
+            <button key={p.name} type="button" className={s.preset} onClick={() => applyPreset(p)}>
+              <span className={s.presetDot} style={{ background: p.brand }} aria-hidden="true" />
               {p.name}
             </button>
           ))}
         </div>
-        <button onClick={resetTheme}
-          style={{ width: '100%', marginTop: 10, padding: 7, border: '0.5px solid var(--border2)', borderRadius: 8, background: 'transparent', color: 'var(--red)', fontSize: 12, cursor: 'pointer', fontFamily: 'var(--font)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-          <RefreshCw size={12} /> Réinitialiser
+        <button type="button" className={s.reset} onClick={resetTheme}>
+          <RefreshCw size={13} aria-hidden="true" /> Réinitialiser
         </button>
       </>)}
-    </div>
+    </aside>
   )
 }

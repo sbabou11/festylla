@@ -1,0 +1,24 @@
+/* pages/admin/transactions — journal des transactions */
+.page { display: grid; gap: var(--space-3); min-width: 0; }
+.muted { margin: 0; font-size: var(--fs-12); color: var(--muted); line-height: 1.5; }
+.date { font-size: var(--fs-12); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ellipsis { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Montant : couleur selon le type */
+.amount { font: 800 var(--fs-13) var(--font-display); white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text); }
+.amt_brand   { color: var(--brand-dark); }
+.amt_danger  { color: var(--red); }
+.amt_warning { color: var(--gold-dark); }
+.amt_coral   { color: var(--coral-dark); }
+.amt_neutral { color: var(--muted); }
+
+.delBtn { min-width: 40px; min-height: 40px; }
+
+.pager { display: flex; align-items: center; justify-content: center; gap: var(--space-2) var(--space-3); flex-wrap: wrap; padding: var(--space-2) 0; }
+
+.dialogStack { display: grid; gap: var(--space-2); }
+.dialogText { margin: 0; font-size: var(--fs-13); color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
+
+@media (max-width: 560px) {
+  .ellipsis { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+}

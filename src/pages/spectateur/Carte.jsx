@@ -2,6 +2,7 @@
 import React, { useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
+import { toast } from '../../ui'
 
 export default function Carte({ onNavigate }) {
   const { spectateurs, menu, reservations, currentSpecId, creerReservation } = useAppStore()
@@ -16,7 +17,7 @@ export default function Carte({ onNavigate }) {
 
   const confirm = async () => {
     const resa = await creerReservation(s.id, items)
-    if (!resa) return alert('Solde insuffisant ou erreur')
+    if (!resa) return toast.error('Réservation impossible : solde insuffisant ou erreur')
     setDone(resa); setQtys({})
   }
 

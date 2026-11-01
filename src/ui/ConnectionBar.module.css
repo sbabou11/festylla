@@ -1,0 +1,23 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 9px var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  animation: in var(--dur-slow) var(--ease);
+  transition: background var(--dur-slow), color var(--dur-slow);
+}
+.on   { background: var(--green-light); color: var(--green-dark); }
+.off  { background: var(--gold-light);  color: var(--gold-dark); }
+.sync { background: var(--brand-light); color: var(--brand-dark); }
+.icon { flex-shrink: 0; }
+.off .icon { animation: blink 1.6s ease-in-out infinite; }
+.text { flex: 1; min-width: 0; }
+.count { min-width: 22px; padding: 0 6px; border-radius: 6px; background: var(--gold); color: var(--on-coral); font-size: var(--fs-12); font-weight: 800; text-align: center; font-variant-numeric: tabular-nums; }
+.spin { flex-shrink: 0; animation: spin .9s linear infinite; }
+.btn { min-height: 0; padding: 3px 10px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; font: 700 var(--fs-11) var(--font); cursor: pointer; }
+@keyframes blink { 50% { opacity: .35; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes in { from { transform: translateY(-6px); opacity: 0; } }

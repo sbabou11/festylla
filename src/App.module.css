@@ -2,8 +2,11 @@
 .app { font-family: var(--font); height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
 .shell { flex: 1; min-height: 0; display: flex; position: relative; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
-.content { flex: 1; overflow-y: auto; padding: var(--space-4); }
-@media (max-width: 640px) { .content { padding: var(--space-3) 10px; } }
+.content { flex: 1; overflow-y: auto; padding: var(--space-4); view-transition-name: page; }
+/* Téléphone : la barre du bas (--bottom-nav) ne doit rien cacher en fin de page */
+@media (max-width: 640px) { .content { padding: var(--space-3) 10px calc(var(--space-4) + var(--bottom-nav, 0px)); } }
+.skeleton { display: grid; gap: var(--space-4); }
+.skeletonStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); }
 .pageLoading { padding: 40px; text-align: center; color: var(--muted); font-size: var(--fs-13); }
 
 .offline {
