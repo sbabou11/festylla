@@ -243,14 +243,14 @@ export default function Staff() {
     if (!pwd || pwd.length < 6) { toast.error('Mot de passe trop court'); return }
     setPwdTarget(null)
     setPwdValue('')
-    const ok = await resetStaffPassword(s.id, pwd)
+    const ok = await resetStaffPassword(s.id, pwd, currentEventId)
     setResetState(p => ({ ...p, [s.id]: ok ? 'success' : 'error' }))
     setTimeout(() => setResetState(p => { const n={...p}; delete n[s.id]; return n }), 2500)
   }
 
   const handlePromote = (s) => setPending({
     title: 'Promouvoir ce membre ?',
-    message: `Promouvoir ${s.nom} en super admin ?`,
+    message: `Promouvoir ${s.nom} au rôle Admin ? Ce rôle donne accès à la gestion complète de l'événement.`,
     label: 'Promouvoir',
     variant: 'primary',
     run: async () => {

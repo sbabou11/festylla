@@ -47,6 +47,43 @@ export const PERMISSIONS = {
   directeur_artistique: { credit:false, debit:false, retrait:false, rapports:false, menu:false, staff:false, studio:false, reservations:false, analytics:false, alertes:false },
 }
 
+// Compte par identifiant : racine (legacy), puis events/{id}/staff (username, email), puis bénévoles
+async function findAccountSnap(uname) {
+  let snap = await getDocs(query(collection(db, 'staff'), where('username', '==', uname)))
+  if (snap.empty) {
+    snap = await getDocs(query(collection(db, 'staff'), where('email', '==', uname)))
+  }
+  // Si pas trouvé en racine, chercher dans events/
+  if (snap.empty) {
+    const eventsSnap = await getDocs(collection(db, 'events'))
+    for (const evDoc of eventsSnap.docs) {
+      const evStaffSnap = await getDocs(
+        query(collection(db, 'events', evDoc.id, 'staff'), where('username', '==', uname))
+      )
+      if (!evStaffSnap.empty) { snap = evStaffSnap; break }
+      const evStaffEmailSnap = await getDocs(
+        query(collection(db, 'events', evDoc.id, 'staff'), where('email', '==', uname))
+      )
+      if (!evStaffEmailSnap.empty) { snap = evStaffEmailSnap; break }
+
+      // Chercher dans les bénévoles
+      const evBenevSnap = await getDocs(
+        query(collection(db, 'events', evDoc.id, 'benevoles'), where('username', '==', uname))
+      )
+      if (!evBenevSnap.empty) { snap = evBenevSnap; break }
+    }
+  }
+  return snap
+}
+
+// Mot de passe en clair (legacy) ou empreinte
+async function passwordMatches(data, password) {
+  const storedPwd = data.password || data.pwd || null
+  if (!storedPwd && !data.passwordHash) return false
+  const hashOk = data.passwordHash ? await verifyPassword(password, data.passwordHash) : false
+  return storedPwd === password || hashOk
+}
+
 export const ROLE_PAGES = {
   super_admin:  ['evenements','dashboard','analytics','cloture','alertes','qr-entree','benevoles','reservations-admin','spectateurs','transactions','menu','staff','settings','mon-profil','nouveau','credit','retrait','debit','planning'],
   admin:        ['dashboard','analytics','cloture','alertes','qr-entree','benevoles','reservations-admin','spectateurs','transactions','menu','staff','settings','mon-profil','nouveau','credit','retrait','debit','planning'],
@@ -75,30 +112,7 @@ const useAuthStore = create(
         try {
           // Chercher dans tous les événements par username
           // D'abord racine (legacy), puis events/{id}/staff
-          let snap = await getDocs(query(collection(db, 'staff'), where('username', '==', uname)))
-          if (snap.empty) {
-            snap = await getDocs(query(collection(db, 'staff'), where('email', '==', uname)))
-          }
-          // Si pas trouvé en racine, chercher dans events/
-          if (snap.empty) {
-            const eventsSnap = await getDocs(collection(db, 'events'))
-            for (const evDoc of eventsSnap.docs) {
-              const evStaffSnap = await getDocs(
-                query(collection(db, 'events', evDoc.id, 'staff'), where('username', '==', uname))
-              )
-              if (!evStaffSnap.empty) { snap = evStaffSnap; break }
-              const evStaffEmailSnap = await getDocs(
-                query(collection(db, 'events', evDoc.id, 'staff'), where('email', '==', uname))
-              )
-              if (!evStaffEmailSnap.empty) { snap = evStaffEmailSnap; break }
-
-              // Chercher dans les bénévoles
-              const evBenevSnap = await getDocs(
-                query(collection(db, 'events', evDoc.id, 'benevoles'), where('username', '==', uname))
-              )
-              if (!evBenevSnap.empty) { snap = evBenevSnap; break }
-            }
-          }
+          const snap = await findAccountSnap(uname)
           if (!snap.empty) {
             const data    = snap.docs[0].data()
             const docId   = snap.docs[0].id
@@ -108,8 +122,7 @@ const useAuthStore = create(
               set({ loginLoading:false, loginError:"Aucun mot de passe défini. Contactez l’administrateur." })
               return false
             }
-            const hashOk = data.passwordHash ? await verifyPassword(password, data.passwordHash) : false
-            if (storedPwd !== password && !hashOk) {
+            if (!(await passwordMatches(data, password))) {
               set({ loginLoading:false, loginError:'Email ou mot de passe incorrect' })
               return false
             }
@@ -273,6 +286,17 @@ const useAuthStore = create(
           if (customRole) return (customRole.pages || []).includes(pageId)
         } catch {}
         return false
+      },
+
+      // Revérifie le mot de passe de la personne connectée (actions destructrices)
+      verifyOwnPassword: async (password) => {
+        const { user } = get()
+        if (!user || !password) return false
+        try {
+          const snap = await findAccountSnap((user.username || '').toLowerCase().trim())
+          const docSnap = snap.docs.find(d => d.id === user.id) || snap.docs[0]
+          return docSnap ? await passwordMatches(docSnap.data(), password) : false
+        } catch { return false }
       },
 
       setAvatar: (src) => set(s => ({ user: s.user ? { ...s.user, avatar:src } : null })),

@@ -32,11 +32,13 @@ export function AvantagesArtisteBlock({ form, setForm, menuItems }) {
     })
   }
 
-  const Section = ({ icon, label, qtyKey, idsKey, articles }) => {
+  // Fonction de rendu et non composant : un composant défini ici serait recréé à chaque frappe
+  // et le champ quantité perdrait le curseur
+  const renderSection = ({ icon, label, qtyKey, idsKey, articles }) => {
     const qty = av[qtyKey] || 0
     const selected = av[idsKey] || []
     return (
-      <div className={s.avSection}>
+      <div className={s.avSection} key={qtyKey}>
         <div className={s.avRow}>
           <span>{icon} {label}</span>
           <input type="number" min="0" value={qty} onChange={e => setQty(qtyKey, e.target.value)}
@@ -77,9 +79,9 @@ export function AvantagesArtisteBlock({ form, setForm, menuItems }) {
       </button>
       {open && (
         <div className={s.collapseBody}>
-          <Section icon="☕" label="Boissons" qtyKey="drinks" idsKey="drinkIds" articles={drinkArticles}/>
-          <Section icon="🍽" label="Repas"    qtyKey="meals"  idsKey="mealIds"  articles={mealArticles}/>
-          <Section icon="💧" label="Eau"      qtyKey="eaux"   idsKey="eauIds"   articles={eauArticles}/>
+          {renderSection({ icon: '☕', label: 'Boissons', qtyKey: 'drinks', idsKey: 'drinkIds', articles: drinkArticles })}
+          {renderSection({ icon: '🍽', label: 'Repas',    qtyKey: 'meals',  idsKey: 'mealIds',  articles: mealArticles })}
+          {renderSection({ icon: '💧', label: 'Eau',      qtyKey: 'eaux',   idsKey: 'eauIds',   articles: eauArticles })}
         </div>
       )}
     </div>

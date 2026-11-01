@@ -87,7 +87,7 @@ async function resetEventData(eventId, toDelete = []) {
 
 export default function Settings() {
   const { theme, updateTheme } = useAppStore()
-  const { user }               = useAuthStore()
+  const { user, verifyOwnPassword } = useAuthStore()
   const { currentEventId }     = useEventStore()
   const { exportTransactionsCsv, exportRapportExcel, exportAuditCsv } = useExport()
   const { generer: genererRapportCloture } = useRapportCloture()
@@ -128,6 +128,12 @@ export default function Settings() {
     if (!toDelete.length)   { setResetError('Sélectionnez au moins un élément à supprimer.'); return }
     setResetStep('running')
     setResetError('')
+    // Le mot de passe saisi doit être celui de la personne connectée
+    if (!(await verifyOwnPassword(resetPwd))) {
+      setResetError('Mot de passe incorrect.')
+      setResetStep('confirm')
+      return
+    }
     try {
       await resetEventData(currentEventId, toDelete)
       setResetStep('done')

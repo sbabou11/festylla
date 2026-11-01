@@ -154,7 +154,7 @@ export default function Menu() {
   }
 
   const startEditItem = (m) => {
-    setItemForm({ nom:m.nom, prix:Math.round((m.prix||0)/100), stock:m.stock||0, cat:m.cat, seuilAlerte:m.seuilAlerte??10, typeConsommation:m.typeConsommation||'' })
+    setItemForm({ nom:m.nom, prix:(m.prix||0)/100, stock:m.stock||0, cat:m.cat, seuilAlerte:m.seuilAlerte??10, typeConsommation:m.typeConsommation||'' })
     setEditingItem(m.id)
   }
 
@@ -162,7 +162,7 @@ export default function Menu() {
     if (!itemForm.nom.trim()) return
     setSavingItem(true)
     try {
-      const data = { nom:itemForm.nom.trim(), prix:itemForm.prix*100, stock:itemForm.stock, cat:itemForm.cat, seuilAlerte:itemForm.seuilAlerte??10, typeConsommation:itemForm.typeConsommation||'' }
+      const data = { nom:itemForm.nom.trim(), prix:Math.round(itemForm.prix*100), stock:itemForm.stock, cat:itemForm.cat, seuilAlerte:itemForm.seuilAlerte??10, typeConsommation:itemForm.typeConsommation||'' }
       if (editingItem === 'new') await addMenuItem(data)
       else await updateMenuItem(editingItem, data)
       setEditingItem(null)
@@ -180,6 +180,32 @@ export default function Menu() {
 
   const pendingCount = pendingCat ? menu.filter(m => m.cat === pendingCat.nom).length : 0
   const PreviewIcon = getIcon(catForm.icon)
+
+  // Articles rattachés à aucune catégorie existante
+  const catNames = new Set(categories.map(c => c.nom))
+  const orphans = catsLoading ? [] : menu.filter(m => !catNames.has(m.cat))
+
+  // Ligne d'article (catégories et articles sans catégorie)
+  const itemRow = (m) => (
+    <div key={m.id} className={s.item}>
+      <div className={s.itemInfo}>
+        <div className={s.itemName}>{m.nom}</div>
+        <div className={s.itemMeta}>
+          <span>{m.stock} en stock</span>
+          {stockBadge(m)}
+        </div>
+      </div>
+      <div className={s.itemSide}>
+        <span className={s.price}>{fmt(m.prix||0)}</span>
+        <Button variant="secondary" size="sm" icon={PackagePlus}
+          onClick={() => setRestock({ item: m, qty: '' })}>Stock</Button>
+        <Button variant="ghost" size="sm" icon={Pencil} iconOnly aria-label={`Modifier ${m.nom}`}
+          onClick={() => startEditItem(m)}/>
+        <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer ${m.nom}`}
+          onClick={() => deleteMenuItem(m.id)}/>
+      </div>
+    </div>
+  )
 
   return (
     <div className={s.page}>
@@ -321,7 +347,7 @@ export default function Menu() {
                   </label>
                   <label className={s.field}>
                     <span className={s.label}>Prix (€)</span>
-                    <input type="number" step="0.5" className={s.input} value={itemForm.prix} onChange={e => setItemForm(f=>({...f,prix:parseFloat(e.target.value)||0}))}/>
+                    <input type="number" step="0.01" min="0" inputMode="decimal" className={s.input} value={itemForm.prix} onChange={e => setItemForm(f=>({...f,prix:parseFloat(e.target.value)||0}))}/>
                   </label>
                   <label className={s.field}>
                     <span className={s.label}>Stock</span>
@@ -366,32 +392,24 @@ export default function Menu() {
                   ? <div className={s.none}>Aucun article</div>
                   : (
                     <div className={s.items}>
-                      {catItems.map(m => (
-                        <div key={m.id} className={s.item}>
-                          <div className={s.itemInfo}>
-                            <div className={s.itemName}>{m.nom}</div>
-                            <div className={s.itemMeta}>
-                              <span>{m.stock} en stock</span>
-                              {stockBadge(m)}
-                            </div>
-                          </div>
-                          <div className={s.itemSide}>
-                            <span className={s.price}>{fmt(m.prix||0)}</span>
-                            <Button variant="secondary" size="sm" icon={PackagePlus}
-                              onClick={() => setRestock({ item: m, qty: '' })}>Stock</Button>
-                            <Button variant="ghost" size="sm" icon={Pencil} iconOnly aria-label={`Modifier ${m.nom}`}
-                              onClick={() => startEditItem(m)}/>
-                            <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer ${m.nom}`}
-                              onClick={() => deleteMenuItem(m.id)}/>
-                          </div>
-                        </div>
-                      ))}
+                      {catItems.map(itemRow)}
                     </div>
                   )
                 }
               </Card>
             )
           })}
+
+          {/* Articles dont la catégorie n'existe plus : visibles pour pouvoir les réaffecter */}
+          {orphans.length > 0 && (
+            <Card>
+              <div className={s.groupHead} style={{ '--c': 'var(--muted)' }}>
+                <span className={s.groupName}>Sans catégorie</span>
+                <span className={s.muted}>{plural(orphans.length, 'article')} · à réaffecter</span>
+              </div>
+              <div className={s.items}>{orphans.map(itemRow)}</div>
+            </Card>
+          )}
         </div>
       )}
 
