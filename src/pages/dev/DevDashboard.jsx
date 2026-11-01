@@ -1,6 +1,6 @@
 /**
  * pages/dev/DevDashboard.jsx — aperçu du shell + tableau de bord avec données d'exemple
- * Développement uniquement (route /ui/dashboard). Aucune écriture Firebase :
+ * Développement uniquement (route /ui/dashboard, ?page=analytics ou ?page=cloture). Aucune écriture Firebase :
  * les stores sont remplis localement et les actions de réservation sont simulées.
  */
 import React, { useEffect, useState } from 'react'
@@ -10,12 +10,15 @@ import useEventStore from '../../store/useEventStore'
 import Sidebar from '../../components/Sidebar'
 import CommandPalette from '../../components/CommandPalette'
 import Dashboard from '../admin/Dashboard'
+import Analytics from '../admin/Analytics'
+import Cloture from '../admin/Cloture'
 import shell from '../../App.module.css'
 
 const H = 3600 * 1000
 const NAMES = ['Léa Martin', 'Karim Benali', 'Inès Diallo', 'Tom Robert', 'Awa Sow', 'Hugo Petit', 'Nora Haddad', 'Yanis Morel']
 const ITEMS = [['Bière pression', 500], ['Limonade maison', 350], ['Bissap', 300], ['Crêpe', 400], ['Burger', 900], ['Eau 50 cl', 150]]
 const STAFF = ['Bar Scène A', 'Stand Crêpes', 'Bar Scène B']
+const CAISSES = ['Caisse Awa', 'Caisse Karim']
 
 function sampleData(now) {
   const spectateurs = NAMES.map((nom, i) => ({ id: `YT-${(4100 + i * 37).toString(16).toUpperCase()}`, nom, solde: i === 6 ? -150 : 500 + i * 650 }))
@@ -28,11 +31,11 @@ function sampleData(now) {
       for (let k = 0; k < n; k++) {
         const t = base - (k * 7 + 3) * 60 * 1000
         const sp = spectateurs[(h + k) % spectateurs.length]
-        if (k % 4 === 0) logs.push({ type: 'credit', montant: 2000, label: 'Recharge 20€', specId: sp.id, staff: 'Billetterie', timestamp: new Date(t).toISOString(), heure: new Date(t).toLocaleTimeString('fr-FR') })
+        if (k % 4 === 0) logs.push({ type: 'credit', montant: 2000, label: 'Recharge 20€', specId: sp.id, staff: CAISSES[(h + k) % 2], moyen: h === 9 ? null : (k % 8 === 0 ? 'especes' : 'cb'), timestamp: new Date(t).toISOString(), heure: new Date(t).toLocaleTimeString('fr-FR') })
         else {
           const [nom, prix] = ITEMS[(h + k) % ITEMS.length]
           const qty = 1 + (k % 2)
-          logs.push({ type: 'debit', montant: prix * qty, label: `${STAFF[k % 3]} · ${qty} ${nom}`, specId: sp.id, staff: STAFF[k % 3], timestamp: new Date(t).toISOString(), heure: new Date(t).toLocaleTimeString('fr-FR') })
+          logs.push({ type: 'debit', montant: prix * qty, label: `${STAFF[k % 3]} · ${qty} ${nom}`, items: [{ nom, qty, prixUnit: prix, total: prix * qty }], specId: sp.id, staff: STAFF[k % 3], timestamp: new Date(t).toISOString(), heure: new Date(t).toLocaleTimeString('fr-FR') })
         }
       }
     }
@@ -45,9 +48,12 @@ function sampleData(now) {
     { id: 'r5', code: '4811', status: 'ready',      benevoleNom: 'Awa Sow', isBenev: true, items: [{ nom: 'Repas bénévole', qty: 1 }] },
   ]
   const menu = [
-    { id: 'm1', nom: 'Bière pression', prix: 500, stock: 6, seuilAlerte: 10 },
-    { id: 'm2', nom: 'Limonade maison', prix: 350, stock: 88 },
-    { id: 'm3', nom: 'Bissap', prix: 300, stock: 0 },
+    { id: 'm1', nom: 'Bière pression', prix: 500, stock: 6, seuilAlerte: 10, cat: 'Boissons' },
+    { id: 'm2', nom: 'Limonade maison', prix: 350, stock: 88, cat: 'Boissons' },
+    { id: 'm3', nom: 'Bissap', prix: 300, stock: 0, cat: 'Boissons' },
+    { id: 'm4', nom: 'Crêpe', prix: 400, stock: 25, cat: 'Food' },
+    { id: 'm5', nom: 'Burger', prix: 900, stock: 60, cat: 'Food' },
+    { id: 'm6', nom: 'Eau 50 cl', prix: 150, stock: 200, cat: 'Boissons' },
   ]
   return { spectateurs, logs, reservations, menu }
 }
@@ -55,7 +61,7 @@ function sampleData(now) {
 export default function DevDashboard() {
   const [ready, setReady] = useState(false)
   const [palette, setPalette] = useState(false)
-  const [page, setPage] = useState('dashboard')
+  const [page, setPage] = useState(() => new URLSearchParams(window.location.search).get('page') || 'dashboard')
 
   useEffect(() => {
     const data = sampleData(Date.now())
@@ -92,7 +98,7 @@ export default function DevDashboard() {
         <Sidebar view="admin" currentPage={page} onNavigate={setPage} alertCount={2} onLogout={() => {}} onToggleDark={() => document.body.classList.toggle('dark')} />
         <div className={shell.main}>
           <header className={shell.bar}>
-            <h1 className={shell.title}>Tableau de bord</h1>
+            <h1 className={shell.title}>{{ analytics: 'Analytics', cloture: 'Clôture de caisse' }[page] || 'Tableau de bord'}</h1>
             <span className={shell.event}>Festylla 2026 · démo</span>
             <span className={shell.stateOn}>En direct</span>
             <button type="button" className={shell.search} onClick={() => setPalette(true)}>
@@ -100,7 +106,7 @@ export default function DevDashboard() {
             </button>
           </header>
           <main className={shell.content}>
-            <Dashboard onNavigate={setPage} view="admin" />
+            {page === 'analytics' ? <Analytics /> : page === 'cloture' ? <Cloture /> : <Dashboard onNavigate={setPage} view="admin" />}
           </main>
         </div>
       </div>

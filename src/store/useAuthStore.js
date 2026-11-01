@@ -48,9 +48,9 @@ export const PERMISSIONS = {
 }
 
 export const ROLE_PAGES = {
-  super_admin:  ['evenements','dashboard','analytics','alertes','qr-entree','benevoles','reservations-admin','spectateurs','transactions','menu','staff','settings','mon-profil','nouveau','credit','retrait','debit','planning'],
-  admin:        ['dashboard','analytics','alertes','qr-entree','benevoles','reservations-admin','spectateurs','transactions','menu','staff','settings','mon-profil','nouveau','credit','retrait','debit','planning'],
-  billetterie:  ['credit','nouveau','transactions','mon-profil'],
+  super_admin:  ['evenements','dashboard','analytics','cloture','alertes','qr-entree','benevoles','reservations-admin','spectateurs','transactions','menu','staff','settings','mon-profil','nouveau','credit','retrait','debit','planning'],
+  admin:        ['dashboard','analytics','cloture','alertes','qr-entree','benevoles','reservations-admin','spectateurs','transactions','menu','staff','settings','mon-profil','nouveau','credit','retrait','debit','planning'],
+  billetterie:  ['credit','nouveau','cloture','transactions','mon-profil'],
   stand:        ['retrait','debit','reservations-admin','transactions','mon-profil'],
   consultation: ['transactions','reservations-admin','analytics','mon-profil'],
   directeur_artistique: ['planning', 'mon-profil'],

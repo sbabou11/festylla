@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Bookmark, Users, List, UtensilsCrossed, BadgeCheck, Calendar, CalendarDays,
   Settings, PlusCircle, QrCode, Package, ShoppingCart, Wallet, User,
   BarChart3, AlertTriangle, PanelLeftClose, PanelLeftOpen, X, LogOut,
-  Sun, Moon, Palette, ClipboardList,
+  Sun, Moon, Palette, ClipboardList, Calculator,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../store/useAppStore'
@@ -23,6 +23,7 @@ export const ALL_PAGES = {
   evenements:           { icon: Calendar,        label: 'Événements' },
   dashboard:            { icon: LayoutDashboard, label: 'Tableau de bord' },
   analytics:            { icon: BarChart3,       label: 'Analytics' },
+  cloture:              { icon: Calculator,      label: 'Clôture de caisse' },
   alertes:              { icon: AlertTriangle,   label: 'Alertes financières',   badge: 'alertes' },
   planning:             { icon: CalendarDays,    label: 'Planning Festival' },
   'qr-entree':          { icon: QrCode,          label: 'QR code entrée' },

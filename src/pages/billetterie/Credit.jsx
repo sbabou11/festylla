@@ -66,7 +66,8 @@ export default function Credit() {
     if (!spec || !montant) return
     setLoading(true)
     try {
-      await crediter(spec.id, montant, undefined, spec._eventId || currentEventId)
+      await crediter(spec.id, montant, user?.nom || 'Billetterie', spec._eventId || currentEventId,
+        { moyen: moyen === 'Espèces' ? 'especes' : 'cb' })
       setDone({ nom: spec.nom, montant, newSolde: spec.solde + montant * 100 })
       setSpec(null); setMontant(20)
     } catch (e) { setErr('Erreur : ' + e.message) }

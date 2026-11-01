@@ -13,7 +13,7 @@ import {
   collection, doc, getDoc, getDocs, addDoc, updateDoc,
   deleteDoc, query, where, orderBy, limit, onSnapshot,
   serverTimestamp, increment, runTransaction, writeBatch,
-  arrayUnion} from 'firebase/firestore'
+  arrayUnion, Timestamp } from 'firebase/firestore'
 import { db }        from './config'
 import { nowStr, uid, makeResaCode } from '../utils/helpers'
 
@@ -116,19 +116,24 @@ export const getSpectateur = async (id, evId) => {
   return { ...snap.docs[0].data(), _docId: snap.docs[0].id }
 }
 
-export const createSpectateur = async (nom, soldeEuros, staffNom = 'Billetterie') => {
+// moyen : 'especes' | 'cb' — mode de paiement de la recharge initiale (clôture de caisse)
+export const createSpectateur = async (nom, soldeEuros, staffNom = 'Billetterie', { moyen = null } = {}) => {
   const id    = uid()
   const solde = soldeEuros * 100
-  await addDoc(collection(db, 'events', getEventId(), 'spectateurs'), { id, nom, solde, avatar: null, createdAt: serverTimestamp() })
+  const eid   = getEventId()
+  await addDoc(collection(db, 'events', eid, 'spectateurs'), { id, nom, solde, avatar: null, createdAt: serverTimestamp() })
   if (solde > 0) {
-    await addDoc(collection(db, 'transactions'), {
+    // Dans les transactions de l'événement (auparavant écrite à la racine, invisible des totaux)
+    const now = new Date()
+    await addDoc(collection(db, 'events', eid, 'transactions'), {
       specId: id, specNom: nom, type: 'credit',
-      label: 'Recharge initiale', montant: solde, staff: staffNom,
-      date: nowStr(), timestamp: new Date().toISOString(),
-      createdAt: serverTimestamp(),
+      label: 'Recharge initiale', montant: solde, staff: staffNom, moyen,
+      soldeBefore: 0, soldeAfter: solde,
+      date: nowStr(), timestamp: now.toISOString(),
+      heure: now.toLocaleTimeString('fr-FR'), createdAt: serverTimestamp(),
     })
   }
-  await audit('CREATION_SPECTATEUR', { specId: id, specNom: nom, montant: solde, staff: staffNom, userType: 'spectateur', label: `Nouveau spectateur : ${nom}` })
+  await audit('CREATION_SPECTATEUR', { specId: id, specNom: nom, montant: solde, staff: staffNom, moyen, userType: 'spectateur', label: `Nouveau spectateur : ${nom}` })
   return id
 }
 
@@ -156,7 +161,8 @@ export const watchTransactions = (callback, evId) =>
 // CRÉDITER
 // ════════════════════════════════════════════════════════════════════
 
-export const crediter = async (specId, montantEuros, staffNom = 'Billetterie', evId = null) => {
+// moyen : 'especes' | 'cb' — enregistré sur la transaction pour la clôture de caisse
+export const crediter = async (specId, montantEuros, staffNom = 'Billetterie', evId = null, { moyen = null } = {}) => {
   const pts  = montantEuros * 100
   const eid = evId || getEventId()
   const snap = await getDocs(query(collection(db, 'events', eid, 'spectateurs'), where('id', '==', specId)))
@@ -171,13 +177,13 @@ export const crediter = async (specId, montantEuros, staffNom = 'Billetterie', e
     txn.update(specRef, { solde: increment(pts) })
     txn.set(doc(collection(db, 'events', eid, 'transactions')), {
       specId, specNom: specDoc.data().nom || '—', type: 'credit',
-      label: `Recharge ${montantEuros}€`, montant: pts, staff: staffNom,
+      label: `Recharge ${montantEuros}€`, montant: pts, staff: staffNom, moyen,
       soldeBefore, soldeAfter,
       date: nowStr(), timestamp: now.toISOString(),
       heure: now.toLocaleTimeString('fr-FR'), createdAt: serverTimestamp(),
     })
   })
-  await audit('CREDIT', { specId, montant: pts, staff: staffNom, label: `Recharge ${montantEuros}€` })
+  await audit('CREDIT', { specId, montant: pts, staff: staffNom, moyen, label: `Recharge ${montantEuros}€` })
   // Notif spectateur : compte crédité
   const snapSpec = await getDocs(query(collection(db, 'events', eid, 'spectateurs'), where('id', '==', specId)))
   if (!snapSpec.empty) {
@@ -1516,4 +1522,39 @@ export const pointerArrivee = async (shiftId, benevoleId, { postId, benevoleNom 
     date: new Date().toLocaleString('fr-FR'), timestamp: at, createdAt: serverTimestamp(),
   }).catch(() => {})
   return { already: false, at }
+}
+
+// ── Clôtures de caisse ────────────────────────────────────────────
+// events/{evId}/clotures/{id} → { caisse, periode, attendu, compte, ecart, commentaire, signataire, signature, ... }
+export const saveCloture = async (cloture, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) throw new Error('Aucun événement courant')
+  const ref = await addDoc(collection(db, 'events', eventId, 'clotures'), {
+    ...cloture, createdAt: serverTimestamp(), timestamp: new Date().toISOString(),
+  })
+  await audit('CLOTURE_CAISSE', {
+    staff: cloture.signataire, montant: cloture.ecart?.total ?? 0,
+    label: `Clôture de caisse ${cloture.caisse || 'toutes caisses'} · écart ${((cloture.ecart?.total ?? 0) / 100).toFixed(2)}€`,
+  })
+  return ref.id
+}
+
+export const watchClotures = (cb, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) { cb([]); return () => {} }
+  return onSnapshot(query(collection(db, 'events', eventId, 'clotures'), orderBy('createdAt', 'desc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([]))
+}
+
+// Toutes les transactions d'une période (la liste en direct du store est limitée aux 500 dernières)
+export const fetchTransactionsBetween = async (fromMs, toMs, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) return []
+  const snap = await getDocs(query(
+    collection(db, 'events', eventId, 'transactions'),
+    where('createdAt', '>=', Timestamp.fromMillis(fromMs)),
+    where('createdAt', '<', Timestamp.fromMillis(toMs)),
+    orderBy('createdAt', 'asc'),
+  ))
+  return snap.docs.map(d => ({ ...d.data(), _id: d.id }))
 }

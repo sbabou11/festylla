@@ -33,6 +33,7 @@ const PAGES = {
   benevoles:            lazy(() => import('./pages/admin/Benevoles')),
   'qr-entree':          lazy(() => import('./pages/admin/QrEntree')),
   analytics:            lazy(() => import('./pages/admin/Analytics')),
+  cloture:              lazy(() => import('./pages/admin/Cloture')),
   alertes:              lazy(() => import('./pages/admin/Alertes')),
   planning:             lazy(() => import('./pages/admin/Planning')),
   'reservations-admin': lazy(() => import('./pages/admin/Reservations')),
@@ -53,7 +54,7 @@ const PAGES = {
 }
 
 const PAGE_TITLES = {
-  evenements: 'Événements', dashboard: 'Tableau de bord', analytics: 'Analytics', 'qr-entree': 'QR code entrée', benevoles: 'Bénévoles', alertes: 'Alertes financières',
+  evenements: 'Événements', dashboard: 'Tableau de bord', analytics: 'Analytics', 'qr-entree': 'QR code entrée', cloture: 'Clôture de caisse', benevoles: 'Bénévoles', alertes: 'Alertes financières',
   'reservations-admin': 'Réservations', spectateurs: 'Spectateurs', transactions: 'Transactions',
   menu: 'Carte & menu', staff: 'Équipe', settings: 'Paramètres', credit: 'Créditer',
   nouveau: 'Nouveau QR', retrait: 'Retrait réservation', debit: 'Encaisser',

@@ -44,14 +44,14 @@ const useAppStore = create(
       setPlanning:    (d)=>set({planning:d}),
 
       // Spectateurs
-      createSpectateur:(nom,euros)=>svc.createSpectateur(nom,euros),
+      createSpectateur:(nom,euros,staff,opts)=>svc.createSpectateur(nom,euros,staff,opts),
       setSpecAvatar:(id,src)=>{const s=get().spectateurs.find(x=>x.id===id);if(s?._docId)svc.updateSpecAvatar(s._docId,src)},
       updateSpecNom:(id,nom)=>{const s=get().spectateurs.find(x=>x.id===id);if(s?._docId)svc.updateSpecNom(s._docId,nom)},
 
       // Transactions
-      crediter:(specId,euros,staff,evId) => {
+      crediter:(specId,euros,staff,evId,opts) => {
         const id = evId || useEventStore.getState().currentEventId
-        return svc.crediter(specId,euros,staff,id)
+        return svc.crediter(specId,euros,staff,id,opts)
       },
       debiter:(specId,items,staff,evId,opts) => {
         const id = evId || useEventStore.getState().currentEventId

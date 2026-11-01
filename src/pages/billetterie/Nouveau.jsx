@@ -3,9 +3,12 @@ import React, { useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
 import QrCode from '../../components/QrCode'
+import useAuthStore from '../../store/useAuthStore'
 
 export default function Nouveau() {
   const { createSpectateur } = useAppStore()
+  const { user } = useAuthStore()
+  const [moyen, setMoyen]   = useState('especes')
   const [nom, setNom]       = useState('')
   const [solde, setSolde]   = useState(0)
   const [created, setCreated] = useState(null)
@@ -17,7 +20,7 @@ export default function Nouveau() {
     setLoading(true)
     setError('')
     try {
-      const id = await createSpectateur(nom.trim(), solde)
+      const id = await createSpectateur(nom.trim(), solde, user?.nom || 'Billetterie', { moyen: solde > 0 ? moyen : null })
       setCreated({ id, nom: nom.trim(), solde: solde * 100 })
       setNom(''); setSolde(0)
     } catch (err) {
@@ -47,6 +50,17 @@ export default function Nouveau() {
             <button key={v} onClick={() => setSolde(v)} style={{ flex:1, padding:7, border:'0.5px solid var(--border2)', borderRadius:8, background:solde===v?'var(--brand)':'var(--bg2)', color:solde===v?'#fff':'var(--muted)', fontSize:12, cursor:'pointer', fontFamily:'var(--font)' }}>{v}€</button>
           ))}
         </div>
+        {solde > 0 && (
+          <div style={{ marginBottom:12 }}>
+            <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Paiement du solde initial</label>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+              {[['especes','💵 Espèces'],['cb','💳 Carte bancaire']].map(([k, l]) => (
+                <button key={k} type="button" onClick={() => setMoyen(k)} aria-pressed={moyen === k}
+                  style={{ padding:7, border:`1.5px solid ${moyen===k?'var(--brand)':'var(--border2)'}`, borderRadius:8, background:moyen===k?'var(--brand-light)':'var(--bg2)', color:moyen===k?'var(--brand-dark)':'var(--text)', fontSize:12, fontWeight:moyen===k?700:400, cursor:'pointer', fontFamily:'var(--font)' }}>{l}</button>
+              ))}
+            </div>
+          </div>
+        )}
         {error && <div style={{ marginBottom:10, padding:'8px 12px', background:'var(--red-light)', borderRadius:8, fontSize:12, color:'var(--red)' }}>{error}</div>}
         <button onClick={create} disabled={loading} style={{ width:'100%', padding:8, background:loading?'var(--bg3)':'var(--brand)', color:loading?'var(--muted)':'#fff', border:'none', borderRadius:8, fontSize:13, cursor:loading?'not-allowed':'pointer', fontFamily:'var(--font)' }}>
           {loading ? 'Création en cours…' : 'Générer le QR code'}

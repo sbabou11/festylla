@@ -11,6 +11,7 @@ import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
 import { computeKPIs } from '../../utils/kpis'
 import { dayStats, hourlyFlow, topSellers, dashboardAlerts, txTime } from '../../utils/dashboardData'
+import { stockForecast } from '../../utils/analyticsData'
 import { Stat, Card, Tabs, Button, Empty, Dialog, toast } from '../../ui'
 import FlowChart  from './dashboard/FlowChart'
 import GoalRing   from './dashboard/GoalRing'
@@ -54,7 +55,18 @@ export default function Dashboard({ onNavigate, view }) {
   const day    = useMemo(() => dayStats(allTx, now), [allTx, now])
   const flow   = useMemo(() => hourlyFlow(allTx, now, period === 'today' ? 0 : 1), [allTx, now, period])
   const best   = useMemo(() => topSellers(allTx, now)[0], [allTx, now])
-  const alerts = useMemo(() => dashboardAlerts({ spectateurs, logs: allTx, menu }), [spectateurs, allTx, menu])
+  const alerts = useMemo(() => {
+    const list = dashboardAlerts({ spectateurs, logs: allTx, menu })
+    // Rupture prévue avant la fermeture au rythme de vente actuel : remplace l'alerte « stock bas » de l'article
+    const soon = stockForecast(allTx, menu).filter(f => f.status === 'avant-fermeture')
+    const ids = new Set(soon.map(f => `stock-${f.id || f.nom}`))
+    const forecast = soon.map(f => ({
+      id: `prev-${f.id || f.nom}`, tone: 'warning', page: 'analytics', stock: f.stock,
+      title: `${f.nom} · rupture vers ${new Date(f.ruptureAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+    }))
+    const rest = list.filter(a => !ids.has(a.id))
+    return [...rest.filter(a => a.tone === 'danger'), ...forecast, ...rest.filter(a => a.tone !== 'danger')]
+  }, [spectateurs, allTx, menu])
 
   const wallets = spectateurs.filter(sp => (sp.solde || 0) > 0).length
   const specMap = useMemo(() => Object.fromEntries(spectateurs.map(sp => [sp.id, sp.nom])), [spectateurs])
