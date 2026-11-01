@@ -15,7 +15,7 @@ import {
   serverTimestamp, increment, runTransaction, writeBatch,
   arrayUnion} from 'firebase/firestore'
 import { db }        from './config'
-import { nowStr, uid } from '../utils/helpers'
+import { nowStr, uid, makeResaCode } from '../utils/helpers'
 
 const SEUIL_STOCK = 10
 
@@ -246,11 +246,6 @@ export const debiter = async (specId, items, staffNom = 'Stand', evId = null, { 
 // RÉSERVATIONS
 // ════════════════════════════════════════════════════════════════════
 
-let _resaCounter = 100
-const nextResaCode = (specId) => {
-  _resaCounter++
-  return specId.replace('FY-', '') + '-' + String(_resaCounter).padStart(2, '0')
-}
 
 export const creerReservation = async (specId, specNom, items) => {
   const total = items.reduce((a, i) => a + i.prix * i.qty, 0)
@@ -258,7 +253,7 @@ export const creerReservation = async (specId, specNom, items) => {
   if (snap.empty) throw new Error('Spectateur introuvable')
   if (snap.docs[0].data().solde < total) throw new Error('Solde insuffisant')
 
-  const code = nextResaCode(specId)
+  const code = makeResaCode(specId)
   const resa = { specId, specNom, items, total, status: 'pending', code, date: nowStr(), createdAt: serverTimestamp() }
 
   let resaDocId

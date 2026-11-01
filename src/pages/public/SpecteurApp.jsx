@@ -9,7 +9,7 @@ import { Search, Wallet, Clock, Bookmark, Music } from 'lucide-react'
 import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, addDoc,
          updateDoc, doc, serverTimestamp, runTransaction, orderBy } from 'firebase/firestore'
-import { fmt, nowStr } from '../../utils/helpers'
+import { fmt, nowStr, makeResaCode } from '../../utils/helpers'
 
 const BRAND   = '#1a6b7a'
 const BRAND_L = '#E1F5EE'
@@ -19,11 +19,7 @@ const AMBER_L = '#FAEEDA'
 const RED     = '#A32D2D'
 const RED_L   = '#FCEBEB'
 
-let _resaCounter = 200
-const resaCode = (specId) => {
-  _resaCounter++
-  return specId.replace('FY-', '') + '-' + String(_resaCounter).padStart(2, '0')
-}
+const resaCode = makeResaCode
 
 export default function SpecteurApp() {
   const urlId = new URLSearchParams(window.location.search).get('id')?.toUpperCase()

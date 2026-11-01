@@ -12,6 +12,18 @@ export const initials = (nom = '') =>
 export const uid = () =>
   'FY-' + Math.random().toString(36).slice(2, 6).toUpperCase()
 
+// Code de réservation lisible : 4 caractères du compte + 5 aléatoires, ex. "4F2A-K7MXQ".
+// Sans 0/O ni 1/I pour éviter les confusions à l'oral. 33 millions de combinaisons
+// par compte : pas de doublon en pratique, même d'une session à l'autre.
+const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
+export const makeResaCode = (specId = '') => {
+  const bytes = new Uint8Array(5)
+  crypto.getRandomValues(bytes)
+  const rand = Array.from(bytes, b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('')
+  const prefix = String(specId).replace(/^FY-/, '').slice(-4).toUpperCase()
+  return prefix ? `${prefix}-${rand}` : rand
+}
+
 export const nowStr = () => {
   const d = new Date()
   return (

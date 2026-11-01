@@ -17,7 +17,7 @@ import {
   collection, query, where, getDocs, addDoc, onSnapshot,
   updateDoc, doc, getDoc, serverTimestamp, runTransaction, orderBy, increment
 } from 'firebase/firestore'
-import { fmt, nowStr } from '../../utils/helpers'
+import { fmt, nowStr, makeResaCode as resaCode } from '../../utils/helpers'
 import { useNotifications } from '../../hooks/useNotifications'
 import NotifBell from '../../components/NotifBell'
 import ThemeToggle from '../../components/ThemeToggle'
@@ -29,8 +29,6 @@ import sp from './spectateur/SoldePage.module.css'
 
 const PAGE_SIZE = 15
 
-let _rc = 300
-const resaCode = (id) => { _rc++; return id.replace('FY-','') + '-' + String(_rc).padStart(2,'0') }
 
 // Icône, ton et signe selon le type de transaction
 const TX_LOOK = {
