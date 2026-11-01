@@ -5,6 +5,7 @@
  * Articles    : via useAppStore (déjà fonctionnel)
  */
 import React, { useState, useEffect } from 'react'
+import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import {
   collection, addDoc, updateDoc, deleteDoc,
@@ -13,7 +14,9 @@ import {
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
-import { Plus, Trash2, Pencil, X, Save } from 'lucide-react'
+import { Plus, Trash2, Pencil, X, Save, PackagePlus } from 'lucide-react'
+import { Button, Card, Badge, Tabs, Empty, Dialog, toast } from '../../ui'
+import s from './menu/menu.module.css'
 
 // ── Icônes ──────────────────────────────────────────────────────────
 import {
@@ -40,6 +43,7 @@ const ICONS = [
   { id:'star',      label:'Spécial',   Icon:Star },
 ]
 
+// Couleurs de catégorie : ce sont des données (enregistrées en base)
 const COLORS = [
   '#009090','#F07848','#BA7517','#0F6E56','#A32D2D',
   '#2563EB','#7C3AED','#D97706','#059669','#DC2626',
@@ -47,6 +51,15 @@ const COLORS = [
 ]
 
 const getIcon = (iconId) => ICONS.find(i => i.id === iconId)?.Icon || Tag
+const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`
+
+// Même lecture du stock que la caisse (POS)
+const stockBadge = (m) => {
+  const stock = m.stock || 0
+  if (stock === 0) return <Badge tone="danger">Rupture</Badge>
+  if (stock <= (m.seuilAlerte || 10)) return <Badge tone="warning">{m.stock}</Badge>
+  return <Badge tone="brand">{m.stock}</Badge>
+}
 
 export default function Menu() {
   const { menu, updateMenuItem, addMenuItem, deleteMenuItem } = useAppStore()
@@ -65,6 +78,10 @@ export default function Menu() {
   const [editingItem, setEditingItem] = useState(null)
   const [itemForm,    setItemForm]    = useState({ nom:'', prix:0, stock:100, cat:'', typeConsommation:'' })
   const [savingItem,  setSavingItem]  = useState(false)
+
+  // ── Confirmations (remplacent confirm/prompt) ────────────────────
+  const [pendingCat, setPendingCat] = useState(null)     // catégorie à supprimer
+  const [restock,    setRestock]    = useState(null)     // { item, qty }
 
   // Listener Firebase direct — avec retry automatique si erreur
   useEffect(() => {
@@ -116,14 +133,17 @@ export default function Menu() {
         await updateDoc(catDocRef, catForm)
       }
       setEditingCat(null)
-    } catch (e) { alert('Erreur : ' + e.message) }
+    } catch (e) { toast.error('Erreur : ' + e.message) }
     finally { setSavingCat(false) }
   }
 
-  const handleDeleteCat = async (cat) => {
-    const count = menu.filter(m => m.cat === cat.nom).length
-    if (count > 0 && !window.confirm(`"${cat.nom}" contient ${count} article(s). Supprimer quand même ?`)) return
-    if (!window.confirm(`Supprimer la catégorie "${cat.nom}" ?`)) return
+  // Une seule confirmation, qui indique le nombre d'articles concernés
+  const handleDeleteCat = (cat) => setPendingCat(cat)
+
+  const confirmDeleteCat = async () => {
+    const cat = pendingCat
+    setPendingCat(null)
+    if (!cat) return
     await deleteDoc(currentEventId ? doc(db, 'events', currentEventId, 'categories', cat.id) : doc(db, 'categories', cat.id))
   }
 
@@ -146,210 +166,189 @@ export default function Menu() {
       if (editingItem === 'new') await addMenuItem(data)
       else await updateMenuItem(editingItem, data)
       setEditingItem(null)
-    } catch (e) { alert('Erreur : ' + e.message) }
+    } catch (e) { toast.error('Erreur : ' + e.message) }
     finally { setSavingItem(false) }
   }
 
-  // ── Styles ────────────────────────────────────────────────────────
-  const inp = { width:'100%', padding:'8px 10px', border:'0.5px solid var(--border2)', borderRadius:8, fontSize:13, background:'var(--bg2)', color:'var(--text)', fontFamily:'var(--font)' }
-  const card = { background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'14px 16px', marginBottom:12 }
-  const tabBtn = (s) => ({ padding:'7px 16px', border:'none', borderRadius:8, cursor:'pointer', fontFamily:'var(--font)', fontSize:12, fontWeight:section===s?600:400, background:section===s?'var(--brand)':'var(--bg2)', color:section===s?'#fff':'var(--muted)' })
+  // Réassort : même règle que l'ancien prompt (entier > 0 sinon rien)
+  const confirmRestock = () => {
+    const m = restock?.item
+    const delta = parseInt(restock?.qty)
+    setRestock(null)
+    if (m && !isNaN(delta) && delta > 0) updateMenuItem(m.id, { stock: (m.stock||0) + delta })
+  }
+
+  const pendingCount = pendingCat ? menu.filter(m => m.cat === pendingCat.nom).length : 0
+  const PreviewIcon = getIcon(catForm.icon)
 
   return (
-    <div>
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:8, marginBottom:14 }}>
-        <button onClick={() => setSection('articles')}   style={tabBtn('articles')}>Articles</button>
-        <button onClick={() => setSection('categories')} style={tabBtn('categories')}>Catégories</button>
+    <div className={s.page}>
+      <div className={s.toolbar}>
+        <Tabs
+          label="Carte"
+          value={section}
+          onChange={setSection}
+          items={[
+            { value:'articles',   label:'Articles',   count: menu.length },
+            { value:'categories', label:'Catégories', count: categories.length },
+          ]}
+        />
+        {section === 'categories' && editingCat === null && (
+          <Button icon={Plus} onClick={startNewCat}>Nouvelle catégorie</Button>
+        )}
+        {section === 'articles' && editingItem === null && (
+          <Button icon={Plus} onClick={startNewItem}>Ajouter un article</Button>
+        )}
       </div>
 
       {/* ── CATÉGORIES ── */}
       {section === 'categories' && (
-        <>
-          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-            {editingCat === null && (
-              <button onClick={startNewCat} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:'var(--brand)', color:'#fff', border:'none', borderRadius:8, fontSize:13, cursor:'pointer', fontFamily:'var(--font)' }}>
-                <Plus size={14}/> Nouvelle catégorie
-              </button>
-            )}
-          </div>
-
+        <div className={s.list}>
           {/* Formulaire catégorie */}
           {editingCat !== null && (
-            <div style={{ ...card, border:'1px solid var(--brand)', marginBottom:14 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', marginBottom:14 }}>
-                {editingCat === 'new' ? 'Créer une catégorie' : 'Modifier la catégorie'}
-              </div>
+            <Card className={s.formCard} title={editingCat === 'new' ? 'Créer une catégorie' : 'Modifier la catégorie'}>
+              <div className={s.form}>
+                <label className={s.field}>
+                  <span className={s.label}>Nom</span>
+                  <input className={s.input} value={catForm.nom} onChange={e => setCatForm(f => ({...f,nom:e.target.value}))}
+                    placeholder="ex : Boissons chaudes"/>
+                </label>
 
-              <div style={{ marginBottom:12 }}>
-                <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Nom</label>
-                <input value={catForm.nom} onChange={e => setCatForm(f => ({...f,nom:e.target.value}))}
-                  placeholder="ex: Boissons chaudes" style={inp}/>
-              </div>
+                <div className={s.field}>
+                  <span className={s.label}>Couleur</span>
+                  <div className={s.swatches}>
+                    {COLORS.map(c => (
+                      <button key={c} type="button" aria-label={`Couleur ${c}`} aria-pressed={catForm.couleur === c}
+                        onClick={() => setCatForm(f => ({...f,couleur:c}))}
+                        className={clsx(s.swatch, catForm.couleur === c && s.swatchOn)}
+                        style={{ '--c': c }}/>
+                    ))}
+                    <input type="color" aria-label="Couleur personnalisée" className={s.colorInput}
+                      value={catForm.couleur} onChange={e => setCatForm(f => ({...f,couleur:e.target.value}))}/>
+                  </div>
+                </div>
 
-              <div style={{ marginBottom:12 }}>
-                <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>Couleur</label>
-                <div style={{ display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
-                  {COLORS.map(c => (
-                    <div key={c} onClick={() => setCatForm(f => ({...f,couleur:c}))}
-                      style={{ width:26, height:26, borderRadius:'50%', background:c, cursor:'pointer', border:catForm.couleur===c?'3px solid var(--text)':'2px solid transparent', flexShrink:0 }}/>
-                  ))}
-                  <input type="color" value={catForm.couleur} onChange={e => setCatForm(f => ({...f,couleur:e.target.value}))}
-                    style={{ width:26, height:26, borderRadius:'50%', border:'none', cursor:'pointer', padding:0 }}/>
+                <div className={s.field}>
+                  <span className={s.label}>Icône</span>
+                  <div className={s.icons} style={{ '--c': catForm.couleur }}>
+                    {ICONS.map(({ id, label, Icon }) => (
+                      <button key={id} type="button" aria-pressed={catForm.icon === id}
+                        onClick={() => setCatForm(f => ({...f,icon:id}))}
+                        className={clsx(s.iconBtn, catForm.icon === id && s.iconOn)}>
+                        <Icon size={16}/>
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <label className={s.field}>
+                  <span className={s.label}>Ordre d'affichage</span>
+                  <input type="number" className={clsx(s.input, s.inputShort)} value={catForm.ordre}
+                    onChange={e => setCatForm(f => ({...f,ordre:parseInt(e.target.value)||1}))}/>
+                </label>
+
+                {/* Aperçu */}
+                <div className={s.preview}>
+                  <span className={s.muted}>Aperçu</span>
+                  <span className={s.pill} style={{ '--c': catForm.couleur }}>
+                    <PreviewIcon size={14}/>
+                    <span>{catForm.nom || 'Nom'}</span>
+                  </span>
+                </div>
+
+                <div className={s.formActions}>
+                  <Button icon={Save} onClick={saveCat} loading={savingCat}>
+                    {savingCat ? 'Sauvegarde…' : editingCat === 'new' ? 'Créer' : 'Enregistrer'}
+                  </Button>
+                  <Button variant="secondary" icon={X} onClick={() => setEditingCat(null)}>Annuler</Button>
                 </div>
               </div>
-
-              <div style={{ marginBottom:12 }}>
-                <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:6 }}>Icône</label>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(70px,1fr))', gap:6 }}>
-                  {ICONS.map(({ id, label, Icon }) => (
-                    <button key={id} onClick={() => setCatForm(f => ({...f,icon:id}))}
-                      style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, padding:'8px 4px', borderRadius:8, border:`1px solid ${catForm.icon===id?catForm.couleur:'var(--border)'}`, background:catForm.icon===id?catForm.couleur+'22':'var(--bg2)', cursor:'pointer', fontFamily:'var(--font)' }}>
-                      <Icon size={16} style={{ color:catForm.icon===id?catForm.couleur:'var(--muted)' }}/>
-                      <span style={{ fontSize:10, color:catForm.icon===id?catForm.couleur:'var(--muted)', fontWeight:catForm.icon===id?600:400 }}>{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ marginBottom:14 }}>
-                <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Ordre d'affichage</label>
-                <input type="number" value={catForm.ordre} onChange={e => setCatForm(f => ({...f,ordre:parseInt(e.target.value)||1}))}
-                  style={{ ...inp, width:80 }}/>
-              </div>
-
-              {/* Aperçu */}
-              <div style={{ marginBottom:14, display:'flex', alignItems:'center', gap:10 }}>
-                <span style={{ fontSize:12, color:'var(--muted)' }}>Aperçu :</span>
-                <div style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 12px', borderRadius:20, background:catForm.couleur+'22', border:`1px solid ${catForm.couleur}` }}>
-                  {(() => { const I=getIcon(catForm.icon); return <I size={14} style={{ color:catForm.couleur }}/>; })()}
-                  <span style={{ fontSize:12, fontWeight:600, color:catForm.couleur }}>{catForm.nom||'Nom'}</span>
-                </div>
-              </div>
-
-              <div style={{ display:'flex', gap:8 }}>
-                <button onClick={saveCat} disabled={savingCat}
-                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:'var(--brand)', color:'#fff', border:'none', borderRadius:8, fontSize:13, cursor:'pointer', fontFamily:'var(--font)' }}>
-                  <Save size={13}/> {savingCat ? 'Sauvegarde…' : editingCat==='new' ? 'Créer' : 'Enregistrer'}
-                </button>
-                <button onClick={() => setEditingCat(null)}
-                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', border:'0.5px solid var(--border2)', borderRadius:8, background:'var(--bg)', color:'var(--text)', fontSize:13, cursor:'pointer', fontFamily:'var(--font)' }}>
-                  <X size={13}/> Annuler
-                </button>
-              </div>
-            </div>
+            </Card>
           )}
 
           {/* Liste catégories */}
-          {catsLoading && (
-            <div style={{ padding:'24px', textAlign:'center', color:'var(--muted)', fontSize:13 }}>
-              Chargement des catégories…
-            </div>
-          )}
+          {catsLoading && <div className={s.loading}>Chargement des catégories…</div>}
           {!catsLoading && categories.length === 0 && editingCat === null && (
-            <div style={{ padding:'24px', textAlign:'center', color:'var(--muted)', fontSize:13, background:'var(--bg2)', borderRadius:10 }}>
-              Aucune catégorie. Cliquez sur "+ Nouvelle catégorie".
-              <div style={{ marginTop:10 }}>
-                <button onClick={() => setCatsRetry(r => r+1)}
-                  style={{ fontSize:12, color:'var(--brand)', background:'none', border:'none', cursor:'pointer', textDecoration:'underline', minHeight:'auto' }}>
-                  Réessayer
-                </button>
-              </div>
-            </div>
+            <Empty
+              icon={Tag}
+              title="Aucune catégorie"
+              action={<Button variant="ghost" size="sm" onClick={() => setCatsRetry(r => r+1)}>Réessayer</Button>}
+            >
+              Créez-en une avec « Nouvelle catégorie ».
+            </Empty>
           )}
           {categories.map(cat => {
             const Icon  = getIcon(cat.icon)
             const count = menu.filter(m => m.cat === cat.nom).length
             return (
-              <div key={cat.id} style={card}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <div style={{ width:40, height:40, borderRadius:10, background:cat.couleur+'22', border:`1px solid ${cat.couleur}44`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                      <Icon size={18} style={{ color:cat.couleur }}/>
-                    </div>
-                    <div>
-                      <div style={{ fontSize:14, fontWeight:600, color:'var(--text)' }}>{cat.nom}</div>
-                      <div style={{ fontSize:11, color:'var(--muted)' }}>{count} article{count>1?'s':''} · ordre {cat.ordre||'—'}</div>
-                    </div>
-                    <span style={{ fontSize:11, padding:'2px 10px', borderRadius:20, background:cat.couleur+'22', color:cat.couleur, fontWeight:600, fontFamily:'monospace' }}>{cat.couleur}</span>
+              <Card key={cat.id}>
+                <div className={s.catRow} style={{ '--c': cat.couleur }}>
+                  <span className={s.catIcon}><Icon size={18}/></span>
+                  <div className={s.catInfo}>
+                    <div className={s.catName}>{cat.nom}</div>
+                    <div className={s.catMeta}>{plural(count, 'article')} · ordre {cat.ordre||'—'}</div>
                   </div>
-                  <div style={{ display:'flex', gap:6 }}>
-                    <button onClick={() => startEditCat(cat)}
-                      style={{ display:'flex', alignItems:'center', gap:4, padding:'5px 10px', border:'0.5px solid var(--border2)', borderRadius:6, background:'var(--bg2)', color:'var(--text)', fontSize:11, cursor:'pointer', fontFamily:'var(--font)' }}>
-                      <Pencil size={11}/> Modifier
-                    </button>
-                    <button onClick={() => handleDeleteCat(cat)}
-                      style={{ display:'flex', alignItems:'center', padding:'5px 8px', border:'0.5px solid #F09595', borderRadius:6, background:'var(--red-light)', color:'var(--red)', fontSize:11, cursor:'pointer', fontFamily:'var(--font)' }}>
-                      <Trash2 size={11}/>
-                    </button>
+                  <span className={s.hex}>{cat.couleur}</span>
+                  <div className={s.rowActions}>
+                    <Button variant="secondary" size="sm" icon={Pencil} onClick={() => startEditCat(cat)}>Modifier</Button>
+                    <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer ${cat.nom}`}
+                      onClick={() => handleDeleteCat(cat)}/>
                   </div>
                 </div>
-              </div>
+              </Card>
             )
           })}
-        </>
+        </div>
       )}
 
       {/* ── ARTICLES ── */}
       {section === 'articles' && (
-        <>
-          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-            {editingItem === null && (
-              <button onClick={startNewItem} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:'var(--brand)', color:'#fff', border:'none', borderRadius:8, fontSize:13, cursor:'pointer', fontFamily:'var(--font)' }}>
-                <Plus size={14}/> Ajouter un article
-              </button>
-            )}
-          </div>
-
+        <div className={s.list}>
           {editingItem !== null && (
-            <div style={{ ...card, border:'1px solid var(--brand)', marginBottom:14 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', marginBottom:14 }}>
-                {editingItem==='new' ? 'Nouvel article' : "Modifier l'article"}
+            <Card className={s.formCard} title={editingItem === 'new' ? 'Nouvel article' : "Modifier l'article"}>
+              <div className={s.form}>
+                <div className={s.grid}>
+                  <label className={s.field}>
+                    <span className={s.label}>Nom</span>
+                    <input className={s.input} value={itemForm.nom} onChange={e => setItemForm(f=>({...f,nom:e.target.value}))} placeholder="ex : Bière artisanale"/>
+                  </label>
+                  <label className={s.field}>
+                    <span className={s.label}>Catégorie</span>
+                    <select className={s.input} value={itemForm.cat} onChange={e => setItemForm(f=>({...f,cat:e.target.value}))}>
+                      {categories.map(c => <option key={c.id} value={c.nom}>{c.nom}</option>)}
+                    </select>
+                  </label>
+                  <label className={s.field}>
+                    <span className={s.label}>Prix (€)</span>
+                    <input type="number" step="0.5" className={s.input} value={itemForm.prix} onChange={e => setItemForm(f=>({...f,prix:parseFloat(e.target.value)||0}))}/>
+                  </label>
+                  <label className={s.field}>
+                    <span className={s.label}>Stock</span>
+                    <input type="number" className={s.input} value={itemForm.stock} onChange={e => setItemForm(f=>({...f,stock:parseInt(e.target.value)||0}))}/>
+                  </label>
+                  <label className={s.field}>
+                    <span className={s.label}>Seuil alerte stock</span>
+                    <input type="number" className={s.input} value={itemForm.seuilAlerte??10} onChange={e => setItemForm(f=>({...f,seuilAlerte:parseInt(e.target.value)||0}))}/>
+                  </label>
+                  <label className={s.field}>
+                    <span className={s.label}>Consommation bénévole</span>
+                    <select className={s.input} value={itemForm.typeConsommation||''} onChange={e => setItemForm(f=>({...f,typeConsommation:e.target.value}))}>
+                      <option value=''>Aucune (non éligible bénévoles)</option>
+                      <option value='repas'>Repas</option>
+                      <option value='boisson'>Boisson</option>
+                      <option value='eau'>Eau</option>
+                    </select>
+                  </label>
+                </div>
+                <div className={s.formActions}>
+                  <Button icon={Save} onClick={saveItem} loading={savingItem}>
+                    {savingItem ? 'Sauvegarde…' : editingItem === 'new' ? 'Ajouter' : 'Enregistrer'}
+                  </Button>
+                  <Button variant="secondary" icon={X} onClick={() => setEditingItem(null)}>Annuler</Button>
+                </div>
               </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
-                <div>
-                  <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Nom</label>
-                  <input value={itemForm.nom} onChange={e => setItemForm(f=>({...f,nom:e.target.value}))} placeholder="ex: Bière artisanale" style={inp}/>
-                </div>
-                <div>
-                  <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Catégorie</label>
-                  <select value={itemForm.cat} onChange={e => setItemForm(f=>({...f,cat:e.target.value}))} style={inp}>
-                    {categories.map(c => <option key={c.id} value={c.nom}>{c.nom}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Prix (€)</label>
-                  <input type="number" step="0.5" value={itemForm.prix} onChange={e => setItemForm(f=>({...f,prix:parseFloat(e.target.value)||0}))} style={inp}/>
-                </div>
-                <div>
-                  <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Stock</label>
-                  <input type="number" value={itemForm.stock} onChange={e => setItemForm(f=>({...f,stock:parseInt(e.target.value)||0}))} style={inp}/>
-                </div>
-                <div>
-                  <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Seuil alerte stock</label>
-                  <input type="number" value={itemForm.seuilAlerte??10} onChange={e => setItemForm(f=>({...f,seuilAlerte:parseInt(e.target.value)||0}))} style={inp}/>
-                </div>
-                <div>
-                  <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Type consommation bénévole</label>
-                  <select value={itemForm.typeConsommation||''} onChange={e => setItemForm(f=>({...f,typeConsommation:e.target.value}))} style={inp}>
-                    <option value=''>— Aucun (non éligible bénévoles) —</option>
-                    <option value='repas'>🍽️ Repas</option>
-                    <option value='boisson'>☕ Boisson</option>
-                    <option value='eau'>💧 Eau</option>
-                  </select>
-                </div>
-              </div>
-              <div style={{ display:'flex', gap:8 }}>
-                <button onClick={saveItem} disabled={savingItem}
-                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:'var(--brand)', color:'#fff', border:'none', borderRadius:8, fontSize:13, cursor:'pointer', fontFamily:'var(--font)' }}>
-                  <Save size={13}/> {savingItem ? 'Sauvegarde…' : editingItem==='new' ? 'Ajouter' : 'Enregistrer'}
-                </button>
-                <button onClick={() => setEditingItem(null)}
-                  style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', border:'0.5px solid var(--border2)', borderRadius:8, background:'var(--bg)', color:'var(--text)', fontSize:13, cursor:'pointer', fontFamily:'var(--font)' }}>
-                  <X size={13}/> Annuler
-                </button>
-              </div>
-            </div>
+            </Card>
           )}
 
           {categories.map(cat => {
@@ -357,54 +356,87 @@ export default function Menu() {
             if (catItems.length === 0 && editingItem === null) return null
             const CatIcon = getIcon(cat.icon)
             return (
-              <div key={cat.id} style={card}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-                  <div style={{ width:28, height:28, borderRadius:7, background:cat.couleur+'22', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    <CatIcon size={14} style={{ color:cat.couleur }}/>
-                  </div>
-                  <span style={{ fontSize:13, fontWeight:600, color:cat.couleur }}>{cat.nom}</span>
-                  <span style={{ fontSize:11, color:'var(--muted)' }}>{catItems.length} article{catItems.length>1?'s':''}</span>
+              <Card key={cat.id}>
+                <div className={s.groupHead} style={{ '--c': cat.couleur }}>
+                  <span className={clsx(s.catIcon, s.catIconSm)}><CatIcon size={14}/></span>
+                  <span className={s.groupName}>{cat.nom}</span>
+                  <span className={s.muted}>{plural(catItems.length, 'article')}</span>
                 </div>
                 {catItems.length === 0
-                  ? <div style={{ fontSize:12, color:'var(--muted)', padding:'8px 0' }}>Aucun article</div>
-                  : catItems.map(m => (
-                    <div key={m.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderTop:'0.5px solid var(--border)' }}>
-                      <div>
-                        <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{m.nom}</div>
-                        <div style={{ display:'flex', gap:8, marginTop:2 }}>
-                          <span style={{ fontSize:11, color:'var(--muted)' }}>{m.stock} en stock</span>
-                          <span style={{ fontSize:11, fontWeight:700, padding:'1px 7px', borderRadius:10,
-                            background:(m.stock||0)===0?'var(--red-light)':(m.stock||0)<=(m.seuilAlerte||10)?'var(--amber-light)':'var(--brand-light)',
-                            color:(m.stock||0)===0?'var(--red)':(m.stock||0)<=(m.seuilAlerte||10)?'var(--amber)':'var(--brand-dark)' }}>
-                            {(m.stock||0)===0?'Rupture':`${m.stock}`}
-                          </span>
+                  ? <div className={s.none}>Aucun article</div>
+                  : (
+                    <div className={s.items}>
+                      {catItems.map(m => (
+                        <div key={m.id} className={s.item}>
+                          <div className={s.itemInfo}>
+                            <div className={s.itemName}>{m.nom}</div>
+                            <div className={s.itemMeta}>
+                              <span>{m.stock} en stock</span>
+                              {stockBadge(m)}
+                            </div>
+                          </div>
+                          <div className={s.itemSide}>
+                            <span className={s.price}>{fmt(m.prix||0)}</span>
+                            <Button variant="secondary" size="sm" icon={PackagePlus}
+                              onClick={() => setRestock({ item: m, qty: '' })}>Stock</Button>
+                            <Button variant="ghost" size="sm" icon={Pencil} iconOnly aria-label={`Modifier ${m.nom}`}
+                              onClick={() => startEditItem(m)}/>
+                            <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer ${m.nom}`}
+                              onClick={() => deleteMenuItem(m.id)}/>
+                          </div>
                         </div>
-                      </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                        <span style={{ fontSize:14, fontWeight:700, color:'var(--brand-dark)' }}>{fmt(m.prix||0)}</span>
-                        <button onClick={() => {
-                          const delta = parseInt(prompt(`Réapprovisionner "${m.nom}"\nStock actuel : ${m.stock||0}\nQuantité à ajouter :`))
-                          if (!isNaN(delta) && delta > 0) updateMenuItem(m.id, { stock: (m.stock||0) + delta })
-                        }} style={{ display:'flex', alignItems:'center', gap:4, padding:'4px 8px', border:'0.5px solid #5DCAA5', borderRadius:6, background:'var(--brand-light)', color:'var(--brand-dark)', fontSize:11, cursor:'pointer', fontFamily:'var(--font)' }}>
-                          +Stock
-                        </button>
-                        <button onClick={() => startEditItem(m)}
-                          style={{ display:'flex', alignItems:'center', padding:'4px 7px', border:'0.5px solid var(--border2)', borderRadius:6, background:'var(--bg2)', color:'var(--text)', fontSize:11, cursor:'pointer', fontFamily:'var(--font)' }}>
-                          <Pencil size={11}/>
-                        </button>
-                        <button onClick={() => deleteMenuItem(m.id)}
-                          style={{ display:'flex', alignItems:'center', padding:'4px 7px', border:'0.5px solid #F09595', borderRadius:6, background:'var(--red-light)', color:'var(--red)', fontSize:11, cursor:'pointer', fontFamily:'var(--font)' }}>
-                          <Trash2 size={11}/>
-                        </button>
-                      </div>
+                      ))}
                     </div>
-                  ))
+                  )
                 }
-              </div>
+              </Card>
             )
           })}
-        </>
+        </div>
       )}
+
+      {/* Confirmation suppression catégorie */}
+      <Dialog
+        open={!!pendingCat}
+        onClose={() => setPendingCat(null)}
+        title="Supprimer la catégorie"
+        footer={<>
+          <Button variant="secondary" onClick={() => setPendingCat(null)}>Annuler</Button>
+          <Button variant="danger" icon={Trash2} onClick={confirmDeleteCat}>Supprimer</Button>
+        </>}
+      >
+        <div className={s.dialogStack}>
+          <p className={s.dialogText}>Supprimer la catégorie « {pendingCat?.nom} » ?</p>
+          {pendingCount > 0 && (
+            <p className={s.dialogText}>
+              <Badge tone="warning">Attention</Badge>{' '}
+              Elle contient encore {plural(pendingCount, 'article')}. Supprimer quand même ?
+            </p>
+          )}
+        </div>
+      </Dialog>
+
+      {/* Réassort d'un article */}
+      <Dialog
+        open={!!restock}
+        onClose={() => setRestock(null)}
+        title="Réapprovisionner"
+        footer={<>
+          <Button variant="secondary" onClick={() => setRestock(null)}>Annuler</Button>
+          <Button icon={PackagePlus} onClick={confirmRestock}>Ajouter au stock</Button>
+        </>}
+      >
+        <form className={s.dialogStack} onSubmit={e => { e.preventDefault(); confirmRestock() }}>
+          <p className={s.dialogText}>
+            <b>{restock?.item.nom}</b> · stock actuel : {restock?.item.stock || 0}
+          </p>
+          <label className={s.field}>
+            <span className={s.label}>Quantité à ajouter</span>
+            <input type="number" min="1" inputMode="numeric" autoFocus className={s.input}
+              value={restock?.qty ?? ''} onChange={e => setRestock(r => ({ ...r, qty: e.target.value }))}/>
+          </label>
+        </form>
+      </Dialog>
     </div>
   )
 }

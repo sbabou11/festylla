@@ -1,6 +1,7 @@
 /**
  * pages/dev/DevDashboard.jsx — aperçu du shell + tableau de bord avec données d'exemple
- * Développement uniquement (route /ui/dashboard, ?page=analytics ou ?page=cloture). Aucune écriture Firebase :
+ * Développement uniquement (route /ui/dashboard, ?page=analytics|cloture|planning|staff|menu|settings).
+ * Aucune écriture Firebase voulue (les écrans admin qui écrivent directement échoueront sans compte) :
  * les stores sont remplis localement et les actions de réservation sont simulées.
  */
 import React, { useEffect, useState } from 'react'
@@ -12,6 +13,10 @@ import CommandPalette from '../../components/CommandPalette'
 import Dashboard from '../admin/Dashboard'
 import Analytics from '../admin/Analytics'
 import Cloture from '../admin/Cloture'
+import Planning from '../admin/Planning'
+import Staff from '../admin/Staff'
+import Menu from '../admin/Menu'
+import Settings from '../admin/Settings'
 import shell from '../../App.module.css'
 
 const H = 3600 * 1000
@@ -19,6 +24,8 @@ const NAMES = ['Léa Martin', 'Karim Benali', 'Inès Diallo', 'Tom Robert', 'Awa
 const ITEMS = [['Bière pression', 500], ['Limonade maison', 350], ['Bissap', 300], ['Crêpe', 400], ['Burger', 900], ['Eau 50 cl', 150]]
 const STAFF = ['Bar Scène A', 'Stand Crêpes', 'Bar Scène B']
 const CAISSES = ['Caisse Awa', 'Caisse Karim']
+const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, staff: Staff, menu: Menu, settings: Settings }
+const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres' }
 
 function sampleData(now) {
   const spectateurs = NAMES.map((nom, i) => ({ id: `YT-${(4100 + i * 37).toString(16).toUpperCase()}`, nom, solde: i === 6 ? -150 : 500 + i * 650 }))
@@ -55,7 +62,25 @@ function sampleData(now) {
     { id: 'm5', nom: 'Burger', prix: 900, stock: 60, cat: 'Food' },
     { id: 'm6', nom: 'Eau 50 cl', prix: 150, stock: 200, cat: 'Boissons' },
   ]
-  return { spectateurs, logs, reservations, menu }
+  // Horodatage façon Firestore (toDate / seconds)
+  const ts = (min) => { const d = new Date(now + min * 60000); d.setMinutes(Math.round(d.getMinutes() / 15) * 15, 0, 0); return { toDate: () => d, seconds: Math.floor(d / 1000) } }
+  const planning = [
+    { id: 'c1', artiste: 'Les Ondes Courtes', titre: 'Rock', scene: 'Scène A', type: 'musical', debut: ts(-150), fin: ts(-90), statut: 'a-venir' },
+    { id: 'c2', artiste: 'Nadia K.', titre: 'Set acoustique', scene: 'Scène A', type: 'musical', debut: ts(-45), fin: ts(30), statut: 'a-venir', avantages: { repas: 2, boisson: 4 } },
+    { id: 'c3', artiste: 'Brass Kolektif', scene: 'Scène A', type: 'musical', debut: ts(20), fin: ts(80), statut: 'a-venir' },
+    { id: 'c4', artiste: 'Lecture : Les nuits du port', scene: 'Chapiteau', type: 'litteraire', debut: ts(0), fin: ts(60), statut: 'a-venir' },
+    { id: 'c5', artiste: 'Courts métrages', scene: 'Chapiteau', type: 'cinematographique', debut: ts(45), fin: ts(135), statut: 'annule' },
+  ]
+  const roles = [
+    { id: 'role-bar', nom: 'Chef de bar', couleur: '#F07848', pages: ['debit', 'retrait', 'transactions', 'mon-profil'] },
+  ]
+  const staff = [
+    { id: 'st1', _docId: 'st1', nom: 'Samba Babou', username: 'sbabou', role: 'super_admin', eventIds: ['demo'] },
+    { id: 'st2', _docId: 'st2', nom: 'Awa Diallo', username: 'awa', role: 'billetterie', eventIds: ['demo'] },
+    { id: 'st3', _docId: 'st3', nom: 'Karim Benali', username: 'karim', role: 'stand', eventIds: ['demo'] },
+    { id: 'st4', _docId: 'st4', nom: 'Moussa Keita', username: 'moussa', role: 'role-bar', eventIds: ['demo'] },
+  ]
+  return { spectateurs, logs, reservations, menu, planning, roles, staff }
 }
 
 export default function DevDashboard() {
@@ -87,7 +112,7 @@ export default function DevDashboard() {
     return () => {
       window.removeEventListener('keydown', onKey)
       useEventStore.setState({ currentEventId: previousEventId })
-      useAppStore.setState({ prendreEnCharge, marquerResaPrete, spectateurs: [], logs: [], reservations: [], menu: [] })
+      useAppStore.setState({ prendreEnCharge, marquerResaPrete, spectateurs: [], logs: [], reservations: [], menu: [], planning: [], roles: [], staff: [] })
     }
   }, [])
 
@@ -98,7 +123,7 @@ export default function DevDashboard() {
         <Sidebar view="admin" currentPage={page} onNavigate={setPage} alertCount={2} onLogout={() => {}} onToggleDark={() => document.body.classList.toggle('dark')} />
         <div className={shell.main}>
           <header className={shell.bar}>
-            <h1 className={shell.title}>{{ analytics: 'Analytics', cloture: 'Clôture de caisse' }[page] || 'Tableau de bord'}</h1>
+            <h1 className={shell.title}>{TITLES[page] || 'Tableau de bord'}</h1>
             <span className={shell.event}>Festylla 2026 · démo</span>
             <span className={shell.stateOn}>En direct</span>
             <button type="button" className={shell.search} onClick={() => setPalette(true)}>
@@ -106,7 +131,7 @@ export default function DevDashboard() {
             </button>
           </header>
           <main className={shell.content}>
-            {page === 'analytics' ? <Analytics /> : page === 'cloture' ? <Cloture /> : <Dashboard onNavigate={setPage} view="admin" />}
+            {(() => { const P = PAGES[page]; return P ? <P /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
           </main>
         </div>
       </div>
