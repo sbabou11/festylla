@@ -7,6 +7,7 @@ import { useTheme }  from './useTheme'
 import useEventStore from '../store/useEventStore'
 import { fmt } from '../utils/helpers'
 import { computeKPIs } from '../utils/kpis'
+import { loadAllTransactions, exportBody } from '../utils/fullTransactions'
 
 export function useExport() {
   const { spectateurs, reservations, menu, logs, staff } = useAppStore()
@@ -82,16 +83,17 @@ export function useExport() {
   // ── Export Transactions XLSX ─────────────────────────────────────────────
   const exportTransactionsCsv = async () => {
     if (!currentEvent || !currentEventId) { alert('Aucun événement sélectionné.'); return }
-    if (!(logs || []).length) { alert('Aucune transaction à exporter.'); return }
-
     try {
+      // Toutes les transactions de l'événement, pas seulement les 500 de la liste en direct
+      const transactions = await loadAllTransactions(currentEventId, logs)
+      if (!transactions.length) { alert('Aucune transaction à exporter.'); return }
       const resp = await fetch('/api/transactions', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: exportBody({
           event:        { nom: currentEvent.nom, couleur: theme?.brand || '#1a6b7a' },
           spectateurs:  spectateurs,
-          transactions: (logs || []).slice(0, 1000),
+          transactions,
           staff:        staff,
         }),
       })
@@ -123,14 +125,18 @@ export function useExport() {
     } catch {}
 
     try {
-      const kpis = computeKPIs({ spectateurs, reservations, logs: logs || [], menu })
+      // Toutes les transactions de l'événement : les totaux du rapport et le CA par article en dépendent
+      const transactions = await loadAllTransactions(currentEventId, logs)
+      const kpis = computeKPIs({ spectateurs, reservations, logs: transactions, menu })
       const resp = await fetch('/api/rapport', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: exportBody({
           event:        { nom: currentEvent.nom, couleur: theme?.brand || '#1a6b7a' },
           spectateurs:  spectateurs,
-          transactions: (logs || []).slice(0, 1000),
+          transactions,
+          // Marque le rapport comme complet : l'Event Manager refuse un rapport de 500 transactions sans cette mention
+          complete:     true,
           reservations: reservations,
           menu:         menu,
           staff:        staff,

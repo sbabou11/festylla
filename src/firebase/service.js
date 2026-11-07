@@ -1546,6 +1546,18 @@ export const watchClotures = (cb, evId = null) => {
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => cb([]))
 }
 
+// Toutes les transactions de l'événement, sans limite, pour les exports et rapports
+// (la liste en direct du store s'arrête aux 500 dernières). Lecture ponctuelle, triée de la plus
+// récente à la plus ancienne comme la liste en direct. Pas d'orderBy : Firestore écarterait
+// les documents sans createdAt.
+export const fetchAllTransactions = async (evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) return []
+  const snap = await getDocs(collection(db, 'events', eventId, 'transactions'))
+  const ms = t => t.createdAt?.toMillis?.() ?? (t.timestamp ? Date.parse(t.timestamp) || 0 : 0)
+  return snap.docs.map(d => ({ ...d.data(), _docId: d.id })).sort((a, b) => ms(b) - ms(a))
+}
+
 // Toutes les transactions d'une période (la liste en direct du store est limitée aux 500 dernières)
 export const fetchTransactionsBetween = async (fromMs, toMs, evId = null) => {
   const eventId = evId || getEventId()

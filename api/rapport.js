@@ -90,7 +90,7 @@ module.exports = async (req, res) => {
     ws1.columns=[{width:2},{width:24},{width:24},{width:24},{width:24},{width:4}]
     ws1.mergeCells('B1:E3'); ap(ws1.getCell('B1'),S.h1,`YllaCash — ${nom.toUpperCase()}`)
     ws1.getRow(1).height=20;ws1.getRow(2).height=20;ws1.getRow(3).height=20
-    ws1.mergeCells('B4:E4'); ap(ws1.getCell('B4'),S.sub,`Rapport financier — Généré le ${now}`)
+    ws1.mergeCells('B4:E4'); ap(ws1.getCell('B4'),S.sub,`Rapport financier — Généré le ${now}${data.complete ? ' — toutes les transactions' : ''}`)
     ws1.getRow(4).height=18;ws1.getRow(5).height=8
 
     const kpis=[['💰 CA Brut encaissé',fmtE(totalVentes)],['💳 Total rechargé',fmtE(totalCredits)],['🏦 Soldes restants',fmtE(totalSoldes)],['👥 Spectateurs',String(specs.length)],['📋 Taux retrait',`${taux}%`],['📈 CA Net',fmtE(caNette)]]

@@ -8,6 +8,7 @@ import useEventStore from '../store/useEventStore'
 import { useTheme }  from './useTheme'
 import { db }        from '../firebase/config'
 import { collection, getDocs, orderBy, query, limit } from 'firebase/firestore'
+import { loadAllTransactions, exportBody } from '../utils/fullTransactions'
 
 export function useRapportCloture() {
   const { spectateurs, reservations, menu, logs, staff } = useAppStore()
@@ -33,13 +34,15 @@ export function useRapportCloture() {
 
     // Appel à /api/rapport-pdf (Python reportlab — testé et validé)
     try {
+      // Toutes les transactions de l'événement, pas seulement les 500 de la liste en direct
+      const transactions = await loadAllTransactions(currentEventId, logs)
       const resp = await fetch('/api/rapport-pdf', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: exportBody({
           event:        { nom: currentEvent.nom, couleur: theme?.brand || '#1a6b7a' },
           spectateurs:  spectateurs,
-          transactions: (logs || []).slice(0, 1000),
+          transactions,
           reservations: reservations,
           menu:         menu,
           staff:        staff,
