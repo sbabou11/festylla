@@ -9,7 +9,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, Keyboard } from 'lucide-react'
-import { Tabs, Button, CodeInput } from '../ui'
+import { Tabs, Button, CodeInput, Field, focusFirstInvalid } from '../ui'
 import s from './QrScanner.module.css'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
@@ -33,6 +33,8 @@ export default function QrScanner({
   const [camError, setCamError] = useState(null)
   const [scanning, setScanning] = useState(false)
   const [manualVal, setManualVal] = useState('')
+  const [manualTried, setManualTried] = useState(false)
+  const manualRef = useRef(null)
   const scannerRef = useRef(null)
   const mountedRef = useRef(true)
 
@@ -99,7 +101,8 @@ export default function QrScanner({
 
   const handleManualSubmit = (raw = manualVal) => {
     const val = String(raw).trim().toUpperCase()
-    if (!val) return
+    if (!val) { setManualTried(true); focusFirstInvalid(manualRef.current); return }
+    setManualTried(false)
     if (onScan) onScan(val)
     if (onManual) onManual(val)
     setManualVal('')
@@ -153,17 +156,20 @@ export default function QrScanner({
           <p className={s.hint}>{placeholder}</p>
         </div>
       ) : (
-        <form className={s.manual} onSubmit={e => { e.preventDefault(); handleManualSubmit() }}>
-          <input
-            value={manualVal}
-            onChange={e => setManualVal(e.target.value.toUpperCase())}
-            placeholder={placeholder}
-            aria-label={placeholder}
-            className={s.input}
-            autoCapitalize="characters"
-            autoComplete="off"
-          />
-          <Button type="submit" block disabled={!manualVal.trim()}>Valider</Button>
+        <form ref={manualRef} className={s.manual} noValidate onSubmit={e => { e.preventDefault(); handleManualSubmit() }}>
+          {/* Erreur au clic sur Valider seulement : champ vidé après chaque saisie réussie */}
+          <Field error={manualTried && !manualVal.trim() ? 'Saisis un identifiant.' : null} showError={manualTried}>
+            <input
+              value={manualVal}
+              onChange={e => setManualVal(e.target.value.toUpperCase())}
+              placeholder={placeholder}
+              aria-label={placeholder}
+              className={s.input}
+              autoCapitalize="characters"
+              autoComplete="off"
+            />
+          </Field>
+          <Button type="submit" block>Valider</Button>
         </form>
       ))}
     </div>

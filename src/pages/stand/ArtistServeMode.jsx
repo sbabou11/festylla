@@ -12,6 +12,7 @@ import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, onSnapshot, doc, getDoc } from 'firebase/firestore'
 import { serveArtistItem, watchArtistReservations, servirReservationArtiste } from '../../firebase/service'
 import QrScanner from '../../components/QrScanner'
+import { friendlyError } from '../../utils/errors'
 import {
   Search, X, Clock, MapPin, AlertCircle, Bell, Coffee, UtensilsCrossed, Droplets,
   Music, BookOpen, Clapperboard, Drama,
@@ -139,7 +140,7 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
         }
         setCreneau({ ...snap.data(), id: snap.id })
       } catch (e) {
-        setErr('Lecture du QR impossible : ' + e.message)
+        setErr(friendlyError(e, "Le QR n'a pas pu être lu."))
       }
     }
   }
@@ -195,7 +196,7 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
       setFeedback('Réservation servie : ' + resa.artisteNom)
       setTimeout(() => setFeedback(''), 3000)
     } catch (e) {
-      setErr('Service impossible : ' + e.message)
+      setErr(friendlyError(e, "La réservation n'a pas pu être servie."))
     } finally {
       setLoading(false)
     }
@@ -209,7 +210,7 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
       setFeedback(article.nom + ' servi à ' + creneau.artiste)
       setTimeout(() => setFeedback(''), 3000)
     } catch (e) {
-      setErr('Service impossible : ' + e.message)
+      setErr(friendlyError(e, "L'article n'a pas pu être servi."))
     } finally {
       setLoading(false)
     }
@@ -365,7 +366,10 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
         ) : eligibleArticles.length === 0 ? (
           <Empty icon={UtensilsCrossed} title={av.drinks + av.meals + av.eaux === 0
             ? 'Aucun avantage prévu pour cet artiste'
-            : 'Tous les avantages ont été utilisés'} />
+            : 'Tous les avantages ont été utilisés'}
+            action={<Button size="sm" variant="secondary" onClick={reset}>Changer d'artiste</Button>}>
+            Les boissons et repas à servir apparaîtront ici s'il lui reste des avantages.
+          </Empty>
         ) : (
           <div className={s.grid}>
             {eligibleArticles.map(a => {

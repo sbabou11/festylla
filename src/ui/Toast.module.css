@@ -1,18 +1,28 @@
 .viewport {
   position: fixed;
   z-index: 300;
-  left: 50%;
-  bottom: calc(var(--space-4) + max(var(--bottom-nav, 0px), env(safe-area-inset-bottom, 0px)));
-  transform: translateX(-50%);
-  width: min(420px, calc(100vw - 32px));
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  width: min(380px, calc(100vw - 32px));
   display: grid;
   gap: var(--space-2);
   pointer-events: none;
+}
+/* Téléphone : en haut, hors de la zone du pouce et de la barre du bas */
+@media (max-width: 640px) {
+  .viewport {
+    left: var(--space-4);
+    right: var(--space-4);
+    top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    width: auto;
+  }
 }
 .toast {
   position: relative;
   overflow: hidden;
   pointer-events: auto;
+  touch-action: pan-y;
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -25,9 +35,12 @@
   font-weight: 600;
   animation: rise var(--dur-slow) var(--ease);
 }
+.dragging { transition: none; animation: none; }
+.leaving { animation: leave var(--dur-exit) ease-in forwards; pointer-events: none; }
 .icon { flex-shrink: 0; }
 .success .icon { color: var(--green); }
 .error   .icon { color: var(--coral); }
+.warning .icon { color: var(--gold); }
 .info    .icon { color: var(--brand); }
 .msg { flex: 1; min-width: 0; }
 .action, .close {
@@ -43,5 +56,12 @@
 .action:hover, .close:hover { background: rgba(127,127,127,.18); opacity: 1; }
 /* Temps restant pour « Annuler » */
 .timer { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--brand); transform-origin: left; animation: drain linear forwards; }
+.toast:hover .timer { animation-play-state: paused; }
+.dragging .timer { animation-play-state: paused; }
 @keyframes drain { to { transform: scaleX(0); } }
 @keyframes rise { from { transform: translateY(16px); opacity: 0; } }
+@keyframes leave { to { transform: translateY(8px); opacity: 0; } }
+@media (max-width: 640px) {
+  @keyframes rise { from { transform: translateY(-16px); opacity: 0; } }
+  @keyframes leave { to { transform: translateY(-8px); opacity: 0; } }
+}

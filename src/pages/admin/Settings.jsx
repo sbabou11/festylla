@@ -2,11 +2,12 @@
  * pages/admin/Settings.jsx — v3
  * Super admin : paramètres + exports + réinitialisation complète événement
  */
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Download, FileSpreadsheet, Wand2, Save, AlertTriangle, ShieldAlert, Eye, EyeOff, FileText, Check, RefreshCw } from 'lucide-react'
 import { useExport }             from '../../hooks/useExport'
 import { migrerVersV2 }          from '../../utils/migrationV2'
 import { migrerVersEvenement }   from '../../utils/migrationRacineVersEvent'
+import { friendlyError }         from '../../utils/errors'
 import useEventStore             from '../../store/useEventStore'
 import { useRapportCloture } from '../../hooks/useRapportCloture'
 import useAppStore   from '../../store/useAppStore'
@@ -16,7 +17,7 @@ import {
   collection, getDocs, deleteDoc, doc,
   writeBatch, addDoc, serverTimestamp,
 } from 'firebase/firestore'
-import { Button, Card, Dialog, toast } from '../../ui'
+import { Button, Card, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './settings/settings.module.css'
 
 // ── Réinitialisation complète Firebase ──────────────────────────────────────
@@ -110,6 +111,8 @@ export default function Settings() {
   const [toDelete, setToDelete]     = useState([])
   const [resetStep, setResetStep]   = useState('confirm') // confirm | running | done | error
   const [resetError, setResetError] = useState('')
+  const [resetTried, setResetTried] = useState(false)
+  const resetFormRef = useRef(null)
   const [confirmV2, setConfirmV2]   = useState(false)
 
   const handleSave = () => {
@@ -123,7 +126,7 @@ export default function Settings() {
   const handleExcel = async () => { setExporting('excel'); try { await exportRapportExcel() } finally { setTimeout(() => setExporting(null), 1200) } }
 
   const handleReset = async () => {
-    if (!resetPwd.trim())   { setResetError('Mot de passe requis.'); return }
+    if (!resetPwd.trim())   { setResetTried(true); focusFirstInvalid(resetFormRef.current); return }
     if (!currentEventId)    { setResetError('Aucun événement sélectionné.'); return }
     if (!toDelete.length)   { setResetError('Sélectionnez au moins un élément à supprimer.'); return }
     setResetStep('running')
@@ -138,7 +141,7 @@ export default function Settings() {
       await resetEventData(currentEventId, toDelete)
       setResetStep('done')
     } catch (e) {
-      setResetError('Erreur : ' + e.message)
+      setResetError(friendlyError(e, "La réinitialisation n'a pas abouti."))
       setResetStep('error')
     }
   }
@@ -148,6 +151,7 @@ export default function Settings() {
     setResetPwd('')
     setResetStep('confirm')
     setResetError('')
+    setResetTried(false)
   }
 
   // Migration v2 : confirmation par Dialog (remplace window.confirm)
@@ -157,14 +161,14 @@ export default function Settings() {
     try {
       await migrerVersV2(currentEventId, msg => setMigrV2Log(prev => [...prev, msg]))
       setMigrV2Done(true)
-    } catch (e) { setMigrV2Log(prev => [...prev, "✗ " + e.message]) }
+    } catch (e) { setMigrV2Log(prev => [...prev, "✗ " + friendlyError(e, "La migration v2 n'a pas abouti.")]) }
     finally { setMigratingV2(false) }
   }
 
   const handlePdf = async () => {
     setGeneratingPdf(true)
     try { await genererRapportCloture() }
-    catch (e) { toast.error('Erreur : ' + e.message) }
+    catch (e) { toast.error(friendlyError(e, "Le rapport de clôture n'a pas été généré."), { action: { label: 'Réessayer', onClick: () => handlePdf() } }) }
     finally { setGeneratingPdf(false) }
   }
 
@@ -309,7 +313,7 @@ export default function Settings() {
           ? <Button onClick={closeReset}>Fermer</Button>
           : <>
             <Button variant="secondary" onClick={closeReset} disabled={running}>Annuler</Button>
-            <Button variant="danger" icon={AlertTriangle} onClick={handleReset} disabled={!resetPwd} loading={running}>
+            <Button variant="danger" icon={AlertTriangle} onClick={handleReset} loading={running}>
               {running ? 'Réinitialisation en cours…' : 'Confirmer la réinitialisation'}
             </Button>
           </>}
@@ -321,7 +325,7 @@ export default function Settings() {
             <p className={s.text}>Toutes les données sélectionnées ont été supprimées.</p>
           </div>
         ) : (
-          <div className={s.stack}>
+          <div ref={resetFormRef} className={s.stack}>
             <div className={s.field}>
               <span className={s.label}>Éléments à supprimer</span>
               <div className={s.checks}>
@@ -350,14 +354,16 @@ export default function Settings() {
             <div className={s.field}>
               <label className={s.label} htmlFor="reset-pwd">Confirmez avec votre mot de passe admin</label>
               <div className={s.pwd}>
-                <input
-                  id="reset-pwd"
-                  className={s.input}
-                  type={showPwd ? 'text' : 'password'}
-                  value={resetPwd}
-                  onChange={e => { setResetPwd(e.target.value); setResetError('') }}
-                  placeholder="Mot de passe…"
-                />
+                <Field error={resetPwd.trim() ? null : 'Indique ton mot de passe'} showError={resetTried}>
+                  <input
+                    id="reset-pwd"
+                    className={s.input}
+                    type={showPwd ? 'text' : 'password'}
+                    value={resetPwd}
+                    onChange={e => { setResetPwd(e.target.value); setResetError('') }}
+                    placeholder="Mot de passe…"
+                  />
+                </Field>
                 <button type="button" className={s.eye} onClick={() => setShowPwd(v => !v)}
                   aria-label={showPwd ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}>
                   {showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}

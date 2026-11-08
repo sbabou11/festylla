@@ -28,12 +28,12 @@
 
 /* Nouvelles lignes : elles glissent en place (une seule fois, à l'insertion) */
 .body tr { animation: rowIn var(--dur-slow) var(--ease) both; }
-.body tr:nth-child(2) { animation-delay: 30ms; }
-.body tr:nth-child(3) { animation-delay: 60ms; }
-.body tr:nth-child(4) { animation-delay: 90ms; }
-.body tr:nth-child(5) { animation-delay: 120ms; }
-.body tr:nth-child(6) { animation-delay: 150ms; }
-.body tr:nth-child(n+7) { animation-delay: 180ms; }
+.body tr:nth-child(2) { animation-delay: 50ms; }
+.body tr:nth-child(3) { animation-delay: 100ms; }
+.body tr:nth-child(4) { animation-delay: 150ms; }
+.body tr:nth-child(5) { animation-delay: 200ms; }
+.body tr:nth-child(6) { animation-delay: 250ms; }
+.body tr:nth-child(n+7) { animation-delay: 300ms; }
 @keyframes rowIn { from { opacity: 0; transform: translateY(4px); } }
 
 /* ── Vue en cartes quand le tableau n'a pas la place ── */

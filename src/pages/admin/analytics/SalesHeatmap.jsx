@@ -2,6 +2,7 @@
  * Carte de chaleur des ventes : stands ou caissiers en lignes, heures de la journée festival en colonnes
  */
 import React, { useMemo, useState } from 'react'
+import { Flame } from 'lucide-react'
 import { Card, Tabs, Empty, Skeleton } from '../../../ui'
 import { fmt } from '../../../utils/helpers'
 import { dayStart } from '../../../utils/dashboardData'
@@ -50,7 +51,7 @@ export default function SalesHeatmap() {
       </div>
 
       {loading ? <Skeleton height={160} /> : map.rows.length === 0 ? (
-        <Empty title="Aucune vente sur cette journée" />
+        <Empty icon={Flame} title="Aucune vente sur cette journée">Les ventes par heure et par stand s'afficheront ici dès le premier encaissement.</Empty>
       ) : (
         <div className={s.heatWrap}>
           <table className={s.heat}>

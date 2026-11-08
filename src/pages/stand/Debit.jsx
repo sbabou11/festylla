@@ -5,7 +5,7 @@
  * Lot 6 : thème « plein soleil » (préférence de l'appareil) et bandeau de connexion.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Zap, Volume2, VolumeX, Vibrate, Sun, AlertTriangle, RotateCcw, Undo2 } from 'lucide-react'
+import { Zap, Volume2, VolumeX, Vibrate, Sun, AlertTriangle, RotateCcw, Undo2, CheckCircle2 } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
@@ -14,9 +14,10 @@ import { db }        from '../../firebase/config'
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore'
 import { fmt } from '../../utils/helpers'
 import { dayStart, txTime } from '../../utils/dashboardData'
-import { holdSale, cancelSale, dismissSale, retrySale, subscribe } from '../../utils/pendingSales'
+import { holdSale, cancelSale, dismissSale, retrySale, subscribe, subscribeCommitted } from '../../utils/pendingSales'
 import { Tabs, toast, ConnectionBar } from '../../ui'
 import useSunMode    from '../../store/useSunMode'
+import { friendlyError } from '../../utils/errors'
 import ArtistServeMode from './ArtistServeMode'
 import ProductGrid     from './pos/ProductGrid'
 import Ticket          from './pos/Ticket'
@@ -60,12 +61,18 @@ export default function Debit() {
   const [cat, setCat]           = useState(null)
   const [feedback, setFeedback] = useState(null)
   const [pending, setPending]   = useState([])
+  const [accepted, setAccepted] = useState([]) // ventes écrites à l'instant
   const [, tick]                = useState(0)
   const lastSale  = useRef({ id: null, at: 0 })
   const snapshots = useRef({}) // saleId -> { client, qtys } pour rouvrir le ticket après annulation
   const ticketRef = useRef(null)
 
   useEffect(() => subscribe(setPending), [])
+  // « Paiement accepté » seulement une fois la vente réellement écrite
+  useEffect(() => subscribeCommitted((sale) => {
+    setAccepted(a => [...a.slice(-1), sale])
+    setTimeout(() => setAccepted(a => a.filter(x => x.id !== sale.id)), 3500)
+  }), [])
   useEffect(() => {
     const on = () => setOnline(true), off = () => setOnline(false)
     window.addEventListener('online', on); window.addEventListener('offline', off)
@@ -162,7 +169,7 @@ export default function Debit() {
       }
       setScanError(`Aucun compte pour le code ${uid}. Vérifiez le QR ou saisissez le code à la main.`)
     } catch (e) {
-      setScanError(`Recherche impossible : ${e.message}`)
+      setScanError(friendlyError(e, 'Recherche du client impossible.'))
     } finally {
       setSearching(false)
     }
@@ -252,6 +259,11 @@ export default function Debit() {
             <button type="button" onClick={() => undo(p.id)}>
               <Undo2 size={14} /> Annuler
             </button>
+          </div>
+        ))}
+        {accepted.map(p => (
+          <div key={p.id} className={clsx(s.notice, s.noticeGreen)} role="status">
+            <CheckCircle2 size={15} /> <span>Paiement accepté · {p.specNom || p.specId} · {fmt(p.total)}</span>
           </div>
         ))}
         {failed.map(p => (

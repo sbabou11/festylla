@@ -5,18 +5,19 @@
  * - Copie nommée dans une fenêtre, suppression confirmée par appui long
  * La couleur d'un événement est une donnée : elle passe par la variable CSS --c.
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import useEventStore from '../../store/useEventStore'
 import { compressImage } from '../../utils/imageUtils'
 import useAuthStore  from '../../store/useAuthStore'
 import useAppStore   from '../../store/useAppStore'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+import { friendlyError } from '../../utils/errors'
 import {
   Plus, Pencil, Trash2, Copy, X, Save,
   Calendar, MapPin, CheckCircle, ArrowRight, Upload, Info,
 } from 'lucide-react'
-import { Button, Empty, Skeleton, Dialog, HoldButton, toast } from '../../ui'
+import { Button, Empty, Skeleton, Dialog, HoldButton, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './evenements/evenements.module.css'
 
 const COULEURS = [
@@ -111,17 +112,19 @@ const EventForm = ({ initial, onSave, onCancel, isMobile }) => {
     logoSrc:     initial?.logoSrc     || (theme?.logoSrc || null),
   })
   const [saving, setSaving] = useState(false)
-  const [nomError, setNomError] = useState('')
+  const [tried, setTried]   = useState(false)
+  const formRef = useRef(null)
+  const nomError = form.nom.trim() ? null : 'Indique un nom pour cet événement'
 
   const handleSave = async () => {
-    if (!form.nom.trim()) { setNomError('Le nom est requis'); return }
+    if (nomError) { setTried(true); focusFirstInvalid(formRef.current); return }
     setSaving(true)
     try { await onSave(form) }
     finally { setSaving(false) }
   }
 
   return (
-    <section className={s.formCard} aria-label={initial ? 'Modifier l\'événement' : 'Nouvel événement'}>
+    <section ref={formRef} className={s.formCard} aria-label={initial ? 'Modifier l\'événement' : 'Nouvel événement'}>
       <h2 className={s.formTitle}>{initial ? 'Modifier l\'événement' : 'Nouvel événement'}</h2>
 
       {/* Icône + Nom */}
@@ -133,14 +136,11 @@ const EventForm = ({ initial, onSave, onCancel, isMobile }) => {
             {EMOJI_OPTIONS.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
         </div>
-        <div className={clsx(s.field, s.grow)}>
-          <label className={s.label} htmlFor="evt-nom">Nom *</label>
-          <input id="evt-nom" className={clsx(s.input, nomError && s.inputError)} value={form.nom}
-            aria-invalid={!!nomError} aria-describedby={nomError ? 'evt-nom-err' : undefined}
-            onChange={e => { setForm(f => ({...f,nom:e.target.value})); setNomError('') }}
+        <Field className={s.grow} label={<span className={s.label}>Nom *</span>} error={nomError} valid={!nomError} showError={tried}>
+          <input id="evt-nom" value={form.nom}
+            onChange={e => setForm(f => ({...f,nom:e.target.value}))}
             placeholder="ex : Fest'Ylla 2026"/>
-          {nomError && <span id="evt-nom-err" className={s.fieldError}>{nomError}</span>}
-        </div>
+        </Field>
       </div>
 
       <div className={s.field}>
@@ -260,6 +260,8 @@ export default function Evenements() {
   // Fenêtres (remplacent window.confirm et prompt)
   const [pendingDel, setPendingDel] = useState(null)   // événement à supprimer
   const [copy,       setCopy]       = useState(null)   // { evt, nom }
+  const [copyTried,  setCopyTried]  = useState(false)
+  const copyFormRef = useRef(null)
 
   useEffect(() => {
     const unsub = watchEvents()
@@ -278,26 +280,36 @@ export default function Evenements() {
   }
 
   const handleDelete = (evt) => setPendingDel(evt)
-  const confirmDelete = async () => {
-    const evt = pendingDel
-    setPendingDel(null)
-    if (!evt) return
+  const removeEvent = async (evt) => {
     try {
       await deleteEvent(evt.id)
       toast.success(`« ${evt.nom} » supprimé`)
-    } catch (e) { toast.error('Suppression impossible : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, `« ${evt.nom} » n'a pas été supprimé.`), { action: { label: 'Réessayer', onClick: () => removeEvent(evt) } })
+    }
+  }
+  const confirmDelete = () => {
+    const evt = pendingDel
+    setPendingDel(null)
+    if (evt) removeEvent(evt)
   }
 
-  const handleDuplicate = (evt) => setCopy({ evt, nom: `${evt.nom} — Copie` })
-  const confirmDuplicate = async () => {
-    const evt = copy?.evt
-    const nom = copy?.nom?.trim()
-    if (!evt || !nom) return
-    setCopy(null)
+  const handleDuplicate = (evt) => { setCopyTried(false); setCopy({ evt, nom: `${evt.nom} — Copie` }) }
+  const duplicate = async (evt, nom) => {
     try {
       await duplicateEvent(evt.id, { ...evt, nom, actif:false, id:undefined })
       toast.success(`« ${nom} » créé`)
-    } catch (e) { toast.error('Copie impossible : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, "La copie de l'événement n'a pas été créée."), { action: { label: 'Réessayer', onClick: () => duplicate(evt, nom) } })
+    }
+  }
+  const confirmDuplicate = () => {
+    const evt = copy?.evt
+    const nom = copy?.nom?.trim()
+    if (!evt) return
+    if (!nom) { setCopyTried(true); focusFirstInvalid(copyFormRef.current); return }
+    setCopy(null)
+    duplicate(evt, nom)
   }
 
   const visible = events.filter(e => !e.deleted)
@@ -342,8 +354,9 @@ export default function Evenements() {
 
       {/* Liste */}
       {visible.length === 0 && !showForm && !editing ? (
-        <Empty icon={Calendar} title="Aucun événement">
-          Appuyez sur <strong>Nouvel événement</strong> pour créer votre premier événement.
+        <Empty icon={Calendar} title="Aucun événement pour l'instant"
+          action={<Button icon={Plus} onClick={() => setShowForm(true)}>Créer un événement</Button>}>
+          Tes événements apparaîtront ici, chacun avec ses spectateurs, sa carte et son équipe.
         </Empty>
       ) : (
         <div className={clsx(s.list, 'yc-stagger')}>
@@ -388,16 +401,16 @@ export default function Evenements() {
       <Dialog open={!!copy} onClose={() => setCopy(null)} title="Dupliquer l'événement"
         footer={<>
           <Button variant="secondary" onClick={() => setCopy(null)}>Annuler</Button>
-          <Button icon={Copy} onClick={confirmDuplicate} disabled={!copy?.nom?.trim()}>Dupliquer</Button>
+          <Button icon={Copy} onClick={confirmDuplicate}>Dupliquer</Button>
         </>}>
         {copy && (
-          <form className={s.dialogStack} onSubmit={e => { e.preventDefault(); confirmDuplicate() }}>
-            <div className={s.field}>
-              <label className={s.label} htmlFor="evt-copy-nom">Nom de la copie de « {copy.evt.nom} »</label>
-              <input id="evt-copy-nom" className={s.input} value={copy.nom} autoFocus
+          <form ref={copyFormRef} className={s.dialogStack} onSubmit={e => { e.preventDefault(); confirmDuplicate() }}>
+            <Field label={<span className={s.label}>Nom de la copie de « {copy.evt.nom} »</span>}
+              error={copy.nom.trim() ? null : 'Indique un nom pour la copie'} valid={!!copy.nom.trim()} showError={copyTried}>
+              <input id="evt-copy-nom" value={copy.nom} autoFocus
                 onFocus={e => e.target.select()}
                 onChange={e => setCopy(c => ({ ...c, nom: e.target.value }))}/>
-            </div>
+            </Field>
           </form>
         )}
       </Dialog>

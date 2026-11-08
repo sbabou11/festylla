@@ -2,9 +2,11 @@
  * Prévision de rupture : rythme de vente des 90 dernières minutes appliqué au stock restant
  */
 import React, { useEffect, useMemo, useState } from 'react'
-import { Card, Table, Badge } from '../../../ui'
+import { PackageSearch } from 'lucide-react'
+import { Button, Card, Empty, Table, Badge } from '../../../ui'
 import { stockForecast, nextClosing } from '../../../utils/analyticsData'
 import useAppStore from '../../../store/useAppStore'
+import useAuthStore from '../../../store/useAuthStore'
 import s from './analytics.module.css'
 
 const hm = (ms) => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
@@ -17,8 +19,9 @@ const STATUS = {
   'sans-stock':      { tone: 'neutral', label: 'Stock non suivi' },
 }
 
-export default function StockForecast() {
+export default function StockForecast({ onNavigate }) {
   const { logs, menu } = useAppStore()
+  const { canAccessPage } = useAuthStore()
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 60000)
@@ -36,7 +39,12 @@ export default function StockForecast() {
     >
       <Table
         rows={rows}
-        empty="Aucun article avec un stock suivi"
+        empty={
+          <Empty icon={PackageSearch} title="Aucun article avec un stock suivi"
+            action={canAccessPage('menu') && <Button variant="secondary" onClick={() => onNavigate('menu')}>Gérer la carte</Button>}>
+            La prévision de rupture de chaque article apparaîtra ici.
+          </Empty>
+        }
         columns={[
           { key: 'nom', label: 'Article', render: r => <b className={s.itemName}>{r.nom}</b> },
           { key: 'stock', label: 'Stock', align: 'right', render: r => <span className={s.num}>{r.stock}</span> },

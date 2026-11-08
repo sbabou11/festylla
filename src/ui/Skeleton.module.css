@@ -3,7 +3,9 @@
   border-radius: 6px;
   background: linear-gradient(90deg, var(--bg2) 0%, var(--bg3) 50%, var(--bg2) 100%);
   background-size: 200% 100%;
-  animation: shimmer 1.4s ease-in-out infinite;
+  /* Invisible les 200 premières ms : pas de clignotement sur un chargement court */
+  animation: skIn 1ms linear 200ms both, shimmer 1.4s ease-in-out infinite;
 }
 .stack { display: grid; gap: var(--space-2); }
+@keyframes skIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }

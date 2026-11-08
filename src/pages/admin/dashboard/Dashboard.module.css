@@ -28,7 +28,12 @@
 
 /* Objectif */
 .goal { display: flex; align-items: center; gap: var(--space-4); }
-.ring { width: 116px; height: 116px; flex-shrink: 0; }
+.ringWrap { position: relative; width: 116px; height: 116px; flex-shrink: 0; }
+.ring { width: 116px; height: 116px; }
+.burst { position: absolute; left: 53px; top: 53px; width: 9px; height: 9px; border-radius: 2px; pointer-events: none; opacity: 0; animation: burst 900ms var(--ease) forwards; }
+@keyframes burst { 10% { opacity: 1; } to { opacity: 0; transform: translate(var(--x), var(--y)) scale(.35); } }
+.goalWin { margin: var(--space-3) 0 0; padding: 8px 12px; border-radius: var(--radius-md); background: var(--green-light); color: var(--green-dark); font-size: var(--fs-13); font-weight: 800; text-align: center; animation: goalWin var(--dur-slow) var(--ease); }
+@keyframes goalWin { from { opacity: 0; transform: translateY(8px) scale(.97); } }
 .ringTrack { fill: none; stroke: var(--bg3); stroke-width: 12; }
 .ringDone  { fill: none; stroke: var(--coral); stroke-width: 12; stroke-linecap: round; transition: stroke-dasharray var(--dur-slow) var(--ease); }
 .ringProj  { fill: none; stroke: var(--coral); stroke-opacity: .3; stroke-width: 12; }

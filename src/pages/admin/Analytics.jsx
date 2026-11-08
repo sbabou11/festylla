@@ -4,7 +4,7 @@
  * articles et catégories, consommations bénévoles, réservations.
  */
 import React, { useMemo } from 'react'
-import { Wallet, HandCoins, TrendingUp, PiggyBank, Bookmark, HeartHandshake } from 'lucide-react'
+import { Wallet, HandCoins, TrendingUp, PiggyBank, Bookmark, HeartHandshake, ShoppingBag, Tag } from 'lucide-react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
 import { Card, Stat, Empty } from '../../ui'
@@ -13,7 +13,7 @@ import StockForecast from './analytics/StockForecast'
 import s from './analytics/analytics.module.css'
 
 function Bars({ items, color, format = fmt, empty }) {
-  if (!items.length) return <Empty title={empty} />
+  if (!items.length) return empty
   const max = items[0].value || 1
   return (
     <div className={s.rows}>
@@ -30,7 +30,7 @@ function Bars({ items, color, format = fmt, empty }) {
   )
 }
 
-export default function Analytics() {
+export default function Analytics({ onNavigate }) {
   const { spectateurs, reservations, logs, menu } = useAppStore()
   const allTx = logs || []
 
@@ -115,22 +115,28 @@ export default function Analytics() {
       </div>
 
       <SalesHeatmap />
-      <StockForecast />
+      <StockForecast onNavigate={onNavigate} />
 
       <div className={s.two}>
         <Card title="Articles les plus vendus">
-          <Bars items={topArticles} color="var(--brand)" empty="Aucune vente" />
+          <Bars items={topArticles} color="var(--brand)" empty={
+            <Empty icon={ShoppingBag} title="Aucune vente pour l'instant">Les articles les plus vendus apparaîtront ici dès le premier encaissement.</Empty>
+          } />
         </Card>
         <Card title="Ventes par catégorie">
-          <Bars items={ventesCat} color="var(--purple)" empty="Aucune donnée" />
+          <Bars items={ventesCat} color="var(--purple)" empty={
+            <Empty icon={Tag} title="Aucune vente pour l'instant">Le chiffre de chaque catégorie de la carte apparaîtra ici.</Empty>
+          } />
         </Card>
       </div>
 
       <div className={s.two}>
         <Card title="Consommations bénévoles" subtitle="prises en charge par l'événement">
-          {coutBenev === 0 ? <Empty title="Aucune consommation bénévole retirée" /> : (
+          {coutBenev === 0 ? (
+            <Empty icon={HeartHandshake} title="Aucune consommation bénévole retirée">Le coût des repas et boissons retirés par les bénévoles apparaîtra ici.</Empty>
+          ) : (
             <div className={s.rows}>
-              <Bars items={coutParType} color="var(--coral)" empty="" />
+              <Bars items={coutParType} color="var(--coral)" empty={null} />
               <div className={s.ledger}>
                 <div><span>CA brut spectateurs</span><b className={s.num}>{fmt(totalVentes)}</b></div>
                 <div><span>Charge bénévoles</span><b className={`${s.num} ${s.minus}`}>−{fmt(coutBenev)}</b></div>
@@ -140,7 +146,9 @@ export default function Analytics() {
           )}
         </Card>
         <Card title="Réservations spectateurs" subtitle={`${totalResas} au total`}>
-          <Bars items={[...resaCounts].sort((a, b) => b.value - a.value)} color="var(--gold)" format={(v) => String(v)} empty="Aucune réservation" />
+          <Bars items={[...resaCounts].sort((a, b) => b.value - a.value)} color="var(--gold)" format={(v) => String(v)} empty={
+            <Empty icon={Bookmark} title="Aucune réservation pour l'instant">Les réservations en attente, prêtes et retirées apparaîtront ici.</Empty>
+          } />
         </Card>
       </div>
     </div>

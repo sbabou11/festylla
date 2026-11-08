@@ -10,6 +10,7 @@ import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, addDoc,
          updateDoc, doc, serverTimestamp, runTransaction, orderBy } from 'firebase/firestore'
 import { fmt, nowStr, makeResaCode } from '../../utils/helpers'
+import { friendlyError } from '../../utils/errors'
 import { Button, Sheet, toast } from '../../ui'
 
 const BRAND   = '#1a6b7a'
@@ -130,7 +131,7 @@ export default function SpecteurApp() {
       setQtys({})
       await refreshSpec()
     } catch (e) {
-      setResaErr(e.message || 'Erreur lors de la réservation')
+      setResaErr(friendlyError(e, "La réservation n'a pas été enregistrée."))
     } finally {
       setResaLoading(false)
     }
@@ -146,7 +147,7 @@ export default function SpecteurApp() {
         date: nowStr(), createdAt: serverTimestamp(),
       })
       await refreshSpec()
-    } catch (e) { toast.error("Impossible d'annuler la réservation : " + e.message) }
+    } catch (e) { toast.error(friendlyError(e, "La réservation n'a pas pu être annulée.")) }
   }
 
   const card   = { background: '#fff', border: '0.5px solid #ddd', borderRadius: 14, padding: 16, marginBottom: 12 }

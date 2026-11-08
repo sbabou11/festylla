@@ -1,0 +1,25 @@
+.field { display: grid; gap: 6px; min-width: 0; }
+.label { font-size: var(--fs-12); font-weight: 700; color: var(--muted); }
+.control { position: relative; }
+.control > input, .control > select, .control > textarea {
+  width: 100%;
+  min-height: var(--touch);
+  padding: 0 12px;
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: 500 var(--fs-15) var(--font);
+  outline: none;
+  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+}
+.control > textarea { min-height: 80px; padding: 10px 12px; resize: vertical; line-height: 1.5; }
+.control > input:focus, .control > select:focus, .control > textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
+.invalid .control > input, .invalid .control > select, .invalid .control > textarea { border-color: var(--red); }
+.invalid .control > input:focus, .invalid .control > select:focus, .invalid .control > textarea:focus { box-shadow: 0 0 0 3px var(--red-light); }
+.ok .control > input, .ok .control > select { border-color: var(--green); padding-right: 34px; }
+.check { position: absolute; right: 11px; top: 14px; color: var(--green); animation: pop var(--dur-slow) var(--ease); pointer-events: none; }
+.error { margin: 0; font-size: var(--fs-12); font-weight: 600; color: var(--red-dark); animation: in var(--dur-base) var(--ease); }
+.hint  { margin: 0; font-size: var(--fs-12); color: var(--muted); }
+@keyframes pop { from { opacity: 0; transform: scale(.6); } }
+@keyframes in  { from { opacity: 0; transform: translateY(-3px); } }

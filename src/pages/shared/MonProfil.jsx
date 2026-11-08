@@ -9,10 +9,11 @@ import useAppStore  from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt }      from '../../utils/helpers'
 import { compressImage } from '../../utils/imageUtils'
+import { friendlyError } from '../../utils/errors'
 import Avatar from '../../components/Avatar'
 import { KeyRound, Save, Camera, Check, AlertCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { Button, Card, Skeleton, PasswordStrength, toast } from '../../ui'
+import { Button, Card, Field, Skeleton, PasswordStrength, toast, focusFirstInvalid } from '../../ui'
 import st from './MonProfil.module.css'
 
 export default function MonProfil({ view }) {
@@ -48,7 +49,12 @@ export default function MonProfil({ view }) {
   const [pwd,       setPwd]       = useState('')
   const [pwd2,      setPwd2]      = useState('')
   const [pwdMsg,    setPwdMsg]    = useState('')
+  const [nomTried,  setNomTried]  = useState(false)
+  const [pwdTried,  setPwdTried]  = useState(false)
+  const [pwdKey,    setPwdKey]    = useState(0) // repart de champs vierges après un changement réussi
   const fileRef = useRef(null)
+  const infoRef = useRef(null)
+  const pwdRef  = useRef(null)
 
   // Mettre à jour nom quand person arrive (chargement asynchrone Firebase)
   useEffect(() => {
@@ -74,24 +80,32 @@ export default function MonProfil({ view }) {
       const src = await compressImage(file, 200, 0.7)
       if (isSpec) await setSpecAvatar(person.id, src)
       else        await setStaffAvatar(person.id, src)
-    } catch (err) { setUploadErr('Photo non enregistrée : ' + err.message); toast.error('Photo non enregistrée : ' + err.message) }
+    } catch (err) {
+      const msg = friendlyError(err, "La photo n'a pas été enregistrée.")
+      setUploadErr(msg); toast.error(msg)
+    }
     finally { setUploading(false); e.target.value = '' }
   }
 
+  const nomErr  = nom.trim() ? null : 'Le nom ne peut pas être vide.'
+  const pwdErr  = pwd.length < 6 ? 'Minimum 6 caractères' : null
+  const pwd2Err = pwd !== pwd2 ? 'Les mots de passe ne correspondent pas' : null
+
   const handleSave = () => {
-    if (!nom.trim()) return
+    if (nomErr) { setNomTried(true); focusFirstInvalid(infoRef.current); return }
+    setNomTried(false)
     if (isSpec) updateSpecNom(person.id, nom.trim())
     else        updateStaffNom(person.id, nom.trim())
     setSaved(true); setTimeout(() => setSaved(false), 1500)
   }
 
   const handlePwd = async () => {
-    if (pwd.length < 6) { setPwdMsg('Minimum 6 caractères'); return }
-    if (pwd !== pwd2)   { setPwdMsg('Les mots de passe ne correspondent pas'); return }
+    if (pwdErr || pwd2Err) { setPwdTried(true); setPwdMsg(''); focusFirstInvalid(pwdRef.current); return }
+    setPwdTried(false)
     setPwdMsg('Modification en cours…')
     const ok = await resetOwnPassword(pwd)
     setPwdMsg(ok ? '✓ Mot de passe modifié !' : '⚠ Impossible de modifier — contactez un administrateur')
-    if (ok) { setPwd(''); setPwd2(''); setTimeout(() => { setPwdOpen(false); setPwdMsg('') }, 2000) }
+    if (ok) { setPwd(''); setPwd2(''); setPwdKey(k => k + 1); setTimeout(() => { setPwdOpen(false); setPwdMsg('') }, 2000) }
   }
 
   const resas = isSpec ? reservations.filter(r => r.specId === person.id) : []
@@ -120,11 +134,10 @@ export default function MonProfil({ view }) {
 
       {/* Informations */}
       <Card title="Informations">
-        <div className={st.form}>
-          <label className={st.field}>
-            <span className={st.label}>Nom complet</span>
+        <div className={st.form} ref={infoRef}>
+          <Field label={<span className={st.label}>Nom complet</span>} error={nomErr} showError={nomTried}>
             <input className={clsx(st.input, saved && st.inputSaved)} value={nom} onChange={e => setNom(e.target.value)} autoComplete="name"/>
-          </label>
+          </Field>
           {isSpec && (
             <label className={st.field}>
               <span className={st.label}>ID QR</span>
@@ -150,22 +163,22 @@ export default function MonProfil({ view }) {
         <Card
           title={<span className={st.titleIcon}><KeyRound size={15} aria-hidden="true"/> Mot de passe</span>}
           actions={
-            <Button size="sm" variant="ghost" aria-expanded={pwdOpen} onClick={() => { setPwdOpen(v => !v); setPwdMsg('') }}>
+            <Button size="sm" variant="ghost" aria-expanded={pwdOpen} onClick={() => { setPwdOpen(v => !v); setPwdMsg(''); setPwdTried(false) }}>
               {pwdOpen ? 'Annuler' : 'Changer'}
             </Button>
           }
         >
           {pwdOpen ? (
-            <div className={st.form}>
-              <label className={st.field}>
-                <span className={st.label}>Nouveau mot de passe</span>
-                <input className={st.input} type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="minimum 6 caractères" autoComplete="new-password"/>
+            <div className={st.form} ref={pwdRef}>
+              <div className={st.field}>
+                <Field key={`p${pwdKey}`} label={<span className={st.label}>Nouveau mot de passe</span>} error={pwdErr} valid={!pwdErr} showError={pwdTried}>
+                  <input className={st.input} type="password" value={pwd} onChange={e => setPwd(e.target.value)} placeholder="minimum 6 caractères" autoComplete="new-password"/>
+                </Field>
                 <PasswordStrength value={pwd}/>
-              </label>
-              <label className={st.field}>
-                <span className={st.label}>Confirmer</span>
+              </div>
+              <Field key={`c${pwdKey}`} label={<span className={st.label}>Confirmer</span>} error={pwd2Err} valid={!!pwd2 && !pwd2Err} showError={pwdTried}>
                 <input className={st.input} type="password" value={pwd2} onChange={e => setPwd2(e.target.value)} placeholder="répéter le mot de passe" autoComplete="new-password"/>
-              </label>
+              </Field>
               {pwdMsg && (
                 <p className={clsx(st.msg, st[pwdTone])} role={pwdTone === 'err' ? 'alert' : 'status'}>{pwdMsg}</p>
               )}

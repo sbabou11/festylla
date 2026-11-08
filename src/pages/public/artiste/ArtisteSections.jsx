@@ -28,7 +28,7 @@ export function DroitsTab({ av, used, pending }) {
   return (
     <Section title="Vos avantages aujourd'hui">
       {none ? (
-        <Empty icon={Gift} title="Aucun avantage">Aucun avantage n'est prévu pour votre créneau.</Empty>
+        <Empty icon={Gift} title="Aucun avantage prévu">Vos boissons, repas et eau apparaîtront ici si l'organisation en ajoute à votre créneau.</Empty>
       ) : (
         <div className={s.droits}>
           <DroitBar type="drink" label="Boissons" total={av.drinks || 0} used={used.drink} pending={pending.drink}/>
@@ -85,7 +85,7 @@ export function ConsosTab({ consumptions }) {
   return (
     <Section title="Historique de vos consommations">
       {consumptions.length === 0 ? (
-        <Empty icon={History} title="Rien pour l'instant">Vos boissons et repas servis apparaîtront ici.</Empty>
+        <Empty icon={History} title="Aucune consommation pour l'instant">Vos boissons et repas servis apparaîtront ici.</Empty>
       ) : (
         <ul className={clsx(s.list, 'yc-stagger')}>
           {consumptions.map(c => {
@@ -108,7 +108,8 @@ export function ConsosTab({ consumptions }) {
 }
 
 /* ── Réserver ───────────────────────────────────────────── */
-export function ReserverTab({ av, eligibleArticles, cart, remain, cartTotal, onAdd, onRemove, onReserve, resaErr }) {
+export function ReserverTab({ av, eligibleArticles, cart, remain, cartTotal, onAdd, onRemove, onReserve, resaErr, onSeeResas }) {
+  const noRights = av.drinks + av.meals + av.eaux === 0
   return (
     <Section title="Réserver vos avantages"
       hint="Préparez votre commande à l'avance : les caissiers sont prévenus et vous servent dès votre arrivée.">
@@ -117,9 +118,10 @@ export function ReserverTab({ av, eligibleArticles, cart, remain, cartTotal, onA
       )}
 
       {eligibleArticles.length === 0 ? (
-        <Empty icon={ShoppingCart} title={av.drinks + av.meals + av.eaux === 0 ? 'Aucun avantage à réserver' : 'Tout est réservé'}>
-          {av.drinks + av.meals + av.eaux === 0
-            ? "Votre créneau ne comprend pas d'avantage."
+        <Empty icon={ShoppingCart} title={noRights ? 'Aucun avantage à réserver' : 'Tout est réservé'}
+          action={noRights ? null : <Button size="sm" variant="secondary" icon={Bookmark} onClick={onSeeResas}>Voir mes réservations</Button>}>
+          {noRights
+            ? 'Les articles à réserver apparaîtront ici si votre créneau comprend des avantages.'
             : 'Tous vos avantages ont été utilisés ou réservés.'}
         </Empty>
       ) : (
@@ -167,11 +169,14 @@ const STATUT = {
   annule:  { label: 'Annulée',    tone: 'danger'  },
 }
 
-export function ResasTab({ reservations, onCancel }) {
+export function ResasTab({ reservations, onCancel, onReserve }) {
   return (
     <Section title="Mes réservations">
       {reservations.length === 0 ? (
-        <Empty icon={Bookmark} title="Aucune réservation">Réservez vos avantages depuis l'onglet Réserver.</Empty>
+        <Empty icon={Bookmark} title="Aucune réservation pour l'instant"
+          action={<Button size="sm" icon={ShoppingCart} onClick={onReserve}>Réserver mes avantages</Button>}>
+          Vos réservations apparaîtront ici.
+        </Empty>
       ) : (
         <ul className={clsx(s.list, 'yc-stagger')}>
           {reservations.map(r => {

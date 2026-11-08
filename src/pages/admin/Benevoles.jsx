@@ -19,7 +19,7 @@ import { nowStr } from '../../utils/helpers'
 import { hashPassword } from '../../utils/kpis'
 import { addAuditLog } from '../../firebase/service'
 import { genUsername } from '../../store/useAuthStore'
-import { Plus, Trash2, Users, AlertTriangle, Search, CalendarDays, BarChart3, RotateCcw } from 'lucide-react'
+import { Plus, Trash2, Users, AlertTriangle, Search, SearchX, CalendarDays, BarChart3, RotateCcw } from 'lucide-react'
 import { Button, Tabs, Empty, Skeleton, Dialog, HoldButton, toast } from '../../ui'
 import VolunteerPlanning from '../../components/VolunteerPlanning'
 import generateBenevrolePDF from './benevoles/pdf'
@@ -240,9 +240,17 @@ export default function Benevoles() {
           )}
 
           {filtered.length === 0 ? (
-            <Empty icon={Users} title={benevoles.length === 0 ? 'Aucun bénévole enregistré' : 'Aucun résultat'}>
-              {benevoles.length === 0 && 'Créez-en un avec « Nouveau bénévole ».'}
-            </Empty>
+            benevoles.length === 0 ? (
+              <Empty icon={Users} title="Aucun bénévole pour l'instant"
+                action={!showForm && !editing && <Button icon={Plus} onClick={() => setShowForm(true)}>Ajouter un bénévole</Button>}>
+                Les bénévoles que tu inscris apparaîtront ici, avec leurs droits repas, boissons et eau.
+              </Empty>
+            ) : (
+              <Empty icon={SearchX} title={`Personne au nom de « ${search} »`}
+                action={<Button variant="secondary" onClick={() => setSearch('')}>Effacer la recherche</Button>}>
+                Vérifie l'orthographe, ou cherche par poste.
+              </Empty>
+            )
           ) : (
             <div className={clsx(s.list, 'yc-stagger')}>
               {filtered.map(b => (
@@ -261,7 +269,8 @@ export default function Benevoles() {
 
       {/* ── SECTION STATS ── */}
       {section === 'stats' && (
-        <SyntheseBenevoles benevoles={benevoles} totalDroits={totalDroits} totalConso={totalConso}/>
+        <SyntheseBenevoles benevoles={benevoles} totalDroits={totalDroits} totalConso={totalConso}
+          onAdd={() => { setSection('liste'); setShowForm(true) }}/>
       )}
 
       {/* Suppression d'un bénévole (irréversible) */}

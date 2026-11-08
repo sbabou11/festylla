@@ -2,6 +2,7 @@
  * ui/AnimatedNumber.jsx — montant qui défile jusqu'à sa nouvelle valeur
  * <AnimatedNumber value={soldeCentimes} format={fmt} />
  * Le premier rendu affiche la valeur directement ; seuls les changements défilent.
+ * `from` : part de cette valeur dès l'affichage (un bilan qui monte depuis 0).
  * Respecte « Réduire les animations ». Les lecteurs d'écran ne lisent que la valeur finale.
  */
 import React, { useEffect, useRef, useState } from 'react'
@@ -9,10 +10,10 @@ import React, { useEffect, useRef, useState } from 'react'
 const reduced = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const SR = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }
 
-export default function AnimatedNumber({ value = 0, format = (v) => Math.round(v).toLocaleString('fr-FR'), duration = 650, className }) {
+export default function AnimatedNumber({ value = 0, format = (v) => Math.round(v).toLocaleString('fr-FR'), duration = 650, from, className }) {
   const target = Number(value) || 0
-  const [shown, setShown] = useState(target)
-  const current = useRef(target)
+  const [shown, setShown] = useState(from ?? target)
+  const current = useRef(from ?? target)
 
   useEffect(() => {
     const start = current.current

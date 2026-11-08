@@ -13,11 +13,13 @@
  */
 import useAppStore from '../store/useAppStore'
 import { addAuditLog } from '../firebase/service'
+import { friendlyError } from './errors'
 
 export const HOLD_MS = 10_000
 const KEY = 'yllacash-pending-sales'
 
 const listeners = new Set()
+const committedListeners = new Set()
 const timers = new Map()
 let sales = load()
 
@@ -44,6 +46,12 @@ export function subscribe(fn) {
   listeners.add(fn)
   fn(sales)
   return () => listeners.delete(fn)
+}
+
+/** Prévient quand une vente est réellement écrite (pour annoncer « Paiement accepté ») */
+export function subscribeCommitted(fn) {
+  committedListeners.add(fn)
+  return () => committedListeners.delete(fn)
 }
 
 /** Enregistre une vente : elle sera écrite dans HOLD_MS sauf annulation */
@@ -96,10 +104,11 @@ async function commit(sale) {
   try {
     await useAppStore.getState().debiter(sale.specId, sale.items, sale.staffNom, sale.eventId, { txId: sale.id })
     remove(sale.id)
+    committedListeners.forEach(fn => fn(current))
   } catch (e) {
     // Coupure pendant l'envoi : on réessaiera au retour du réseau (sans double débit)
     if (!navigator.onLine) patch(sale.id, { status: 'waiting-network' })
-    else patch(sale.id, { status: 'failed', error: e?.message || 'Erreur inconnue' })
+    else patch(sale.id, { status: 'failed', error: friendlyError(e) })
   }
 }
 

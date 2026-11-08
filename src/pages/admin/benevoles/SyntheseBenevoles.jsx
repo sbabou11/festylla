@@ -4,12 +4,12 @@
  */
 import React from 'react'
 import clsx from 'clsx'
-import { Users } from 'lucide-react'
-import { Stat, Table, Badge } from '../../../ui'
+import { Plus, Users } from 'lucide-react'
+import { Button, Empty, Stat, Table, Badge } from '../../../ui'
 import { ITEM_CFG, countCreneaux } from './constants'
 import s from './benevoles.module.css'
 
-export default function SyntheseBenevoles({ benevoles, totalDroits, totalConso }) {
+export default function SyntheseBenevoles({ benevoles, totalDroits, totalConso, onAdd }) {
   // Cellule « consommé / droit » : rouge si dépassé, vert si tout est consommé
   const ratio = (b, item) => {
     const cv = b.consommation?.[item] || 0, dv = b.droits?.[item] || 0
@@ -44,7 +44,12 @@ export default function SyntheseBenevoles({ benevoles, totalDroits, totalConso }
       </div>
 
       {/* Tableau récapitulatif */}
-      <Table columns={columns} rows={benevoles} empty="Aucun bénévole enregistré"/>
+      <Table columns={columns} rows={benevoles} empty={
+        <Empty icon={Users} title="Aucun bénévole pour l'instant"
+          action={<Button icon={Plus} onClick={onAdd}>Ajouter un bénévole</Button>}>
+          Le récapitulatif des créneaux et consommations par bénévole apparaîtra ici.
+        </Empty>
+      }/>
     </div>
   )
 }

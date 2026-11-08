@@ -1,15 +1,16 @@
 /**
  * pages/dev/DevDashboard.jsx — aperçu du shell + tableau de bord avec données d'exemple
- * Développement uniquement (route /ui/dashboard, ?page=analytics|cloture|planning|staff|menu|settings|transactions|alertes).
+ * Développement uniquement (route /ui/dashboard, ?page=<id de la page>, toutes les pages du menu admin).
  * Sous 641 px : barre du bas et menu « Plus », comme l'app staff.
- * Aucune écriture Firebase voulue (les écrans admin qui écrivent directement échoueront sans compte) :
- * les stores sont remplis localement et les actions de réservation sont simulées.
+ * Compte de démo et actions des stores simulés (recharge, encaissement, retrait, réservations, profil).
+ * Les écrans qui lisent Firestore directement (Bénévoles, Retrait…) restent vides sur l'événement « demo ».
  */
 import React, { useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { Search } from 'lucide-react'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
+import useAuthStore  from '../../store/useAuthStore'
 import Sidebar from '../../components/Sidebar'
 import BottomNav from '../../components/BottomNav'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
@@ -23,6 +24,15 @@ import Menu from '../admin/Menu'
 import Settings from '../admin/Settings'
 import Transactions from '../admin/Transactions'
 import Alertes from '../admin/Alertes'
+import QrEntree from '../admin/QrEntree'
+import Benevoles from '../admin/Benevoles'
+import Reservations from '../admin/Reservations'
+import Spectateurs from '../admin/Spectateurs'
+import MonProfil from '../shared/MonProfil'
+import Nouveau from '../billetterie/Nouveau'
+import Credit from '../billetterie/Credit'
+import Retrait from '../stand/Retrait'
+import Debit from '../stand/Debit'
 import shell from '../../App.module.css'
 
 const H = 3600 * 1000
@@ -30,8 +40,12 @@ const NAMES = ['Léa Martin', 'Karim Benali', 'Inès Diallo', 'Tom Robert', 'Awa
 const ITEMS = [['Bière pression', 500], ['Limonade maison', 350], ['Bissap', 300], ['Crêpe', 400], ['Burger', 900], ['Eau 50 cl', 150]]
 const STAFF = ['Bar Scène A', 'Stand Crêpes', 'Bar Scène B']
 const CAISSES = ['Caisse Awa', 'Caisse Karim']
-const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, staff: Staff, menu: Menu, settings: Settings, transactions: Transactions, alertes: Alertes }
-const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres', transactions: 'Transactions', alertes: 'Alertes financières' }
+const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, staff: Staff, menu: Menu, settings: Settings, transactions: Transactions, alertes: Alertes,
+  'qr-entree': QrEntree, benevoles: Benevoles, 'reservations-admin': Reservations, spectateurs: Spectateurs, 'mon-profil': MonProfil,
+  nouveau: Nouveau, credit: Credit, retrait: Retrait, debit: Debit }
+const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres', transactions: 'Transactions', alertes: 'Alertes financières',
+  'qr-entree': 'QR code entrée', benevoles: 'Bénévoles', 'reservations-admin': 'Réservations', spectateurs: 'Spectateurs', 'mon-profil': 'Mon profil',
+  nouveau: 'Nouveau QR', credit: 'Créditer', retrait: 'Retrait réservation', debit: 'Encaisser' }
 
 function sampleData(now) {
   const spectateurs = NAMES.map((nom, i) => ({ id: `YT-${(4100 + i * 37).toString(16).toUpperCase()}`, nom, solde: i === 6 ? -150 : 500 + i * 650 }))
@@ -98,13 +112,19 @@ export default function DevDashboard() {
   // Même transition de page que l'app staff
   const setPage = (p) => {
     const go = () => { setPageRaw(p); setDrawer(false) }
-    if (p !== page && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(() => flushSync(go))
+    if (p !== page && document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(() => flushSync(go)).ready.catch(() => {})
     else go()
   }
 
   useEffect(() => {
     const data = sampleData(Date.now())
-    const { prendreEnCharge, marquerResaPrete } = useAppStore.getState() // remis en place en quittant
+    const app = useAppStore.getState() // actions remises en place en quittant
+    const originals = Object.fromEntries(['prendreEnCharge', 'marquerResaPrete', 'crediter', 'debiter', 'createSpectateur', 'validerRetrait',
+      'annulerReservation', 'deleteReservation', 'setSpecAvatar', 'setStaffAvatar', 'updateSpecNom', 'updateStaffNom'].map(k => [k, app[k]]))
+    const wait = () => new Promise(r => setTimeout(r, 300))
+    const solde = (id, delta) => useAppStore.setState(st => ({
+      spectateurs: st.spectateurs.map(sp => sp.id === id ? { ...sp, solde: (sp.solde || 0) + delta } : sp),
+    }))
     const move = (id, status) => useAppStore.setState(st => ({
       reservations: st.reservations.map(r => r.id === id ? { ...r, status } : r),
     }))
@@ -112,7 +132,25 @@ export default function DevDashboard() {
       ...data,
       prendreEnCharge: async (id) => { await new Promise(r => setTimeout(r, 400)); move(id, 'processing') },
       marquerResaPrete: async (id) => { await new Promise(r => setTimeout(r, 400)); move(id, 'ready') },
+      validerRetrait: async (id) => { await wait(); move(id, 'collected') },
+      annulerReservation: async (id) => { await wait(); move(id, 'cancelled') },
+      deleteReservation: async (id) => { await wait(); useAppStore.setState(st => ({ reservations: st.reservations.filter(r => r.id !== id) })) },
+      crediter: async (specId, euros) => { await wait(); solde(specId, euros * 100) },
+      debiter: async (specId, items) => { await wait(); const total = items.reduce((a, i) => a + i.prix * i.qty, 0); solde(specId, -total); return total },
+      createSpectateur: async (nom, euros) => {
+        await wait()
+        const id = `YT-${Math.random().toString(16).slice(2, 6).toUpperCase()}`
+        useAppStore.setState(st => ({ spectateurs: [...st.spectateurs, { id, nom, solde: euros * 100 }] }))
+        return id
+      },
+      setSpecAvatar: () => {}, setStaffAvatar: () => {}, updateSpecNom: () => {}, updateStaffNom: () => {},
     })
+    // Compte de démo : la session (persistée) est rendue en quittant, même en fermant l'onglet
+    const auth = useAuthStore.getState()
+    const previousAuth = { user: auth.user, resetOwnPassword: auth.resetOwnPassword }
+    const restoreAuth = () => useAuthStore.setState(previousAuth)
+    window.addEventListener('pagehide', restoreAuth)
+    useAuthStore.setState({ user: { id: 'st1', nom: 'Samba Babou', username: 'sbabou', role: 'admin', email: 'demo@exemple.test' }, resetOwnPassword: async () => true })
     // currentEventId est persisté : on remet la vraie valeur en quittant l'aperçu
     const previousEventId = useEventStore.getState().currentEventId
     useEventStore.setState({
@@ -126,7 +164,9 @@ export default function DevDashboard() {
     return () => {
       window.removeEventListener('keydown', onKey)
       useEventStore.setState({ currentEventId: previousEventId })
-      useAppStore.setState({ prendreEnCharge, marquerResaPrete, spectateurs: [], logs: [], reservations: [], menu: [], planning: [], roles: [], staff: [] })
+      window.removeEventListener('pagehide', restoreAuth)
+      restoreAuth()
+      useAppStore.setState({ ...originals, spectateurs: [], logs: [], reservations: [], menu: [], planning: [], roles: [], staff: [] })
     }
   }, [])
 
@@ -146,7 +186,7 @@ export default function DevDashboard() {
             </button>
           </header>
           <main className={shell.content}>
-            {(() => { const P = PAGES[page]; return P ? <P /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
+            {(() => { const P = PAGES[page]; return P ? <P onNavigate={setPage} view="admin" /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
           </main>
         </div>
         {isMobile && <BottomNav role="admin" currentPage={page} onNavigate={setPage} onMore={() => setDrawer(true)} canAccess={() => true} badges={{ alertes: 2 }} />}

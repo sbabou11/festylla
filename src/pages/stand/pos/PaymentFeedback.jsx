@@ -1,6 +1,7 @@
 /**
  * PaymentFeedback — retour plein écran après « Encaisser ».
- * Succès (vert) : compte à rebours d'annulation, puis fermeture automatique.
+ * Vente lancée (teal) : compte à rebours d'annulation, puis fermeture automatique.
+ * « Paiement accepté » s'affiche seulement une fois la vente écrite (bandeau de la caisse).
  * Erreur (brique) : message et bouton pour revenir au ticket.
  */
 import React, { useEffect, useState } from 'react'
@@ -39,14 +40,14 @@ export default function PaymentFeedback({ feedback, onUndo, onClose }) {
   const ok = feedback.kind !== 'error'
 
   return createPortal(
-    <div className={clsx(s.flash, ok ? s.flashOk : s.flashErr)} role="alertdialog" aria-live="assertive"
+    <div className={clsx(s.flash, ok ? s.flashPending : s.flashErr)} role="alertdialog" aria-live="assertive"
       onClick={onClose}>
-      <SuccessCheck size={120} tone="inverse" cross={!ok} play={feedback.saleId || feedback.message} className={s.flashCheck} />
+      {!ok && <SuccessCheck size={120} tone="inverse" cross play={feedback.message} className={s.flashCheck} />}
       {ok ? (
         <>
           <b className={s.flashAmount}>−{fmt(feedback.total)}</b>
-          <span className={s.flashText}>Paiement accepté · {feedback.nom}</span>
-          {feedback.newSolde != null && <span className={s.flashSub}>Nouveau solde {fmt(feedback.newSolde)}</span>}
+          <span className={s.flashText}>Encaissement en cours · {feedback.nom}</span>
+          {feedback.newSolde != null && <span className={s.flashSub}>Solde après paiement {fmt(feedback.newSolde)}</span>}
           {feedback.offline && <span className={s.flashOffline}><WifiOff size={14} /> Hors ligne : envoi au retour du réseau</span>}
           {left > 0 && (
             <button type="button" className={s.flashUndo} onClick={(e) => { e.stopPropagation(); onUndo() }}>

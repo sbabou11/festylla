@@ -14,7 +14,7 @@ import { useExport }  from '../hooks/useExport'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { fmt } from '../utils/helpers'
 import clsx from 'clsx'
-import { Sheet, Badge, Empty, Skeleton } from '../ui'
+import { Sheet, Badge, Button, Empty, Skeleton } from '../ui'
 import s from './AuditPanel.module.css'
 
 // ── Configuration des actions (tone = couleur de pastille ui/Badge) ─────
@@ -191,8 +191,13 @@ export default function AuditPanel({ open, onClose }) {
             </div>
           ))}
         </div>
+      ) : logs.length === 0 ? (
+        <Empty icon={ClipboardList} title="Aucune action enregistrée" className={s.empty}>Les connexions, encaissements et modifications apparaîtront ici.</Empty>
       ) : filtered.length === 0 ? (
-        <Empty icon={ClipboardList} title="Aucun résultat" className={s.empty}>Modifiez vos filtres ou votre recherche.</Empty>
+        <Empty icon={Search} title="Aucune entrée ne correspond" className={s.empty}
+          action={<Button size="sm" variant="secondary" onClick={() => { setSrch(''); setUserType('ALL'); setActionCat('ALL') }}>Effacer les filtres</Button>}>
+          Essaie un autre mot ou d'autres filtres.
+        </Empty>
       ) : (
         <ul className={s.list}>
           {filtered.map((l, i) => {

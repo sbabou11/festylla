@@ -16,7 +16,7 @@
  *   - Shifts : CRUD créneaux (date, horaires)
  */
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import useAppStore from '../store/useAppStore'
 import useEventStore from '../store/useEventStore'
 import {
@@ -29,11 +29,12 @@ import {
   Calendar, CheckCircle2, AlertTriangle, Zap, Users, QrCode, Printer,
 } from 'lucide-react'
 import QRCode from 'qrcode'
-import { Dialog, Button, toast } from '../ui'
+import { Dialog, Button, Empty, Field, focusFirstInvalid, toast } from '../ui'
 import { postQrText, postShortCode } from '../utils/shiftTime'
 
 const POST_COLORS = ['#009090','#F07848','#D89030','#6B3FA0','#0E8D7A','#5EB8E4','#A32D2D','#888780']
 const POST_EMOJIS = ['🍻','💳','🎫','🛡️','🍔','📦','🚗','🎤','📋','🔧']
+const FORM_LABEL = { fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em' }
 
 // Convertit "YYYY-MM-DD" en label "Vendredi 12 juin"
 function fmtDate(yyyymmdd) {
@@ -79,9 +80,9 @@ export default function VolunteerPlanning({ benevoles }) {
 
   if (!currentEventId) {
     return (
-      <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--muted)' }}>
-        Sélectionnez un événement pour gérer le planning bénévoles.
-      </div>
+      <Empty icon={Calendar} title="Aucun événement sélectionné">
+        Le planning des bénévoles apparaîtra ici dès que tu auras choisi un événement.
+      </Empty>
     )
   }
 
@@ -114,7 +115,7 @@ export default function VolunteerPlanning({ benevoles }) {
         })}
       </div>
 
-      {tab === 'grille' && <GrilleView posts={posts} shifts={shifts} benevoles={benevoles}/>}
+      {tab === 'grille' && <GrilleView posts={posts} shifts={shifts} benevoles={benevoles} onTab={setTab}/>}
       {tab === 'postes' && <PostesView posts={posts}/>}
       {tab === 'shifts' && <ShiftsView shifts={shifts} currentEvent={currentEvent}/>}
     </div>
@@ -124,7 +125,7 @@ export default function VolunteerPlanning({ benevoles }) {
 /* ═══════════════════════════════════════════════════════════════
    GRILLE — vue croisée posts × shifts avec affectations
    ═══════════════════════════════════════════════════════════════ */
-function GrilleView({ posts, shifts, benevoles }) {
+function GrilleView({ posts, shifts, benevoles, onTab }) {
   const [assigning, setAssigning] = useState(null) // { shiftId, postId }
 
   const benevsById = useMemo(() => {
@@ -144,20 +145,18 @@ function GrilleView({ posts, shifts, benevoles }) {
 
   if (shifts.length === 0) {
     return (
-      <EmptyState
-        icon={<Calendar size={36}/>}
-        title="Aucun créneau défini"
-        msg="Commencez par créer des créneaux horaires (onglet ‘Créneaux horaires’) puis des postes (onglet ‘Postes / Stands’)."
-      />
+      <Empty icon={Calendar} title="Aucun créneau défini"
+        action={<Button icon={Plus} onClick={() => onTab('shifts')}>Créer des créneaux</Button>}>
+        La grille des affectations apparaîtra ici dès que tu auras des créneaux et des postes.
+      </Empty>
     )
   }
   if (posts.length === 0) {
     return (
-      <EmptyState
-        icon={<MapPin size={36}/>}
-        title="Aucun poste défini"
-        msg="Créez des postes (Bar, Caisse, Accueil…) dans l’onglet ‘Postes / Stands’ avant d’affecter des bénévoles."
-      />
+      <Empty icon={MapPin} title="Aucun poste défini"
+        action={<Button icon={Plus} onClick={() => onTab('postes')}>Créer des postes</Button>}>
+        Crée des postes (Bar, Caisse, Accueil…) pour y affecter des bénévoles sur chaque créneau.
+      </Empty>
     )
   }
 
@@ -418,11 +417,13 @@ function PostesView({ posts }) {
   const [editing, setEditing] = useState(null)
   const [qrPost, setQrPost] = useState(null)
   const [ask, confirmDialog] = useConfirm()
+  const [tried, setTried] = useState(false)
+  const formRef = useRef(null)
 
-  const openNew = () => setEditing({ nom:'', emoji: POST_EMOJIS[0], couleur: POST_COLORS[0] })
+  const openNew = () => { setTried(false); setEditing({ nom:'', emoji: POST_EMOJIS[0], couleur: POST_COLORS[0] }) }
 
   const handleSave = async () => {
-    if (!editing.nom?.trim()) return
+    if (!editing.nom?.trim()) { setTried(true); focusFirstInvalid(formRef.current); return }
     if (editing.id) {
       await updateVolunteerPost(editing.id, { nom: editing.nom.trim(), emoji: editing.emoji, couleur: editing.couleur }, currentEventId)
     } else {
@@ -449,7 +450,10 @@ function PostesView({ posts }) {
       {confirmDialog}
 
       {posts.length === 0 && !editing && (
-        <EmptyState icon={<MapPin size={36}/>} title="Aucun poste défini" msg="Créez votre premier poste (Bar, Caisse, Accueil…) pour démarrer."/>
+        <Empty icon={MapPin} title="Aucun poste défini"
+          action={<Button icon={Plus} onClick={openNew}>Créer un poste</Button>}>
+          Tes postes (Bar, Caisse, Accueil…) apparaîtront ici, avec leur QR de pointage.
+        </Empty>
       )}
 
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -460,7 +464,7 @@ function PostesView({ posts }) {
             </div>
             <div style={{ flex:1, fontSize:14, fontWeight:700, color:'var(--text)', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.nom}</div>
             <button onClick={() => setQrPost(p)} className="btn-icon" title="QR de pointage" aria-label={'QR de pointage du poste ' + p.nom} style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><QrCode size={14}/></button>
-            <button onClick={() => setEditing(p)} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
+            <button onClick={() => { setTried(false); setEditing(p) }} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
             <button onClick={() => handleDelete(p.id)} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', color:'var(--red-dark)', flexShrink:0 }}><Trash2 size={14}/></button>
           </div>
         ))}
@@ -468,7 +472,7 @@ function PostesView({ posts }) {
 
       {editing && (
         <div onClick={() => setEditing(null)} style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-          <div onClick={e => e.stopPropagation()} style={{
+          <div ref={formRef} onClick={e => e.stopPropagation()} style={{
             background:'var(--bg)', borderRadius:'var(--radius-xl) var(--radius-xl) 0 0',
             padding:'10px 20px max(env(safe-area-inset-bottom), 20px)',
             width:'100%', maxWidth:440, maxHeight:'92vh', overflowY:'auto',
@@ -481,9 +485,12 @@ function PostesView({ posts }) {
 
             <div style={{ fontSize:16, fontWeight:700, color:'var(--text)', marginBottom:14 }}>{editing.id ? 'Modifier le poste' : 'Nouveau poste'}</div>
 
-            <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', display:'block', marginBottom:5 }}>Nom</label>
-            <input type="text" value={editing.nom} onChange={e => setEditing(f => ({ ...f, nom: e.target.value }))} autoFocus placeholder="ex : Bar, Caisse, Accueil…"
-              style={{ width:'100%', boxSizing:'border-box', minHeight:44, padding:'0 14px', border:'1.5px solid var(--border2)', borderRadius:8, fontSize:15, color:'var(--text)', background:'var(--bg2)', fontFamily:'var(--font)', outline:'none', marginBottom:16 }}/>
+            <div style={{ marginBottom:16 }}>
+              <Field label={<span style={FORM_LABEL}>Nom</span>}
+                error={editing.nom?.trim() ? null : 'Indique un nom pour ce poste'} valid={!!editing.nom?.trim()} showError={tried}>
+                <input type="text" value={editing.nom} onChange={e => setEditing(f => ({ ...f, nom: e.target.value }))} autoFocus placeholder="ex : Bar, Caisse, Accueil…"/>
+              </Field>
+            </div>
 
             <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', display:'block', marginBottom:5 }}>Icône</label>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(44px, 1fr))', gap:6, marginBottom:16 }}>
@@ -506,7 +513,7 @@ function PostesView({ posts }) {
 
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={() => setEditing(null)} className="btn-secondary" style={{ flex:1, minHeight:44 }}>Annuler</button>
-              <button onClick={handleSave} disabled={!editing.nom?.trim()} className="btn-primary" style={{ flex:1, minHeight:44 }}>
+              <button onClick={handleSave} className="btn-primary" style={{ flex:1, minHeight:44 }}>
                 <Save size={14}/> Enregistrer
               </button>
             </div>
@@ -531,21 +538,26 @@ function ShiftsView({ shifts, currentEvent }) {
   }, [currentEventId])
   const [editing, setEditing] = useState(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [tried, setTried] = useState(false)
+  const formRef = useRef(null)
 
   const eventDates = useMemo(() => {
     return datesBetween(currentEvent?.date, currentEvent?.dateFin)
   }, [currentEvent?.date, currentEvent?.dateFin])
 
-  const openNew = () => setEditing({
-    date: eventDates[0] || new Date().toISOString().slice(0,10),
-    label: '',
-    debut: '12:00',
-    fin: '16:00',
-    postes: {}, // sera rempli avec targets:0 par défaut pour chaque post
-  })
+  const openNew = () => {
+    setTried(false)
+    setEditing({
+      date: eventDates[0] || new Date().toISOString().slice(0,10),
+      label: '',
+      debut: '12:00',
+      fin: '16:00',
+      postes: {}, // sera rempli avec targets:0 par défaut pour chaque post
+    })
+  }
 
   const handleSave = async () => {
-    if (!editing.date || !editing.debut || !editing.fin) return
+    if (!editing.date || !editing.debut || !editing.fin) { setTried(true); focusFirstInvalid(formRef.current); return }
     // Préserve les targets existants si modification
     const postes = { ...editing.postes }
     posts.forEach(p => {
@@ -602,12 +614,14 @@ function ShiftsView({ shifts, currentEvent }) {
       </div>
 
       {shifts.length === 0 && (
-        <EmptyState
-          icon={<Calendar size={36}/>}
-          title="Aucun créneau défini"
-          msg={eventDates.length > 0
-            ? "Cliquez sur ‘Générer’ pour créer automatiquement Midi+Soir pour chaque jour de votre événement, ou ‘Nouveau créneau’ pour le faire à la main."
-            : "Définissez d'abord les dates de l'événement dans Événements, puis créez vos créneaux."}/>
+        <Empty icon={Calendar} title="Aucun créneau défini"
+          action={eventDates.length > 0
+            ? <Button onClick={handleBulkGen}>Générer Midi et Soir</Button>
+            : <Button icon={Plus} onClick={openNew}>Créer un créneau</Button>}>
+          {eventDates.length > 0
+            ? "Tes créneaux apparaîtront ici. Génère Midi et Soir pour chaque jour de l'événement, ou crée-les un par un avec « Nouveau »."
+            : "Tes créneaux apparaîtront ici. Renseigne les dates de l'événement pour les générer d'un coup, ou crée-les un par un."}
+        </Empty>
       )}
 
       <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -621,7 +635,7 @@ function ShiftsView({ shifts, currentEvent }) {
                 {s.debut} → {s.fin}
               </div>
             </div>
-            <button onClick={() => setEditing(s)} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
+            <button onClick={() => { setTried(false); setEditing(s) }} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
             <button onClick={() => handleDelete(s.id)} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', color:'var(--red-dark)', flexShrink:0 }}><Trash2 size={14}/></button>
           </div>
         ))}
@@ -629,7 +643,7 @@ function ShiftsView({ shifts, currentEvent }) {
 
       {editing && (
         <div onClick={() => setEditing(null)} style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-          <div onClick={e => e.stopPropagation()} style={{
+          <div ref={formRef} onClick={e => e.stopPropagation()} style={{
             background:'var(--bg)', borderRadius:'var(--radius-xl) var(--radius-xl) 0 0',
             padding:'10px 20px max(env(safe-area-inset-bottom), 20px)',
             width:'100%', maxWidth:460, maxHeight:'92vh', overflowY:'auto',
@@ -642,33 +656,32 @@ function ShiftsView({ shifts, currentEvent }) {
 
             <div style={{ fontSize:16, fontWeight:700, color:'var(--text)', marginBottom:14 }}>{editing.id ? 'Modifier le créneau' : 'Nouveau créneau'}</div>
 
-            <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', display:'block', marginBottom:5 }}>Date</label>
-            {eventDates.length > 0 ? (
-              <select value={editing.date} onChange={e => setEditing(f => ({ ...f, date: e.target.value }))}
-                style={{ width:'100%', boxSizing:'border-box', minHeight:44, padding:'0 12px', border:'1.5px solid var(--border2)', borderRadius:8, fontSize:15, color:'var(--text)', background:'var(--bg2)', fontFamily:'var(--font)', outline:'none', marginBottom:14 }}>
-                {eventDates.map(d => <option key={d} value={d}>{fmtDate(d)}</option>)}
-              </select>
-            ) : (
-              <input type="date" value={editing.date} onChange={e => setEditing(f => ({ ...f, date: e.target.value }))}
-                style={{ width:'100%', boxSizing:'border-box', minHeight:44, padding:'0 14px', border:'1.5px solid var(--border2)', borderRadius:8, fontSize:15, color:'var(--text)', background:'var(--bg2)', fontFamily:'var(--font)', outline:'none', marginBottom:14 }}/>
-            )}
+            <div style={{ marginBottom:14 }}>
+              <Field label={<span style={FORM_LABEL}>Date</span>} error={editing.date ? null : 'Choisis une date'} showError={tried}>
+                {eventDates.length > 0 ? (
+                  <select value={editing.date} onChange={e => setEditing(f => ({ ...f, date: e.target.value }))}>
+                    {eventDates.map(d => <option key={d} value={d}>{fmtDate(d)}</option>)}
+                  </select>
+                ) : (
+                  <input type="date" value={editing.date} onChange={e => setEditing(f => ({ ...f, date: e.target.value }))}/>
+                )}
+              </Field>
+            </div>
 
-            <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', display:'block', marginBottom:5 }}>Label (optionnel)</label>
-            <input type="text" value={editing.label} onChange={e => setEditing(f => ({ ...f, label: e.target.value }))}
-              placeholder="ex : Midi, Soir, Brunch…"
-              style={{ width:'100%', boxSizing:'border-box', minHeight:44, padding:'0 14px', border:'1.5px solid var(--border2)', borderRadius:8, fontSize:15, color:'var(--text)', background:'var(--bg2)', fontFamily:'var(--font)', outline:'none', marginBottom:14 }}/>
+            <div style={{ marginBottom:14 }}>
+              <Field label={<span style={FORM_LABEL}>Label (optionnel)</span>}>
+                <input type="text" value={editing.label} onChange={e => setEditing(f => ({ ...f, label: e.target.value }))}
+                  placeholder="ex : Midi, Soir, Brunch…"/>
+              </Field>
+            </div>
 
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
-              <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', display:'block', marginBottom:5 }}>Début</label>
-                <input type="time" value={editing.debut} onChange={e => setEditing(f => ({ ...f, debut: e.target.value }))}
-                  style={{ width:'100%', boxSizing:'border-box', minHeight:44, padding:'0 12px', border:'1.5px solid var(--border2)', borderRadius:8, fontSize:15, color:'var(--text)', background:'var(--bg2)', fontFamily:'var(--font)', outline:'none' }}/>
-              </div>
-              <div>
-                <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', display:'block', marginBottom:5 }}>Fin</label>
-                <input type="time" value={editing.fin} onChange={e => setEditing(f => ({ ...f, fin: e.target.value }))}
-                  style={{ width:'100%', boxSizing:'border-box', minHeight:44, padding:'0 12px', border:'1.5px solid var(--border2)', borderRadius:8, fontSize:15, color:'var(--text)', background:'var(--bg2)', fontFamily:'var(--font)', outline:'none' }}/>
-              </div>
+              <Field label={<span style={FORM_LABEL}>Début</span>} error={editing.debut ? null : "Indique l'heure de début"} showError={tried}>
+                <input type="time" value={editing.debut} onChange={e => setEditing(f => ({ ...f, debut: e.target.value }))}/>
+              </Field>
+              <Field label={<span style={FORM_LABEL}>Fin</span>} error={editing.fin ? null : "Indique l'heure de fin"} showError={tried}>
+                <input type="time" value={editing.fin} onChange={e => setEditing(f => ({ ...f, fin: e.target.value }))}/>
+              </Field>
             </div>
 
             {/* Effectifs cibles par poste */}
@@ -725,9 +738,6 @@ function ShiftsView({ shifts, currentEvent }) {
   )
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   UTIL — état vide
-   ═══════════════════════════════════════════════════════════════ */
 /* QR de pointage d'un poste : affiché ou imprimé au poste, scanné par le bénévole à son arrivée */
 function PostQrDialog({ post, eventId, onClose }) {
   const [src, setSrc] = useState(null)
@@ -793,12 +803,3 @@ function useConfirm() {
   return [ask, dialog]
 }
 
-function EmptyState({ icon, title, msg }) {
-  return (
-    <div style={{ background:'var(--bg2)', border:'1px dashed var(--border2)', borderRadius:'var(--radius-lg)', padding:'36px 20px', textAlign:'center' }}>
-      <div style={{ color:'var(--muted)', marginBottom:10, display:'flex', justifyContent:'center' }}>{icon}</div>
-      <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:4 }}>{title}</div>
-      <div style={{ fontSize:12, color:'var(--muted)', lineHeight:1.5, maxWidth:360, margin:'0 auto' }}>{msg}</div>
-    </div>
-  )
-}

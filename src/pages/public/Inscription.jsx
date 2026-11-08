@@ -8,7 +8,7 @@
  * Mobile d'abord : colonne de 440px max, styles dans inscription/Inscription.module.css.
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { db } from '../../firebase/config'
 import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
 import { nowStr } from '../../utils/helpers'
@@ -17,7 +17,7 @@ import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
 import { AlertCircle, ArrowRight, Wallet, Download, CreditCard, ShoppingBag, ClipboardList } from 'lucide-react'
 import clsx from 'clsx'
-import { Button, Skeleton, SuccessCheck } from '../../ui'
+import { Button, Field, Skeleton, SuccessCheck, focusFirstInvalid } from '../../ui'
 import s from './inscription/Inscription.module.css'
 
 // Génère un ID unique de type FY-XXXX
@@ -35,6 +35,8 @@ export default function Inscription() {
   const [spec, setSpec]       = useState(null)      // compte créé
   const [qrDataUrl, setQrDataUrl] = useState(null)  // image QR base64
   const [eventMeta, setEventMeta] = useState(null)  // { nom, logoSrc } de l'événement courant
+  const [tried, setTried]     = useState(false)
+  const formRef = useRef(null)
 
   // Lire l'eventId depuis l'URL (?ev=...)
   const params  = new URLSearchParams(window.location.search)
@@ -62,12 +64,13 @@ export default function Inscription() {
     }).then(url => setQrDataUrl(url)).catch(() => {})
   }, [spec])
 
+  // Règle existante : prénom + nom réunis font au moins 2 caractères. L'erreur s'affiche sur le
+  // second champ, pour ne pas la montrer tant que le visiteur n'a pas fini de remplir les deux.
+  const nomErr = (prenom.trim() + ' ' + nom.trim()).trim().length < 2 ? 'Veuillez entrer votre prénom et nom.' : null
+
   const handleCreate = async () => {
     const fullNom = (prenom.trim() + ' ' + nom.trim()).trim()
-    if (!fullNom || fullNom.length < 2) {
-      setErr('Veuillez entrer votre prénom et nom.')
-      return
-    }
+    if (nomErr) { setTried(true); focusFirstInvalid(formRef.current); return }
     setErr('')
     setStep('creating')
 
@@ -205,7 +208,7 @@ export default function Inscription() {
 
         {/* ── Formulaire ── */}
         {(step === 'form' || creating) && (
-          <form className={s.card} onSubmit={e => { e.preventDefault(); handleCreate() }} noValidate>
+          <form className={s.card} ref={formRef} onSubmit={e => { e.preventDefault(); handleCreate() }} noValidate>
             <div className={s.intro}>
               <h1 className={s.title}>Bienvenue au festival !</h1>
               <p className={s.muted}>
@@ -213,8 +216,7 @@ export default function Inscription() {
               </p>
             </div>
 
-            <label className={s.field}>
-              <span className={s.label}>Prénom</span>
+            <Field label={<span className={s.label}>Prénom</span>} valid={!!prenom.trim()}>
               <input
                 className={s.input}
                 value={prenom}
@@ -225,10 +227,9 @@ export default function Inscription() {
                 disabled={creating}
                 autoFocus
               />
-            </label>
+            </Field>
 
-            <label className={s.field}>
-              <span className={s.label}>Nom</span>
+            <Field label={<span className={s.label}>Nom</span>} error={nomErr} valid={!!nom.trim()} showError={tried}>
               <input
                 id="inp-nom"
                 className={s.input}
@@ -238,7 +239,7 @@ export default function Inscription() {
                 autoComplete="family-name"
                 disabled={creating}
               />
-            </label>
+            </Field>
 
             {err && (
               <p className={s.err} role="alert"><AlertCircle size={16} aria-hidden="true"/>{err}</p>

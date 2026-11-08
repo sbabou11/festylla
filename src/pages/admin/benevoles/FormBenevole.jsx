@@ -2,10 +2,10 @@
  * pages/admin/benevoles/FormBenevole.jsx — création / modification d'un bénévole
  * Les droits repas/boisson/eau sont calculés depuis les créneaux cochés.
  */
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import clsx from 'clsx'
 import { Save, X, Check } from 'lucide-react'
-import { Button } from '../../../ui'
+import { Button, Field, focusFirstInvalid } from '../../../ui'
 import { JOURS, CRENEAUX, ITEM_CFG, calcDroits, countCreneaux } from './constants'
 import s from './benevoles.module.css'
 
@@ -15,7 +15,8 @@ export default function FormBenevole({ initial, onSave, onCancel }) {
   const [poste, setPoste]       = useState(initial?.poste || '')
   const [creneaux, setCreneaux] = useState(initial?.creneaux || {})
   const [saving, setSaving]     = useState(false)
-  const [error, setError]       = useState('')
+  const [tried, setTried]       = useState(false)
+  const formRef = useRef(null)
 
   const toggleCreneau = (jour, creneau) => {
     setCreneaux(prev => ({
@@ -28,33 +29,28 @@ export default function FormBenevole({ initial, onSave, onCancel }) {
   const nbCreneaux = countCreneaux(creneaux)
 
   const handleSave = async () => {
-    if (!nom.trim() || !prenom.trim()) { setError('Prénom et nom requis'); return }
+    if (!nom.trim() || !prenom.trim()) { setTried(true); focusFirstInvalid(formRef.current); return }
     setSaving(true)
     try {
       await onSave({ nom: nom.trim(), prenom: prenom.trim(), poste: poste.trim(), creneaux, droits })
     } finally { setSaving(false) }
   }
 
-  const missing = (v) => error && !v.trim()
-
   return (
-    <section className={s.formCard} aria-label={initial ? 'Modifier le bénévole' : 'Nouveau bénévole'}>
+    <section ref={formRef} className={s.formCard} aria-label={initial ? 'Modifier le bénévole' : 'Nouveau bénévole'}>
       <h2 className={s.formTitle}>{initial ? 'Modifier le bénévole' : 'Nouveau bénévole'}</h2>
 
       {/* Identité */}
       <div className={s.grid2}>
-        <div className={s.field}>
-          <label className={s.label} htmlFor="benev-prenom">Prénom</label>
-          <input id="benev-prenom" className={clsx(s.input, missing(prenom) && s.inputError)} value={prenom}
-            aria-invalid={!!missing(prenom)} onChange={e=>{ setPrenom(e.target.value); setError('') }} placeholder="Marie"/>
-        </div>
-        <div className={s.field}>
-          <label className={s.label} htmlFor="benev-nom">Nom</label>
-          <input id="benev-nom" className={clsx(s.input, missing(nom) && s.inputError)} value={nom}
-            aria-invalid={!!missing(nom)} onChange={e=>{ setNom(e.target.value); setError('') }} placeholder="Dupont"/>
-        </div>
+        <Field label={<span className={s.label}>Prénom</span>}
+          error={prenom.trim() ? null : 'Indique le prénom'} valid={!!prenom.trim()} showError={tried}>
+          <input id="benev-prenom" value={prenom} onChange={e=>setPrenom(e.target.value)} placeholder="Marie"/>
+        </Field>
+        <Field label={<span className={s.label}>Nom</span>}
+          error={nom.trim() ? null : 'Indique le nom'} valid={!!nom.trim()} showError={tried}>
+          <input id="benev-nom" value={nom} onChange={e=>setNom(e.target.value)} placeholder="Dupont"/>
+        </Field>
       </div>
-      {error && <p className={s.fieldError} role="alert">{error}</p>}
       <div className={s.field}>
         <label className={s.label} htmlFor="benev-poste">Poste / Rôle</label>
         <input id="benev-poste" className={s.input} value={poste} onChange={e=>setPoste(e.target.value)}

@@ -190,9 +190,6 @@
   outline: none;
 }
 .input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
-.inputError { border-color: var(--red); }
-.inputError:focus { border-color: var(--red); box-shadow: 0 0 0 3px var(--red-light); }
-.fieldError { margin: calc(-1 * var(--space-2)) 0 0; font-size: var(--fs-12); font-weight: 600; color: var(--red-dark); }
 .sectionTitle { padding: 0; margin-bottom: var(--space-2); font-size: var(--fs-13); font-weight: 700; color: var(--text); }
 
 /* Grille des créneaux */

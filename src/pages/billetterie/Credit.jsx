@@ -3,7 +3,7 @@
  * Flux : scanner → choisir montant (1 tap) → confirmer
  * Boutons larges, coche de réussite et nouveau solde qui défile depuis l'ancien.
  */
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
@@ -11,10 +11,11 @@ import useAuthStore  from '../../store/useAuthStore'
 import { db }        from '../../firebase/config'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { fmt } from '../../utils/helpers'
+import { friendlyError } from '../../utils/errors'
 import QrCode from '../../components/QrCode'
 import QrScanner from '../../components/QrScanner'
 import { Wallet, RefreshCw, X, Banknote, CreditCard } from 'lucide-react'
-import { Button, Card, SuccessCheck, AnimatedNumber } from '../../ui'
+import { Button, Card, Field, SuccessCheck, AnimatedNumber, focusFirstInvalid } from '../../ui'
 import s from './credit.module.css'
 
 const MONTANTS = [10, 20, 30, 50, 100]
@@ -37,6 +38,12 @@ export default function Credit() {
   const [done, setDone]     = useState(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr]       = useState('')
+  const [tried, setTried]   = useState(false)
+  const formRef = useRef(null)
+
+  const montantErr = !montant || montant < 1
+    ? "Indique un montant d'au moins 1 €."
+    : montant > 500 ? 'Le montant ne peut pas dépasser 500 €.' : null
 
   const findById = async (id) => {
     const uid = id.toUpperCase().trim()
@@ -68,24 +75,26 @@ export default function Credit() {
       setErr('Compte introuvable : ' + uid)
       setSpec(null)
     } catch (e) {
-      setErr('Erreur de recherche : ' + e.message)
+      setErr(friendlyError(e, "La recherche du spectateur n'a pas abouti."))
       setSpec(null)
     }
   }
 
   const doCredit = async () => {
-    if (!spec || !montant) return
+    if (!spec) return
+    if (montantErr) { setTried(true); focusFirstInvalid(formRef.current); return }
+    setTried(false)
     setLoading(true)
     try {
       await crediter(spec.id, montant, user?.nom || 'Billetterie', spec._eventId || currentEventId,
         { moyen: moyen === 'Espèces' ? 'especes' : 'cb' })
       setDone({ nom: spec.nom, montant, newSolde: spec.solde + montant * 100 })
       setSpec(null); setMontant(20)
-    } catch (e) { setErr('Erreur : ' + e.message) }
+    } catch (e) { setErr(friendlyError(e, "La recharge n'est pas passée.")) }
     finally { setLoading(false) }
   }
 
-  const reset = () => { setDone(null); setSpec(null); setErr(''); setMontant(20) }
+  const reset = () => { setDone(null); setSpec(null); setErr(''); setMontant(20); setTried(false) }
 
   // ── Succès ─────────────────────────────────────────────────────────
   if (done) return (
@@ -131,7 +140,7 @@ export default function Credit() {
           </div>
 
           <Card>
-            <div className={s.form}>
+            <div className={s.form} ref={formRef}>
               {/* Montants rapides — boutons larges */}
               <div className={s.group} role="group" aria-labelledby="credit-montant">
                 <span id="credit-montant" className={s.label}>Montant à créditer</span>
@@ -144,12 +153,10 @@ export default function Credit() {
                   ))}
                 </div>
                 {/* Montant personnalisé */}
-                <label className={s.custom}>
-                  <span>Autre montant</span>
+                <Field label="Autre montant (€)" error={montantErr} valid={!montantErr} showError={tried} className={s.custom}>
                   <input type="number" value={montant} min={1} max={500} inputMode="numeric"
                     onChange={e => setMontant(parseInt(e.target.value)||0)} className={s.customInput}/>
-                  <span aria-hidden="true">€</span>
-                </label>
+                </Field>
               </div>
 
               {/* Mode de paiement */}
@@ -168,7 +175,7 @@ export default function Credit() {
               {err && <p className={clsx(s.msg, s.msgErr)} role="alert">{err}</p>}
 
               {/* CTA principal — très grand et visible */}
-              <Button size="lg" block onClick={doCredit} loading={loading} disabled={!montant || montant < 1} className={s.cta}>
+              <Button size="lg" block onClick={doCredit} loading={loading} className={s.cta}>
                 Créditer {montant} € · {moyen}
               </Button>
             </div>

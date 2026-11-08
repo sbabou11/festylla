@@ -284,7 +284,7 @@ function StaffApp() {
     // Seul le contenu (view-transition-name: page) glisse ; rien si l'utilisateur réduit les animations
     const animate = pid !== currentPage && document.startViewTransition
       && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (animate) document.startViewTransition(() => flushSync(go))
+    if (animate) document.startViewTransition(() => flushSync(go)).ready.catch(() => {}) // onglet masqué : transition ignorée
     else go()
   }
 

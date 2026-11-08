@@ -12,6 +12,7 @@ import useSunMode from '../../store/useSunMode'
 import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore'
 import { fmt } from '../../utils/helpers'
+import { friendlyError } from '../../utils/errors'
 import QrScanner from '../../components/QrScanner'
 import { RefreshCw, Package, Sun, X, AlertCircle } from 'lucide-react'
 import { Button, Badge, Skeleton, SuccessCheck } from '../../ui'
@@ -71,7 +72,7 @@ export default function Retrait() {
       }
       setErr('Compte introuvable : ' + uid)
     } catch(e) {
-      setErr('Recherche impossible : ' + e.message)
+      setErr(friendlyError(e, "La recherche du compte n'a pas abouti."))
     }
     setSearching(false)
   }
@@ -82,7 +83,7 @@ export default function Retrait() {
       await validerRetrait(resa.id)
       setDone({ nom: resa.specNom, items: resa.items, total: resa.total })
       setSpecId(null)
-    } catch (e) { setErr(e.message) }
+    } catch (e) { setErr(friendlyError(e, "Le retrait n'a pas été validé.")) }
     finally { setLoading(null) }
   }
 

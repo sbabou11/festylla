@@ -8,15 +8,18 @@ import clsx from 'clsx'
 import { useSearchParams } from 'react-router-dom'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
+import { friendlyError } from '../../utils/errors'
+import useAuthStore from '../../store/useAuthStore'
 import QrCode from '../../components/QrCode'
-import { Trash2, Pencil, Search, X, Save, Plus, Minus, Users } from 'lucide-react'
+import { Trash2, Pencil, Search, SearchX, X, Save, Plus, Minus, Users } from 'lucide-react'
 import { db } from '../../firebase/config'
 import { doc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { Button, Stat, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
 import s from './spectateurs/spectateurs.module.css'
 
-export default function Spectateurs() {
+export default function Spectateurs({ onNavigate }) {
   const { spectateurs } = useAppStore()
+  const { canAccessPage } = useAuthStore()
   const [params] = useSearchParams()
   const [search, setSearch]     = useState(() => params.get('q') || '')
   // ?q=… vient de la recherche globale (Ctrl K)
@@ -49,7 +52,9 @@ export default function Spectateurs() {
       })
       setEditing(null)
       toast.success('Spectateur mis à jour')
-    } catch (e) { toast.error('Enregistrement impossible : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, "Les modifications du spectateur n'ont pas été enregistrées."), { action: { label: 'Réessayer', onClick: () => saveEdit() } })
+    }
     finally { setSaving(false) }
   }
 
@@ -59,7 +64,9 @@ export default function Spectateurs() {
     try {
       await deleteDoc(doc(db, 'spectateurs', s._docId))
       toast.success(`Compte de ${s.nom} supprimé`)
-    } catch (e) { toast.error('Suppression impossible : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, `Le compte de ${s.nom} n'a pas été supprimé.`), { action: { label: 'Réessayer', onClick: () => handleDelete(s) } })
+    }
     finally { setDeleting(null) }
   }
 
@@ -115,7 +122,19 @@ export default function Spectateurs() {
 
       {/* Liste */}
       {filtered.length === 0
-        ? <Empty icon={Users} title={search ? `Aucun résultat pour « ${search} »` : 'Aucun spectateur enregistré'}/>
+        ? search
+          ? (
+            <Empty icon={SearchX} title={`Personne au nom de « ${search} »`}
+              action={<Button variant="secondary" onClick={() => setSearch('')}>Effacer la recherche</Button>}>
+              Vérifie l'orthographe, ou cherche par ID de QR code.
+            </Empty>
+          )
+          : (
+            <Empty icon={Users} title="Aucun spectateur pour l'instant"
+              action={canAccessPage('nouveau') && <Button variant="secondary" onClick={() => onNavigate('nouveau')}>Créer un compte</Button>}>
+              Les comptes créés à la billetterie ou via le QR d'inscription apparaîtront ici.
+            </Empty>
+          )
         : <Table columns={columns} rows={filtered}/>
       }
 

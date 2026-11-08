@@ -134,7 +134,7 @@ export default function CarteBenevole({ b, onEdit, onDelete, onConsommer, onRese
                   <button key={k} type="button" onClick={() => onConsommer(b, k)} disabled={restant <= 0}
                     className={clsx(s.consoBtn, s[`t_${k}`])}>
                     <Icon size={15} aria-hidden="true"/>
-                    {cfg.label} {restant > 0 ? `(${restant})` : <Check size={14} aria-label="épuisé"/>}
+                    {cfg.label} {restant > 0 ? `(${restant})` : <><Check size={14} aria-hidden="true"/> épuisé</>}
                   </button>
                 )
               })}

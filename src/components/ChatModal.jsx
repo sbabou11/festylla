@@ -14,6 +14,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react'
 import clsx from 'clsx'
 import { X, Send, Mic, Image as ImageIcon, Trash2, Play, Pause, AlertCircle, Volume2, VolumeX, MessageCircle } from 'lucide-react'
 import { Button } from '../ui'
+import { friendlyError } from '../utils/errors'
 import s from './ChatModal.module.css'
 
 const ROLE_COLORS = {
@@ -160,7 +161,7 @@ export default function ChatModal({
     if (!text.trim() || sending) return
     setSending(true); setErr('')
     try { await send(text); setText('') }
-    catch (e) { setErr(e.message || 'Erreur') }
+    catch (e) { setErr(friendlyError(e, "Le message n'est pas parti.")) }
     finally { setSending(false) }
   }
 
@@ -192,7 +193,7 @@ export default function ChatModal({
         if (dur >= 1 && blob.size > 0) {
           setSending(true)
           try { await sendVoice(blob, dur) }
-          catch (e) { setErr(e.message || 'Erreur envoi vocal') }
+          catch (e) { setErr(friendlyError(e, "Le message vocal n'est pas parti.")) }
           finally { setSending(false) }
         }
       }
@@ -209,7 +210,7 @@ export default function ChatModal({
         if (recordSecRef.current >= 45) stopRecord()
       }, 1000)
     } catch (e) {
-      setErr('Micro non accessible : ' + (e.message || ''))
+      setErr(friendlyError(e, "Le micro n'est pas accessible, vérifie l'autorisation du navigateur."))
     }
   }
   const stopRecord = () => {
@@ -240,7 +241,7 @@ export default function ChatModal({
     e.target.value = ''
     setSending(true); setErr('')
     try { await sendImage(file) }
-    catch (e) { setErr(e.message || 'Erreur envoi image') }
+    catch (e) { setErr(friendlyError(e, "L'image n'est pas partie.")) }
     finally { setSending(false) }
   }
 
@@ -256,7 +257,7 @@ export default function ChatModal({
     setToDelete(null)
     if (!m) return
     // Erreur affichée dans le bandeau du chat : un toast passerait sous la feuille
-    try { await remove(m.id) } catch (e) { setErr('Suppression impossible : ' + (e.message || 'réessayez')) }
+    try { await remove(m.id) } catch (e) { setErr(friendlyError(e, "Le message n'a pas pu être supprimé.")) }
   }
 
   // Préparer les messages avec séparateurs de date

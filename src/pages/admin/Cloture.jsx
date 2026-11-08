@@ -13,7 +13,8 @@ import { usePeriodTransactions } from '../../hooks/usePeriodTransactions'
 import { dayStart } from '../../utils/dashboardData'
 import { cashiers, expectedTill, DENOMINATIONS, countTotal, MOYENS } from '../../utils/analyticsData'
 import { fmt } from '../../utils/helpers'
-import { Button, Card, Badge, Table, SignaturePad, toast } from '../../ui'
+import { Button, Card, Badge, Table, SignaturePad, SuccessCheck, AnimatedNumber, Field, focusFirstInvalid, toast } from '../../ui'
+import { friendlyError } from '../../utils/errors'
 import s from './cloture/cloture.module.css'
 
 const DAY = 24 * 3600 * 1000
@@ -48,11 +49,12 @@ export default function Cloture() {
   const [signature, setSignature] = useState(null)
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(null)
+  const [tried, setTried] = useState(false) // « Continuer » cliqué alors qu'il manque quelque chose
   const [history, setHistory] = useState([])
   const topRef = useRef(null)
 
   // Chaque étape repart du haut de la page
-  useEffect(() => { topRef.current?.scrollIntoView({ block: 'start' }) }, [step, !!done])
+  useEffect(() => { topRef.current?.scrollIntoView({ block: 'start' }); setTried(false) }, [step, !!done])
 
   const { transactions, loading, partial } = usePeriodTransactions(day, day + DAY)
   const caisses = useMemo(() => cashiers(transactions, day, day + DAY), [transactions, day])
@@ -81,6 +83,13 @@ export default function Cloture() {
     signataire.trim() && signature,
   ][step]
 
+  // Le bouton reste actif : au clic, on montre ce qui manque au lieu de ne rien faire
+  const ifComplete = (go) => () => {
+    if (canNext) { go(); return }
+    setTried(true)
+    focusFirstInvalid(topRef.current)
+  }
+
   const setCount = (v, n) => setCounts(c => ({ ...c, [v]: Math.max(0, Math.floor(Number(n) || 0)) }))
 
   const valider = async () => {
@@ -101,10 +110,10 @@ export default function Cloture() {
     setSaving(true)
     try {
       const id = isDemo ? 'demo' : await saveCloture(record, currentEventId)
-      setDone({ ...record, id, at: new Date() })
+      setDone({ ...record, id, at: new Date(), recharges: attendu.especes.n + attendu.cb.n + attendu.inconnu.n })
       toast.success('Clôture enregistrée')
     } catch (e) {
-      toast.error('Enregistrement impossible : ' + e.message)
+      toast.error(friendlyError(e, "La clôture n'a pas été enregistrée."), { action: { label: 'Réessayer', onClick: valider } })
     } finally { setSaving(false) }
   }
 
@@ -219,11 +228,11 @@ export default function Cloture() {
                 {fmt(attendu.inconnu.total)} de recharges ({attendu.inconnu.n}) n'ont pas de mode de paiement enregistré (recharges antérieures à cette version). Elles peuvent expliquer un écart positif.
               </p>
             )}
-            <label className={s.field}>
-              <span className={s.label}>Commentaire {needComment ? '(obligatoire au-delà de 1 € d\'écart)' : '(facultatif)'}</span>
-              <textarea className={s.textarea} rows={3} value={commentaire} onChange={e => setCommentaire(e.target.value)}
+            <Field label={`Commentaire ${needComment ? "(obligatoire au-delà de 1 € d'écart)" : '(facultatif)'}`}
+              error={needComment && commentaire.trim().length < 5 ? "Explique l'écart en quelques mots" : null} showError={tried}>
+              <textarea rows={3} value={commentaire} onChange={e => setCommentaire(e.target.value)}
                 placeholder="Ex. : erreur de rendu de monnaie vers 23h, remboursement d'un ticket…" />
-            </label>
+            </Field>
           </div>
         </Card>
       )}
@@ -238,13 +247,13 @@ export default function Cloture() {
               <div><span>Carte bancaire</span><b>{fmt(cbCompte)}</b></div>
               <div><span>Écart total</span><b><Badge tone={ecartTone(ecart.total)}>{signed(ecart.total)}</Badge></b></div>
             </div>
-            <label className={s.field}>
-              <span className={s.label}>Nom du signataire</span>
-              <input className={s.input} value={signataire} onChange={e => setSignataire(e.target.value)} placeholder="Prénom Nom" />
-            </label>
+            <Field label="Nom du signataire" error={signataire.trim() ? null : 'Indique le nom de la personne qui signe'} valid={!!signataire.trim()} showError={tried}>
+              <input value={signataire} onChange={e => setSignataire(e.target.value)} placeholder="Prénom Nom" />
+            </Field>
             <div className={s.field}>
               <span className={s.label}>Signature</span>
               <SignaturePad onChange={setSignature} />
+              {tried && !signature && <p className={s.signErr} role="alert">Signe dans le cadre pour valider.</p>}
             </div>
           </div>
         </Card>
@@ -253,8 +262,8 @@ export default function Cloture() {
       <div className={s.nav}>
         <Button variant="secondary" icon={ChevronLeft} onClick={() => setStep(x => x - 1)} disabled={step === 0}>Retour</Button>
         {step < 3
-          ? <Button onClick={() => setStep(x => x + 1)} disabled={!canNext}>Continuer <ChevronRight size={16} /></Button>
-          : <Button icon={Check} onClick={valider} loading={saving} disabled={!canNext}>Valider la clôture</Button>}
+          ? <Button onClick={ifComplete(() => setStep(x => x + 1))} loading={step === 0 && loading}>Continuer <ChevronRight size={16} /></Button>
+          : <Button icon={Check} onClick={ifComplete(valider)} loading={saving}>Valider la clôture</Button>}
       </div>
 
       {history.length > 0 && step === 0 && (
@@ -287,13 +296,21 @@ function Expected({ attendu, fond, loading }) {
 }
 
 function Done({ cloture, onPrint, onRestart }) {
+  // Dernier geste de la soirée : on montre ce qui a été accompli
+  const juste = cloture.ecart.total === 0
+  const encaisse = cloture.compte.especes - cloture.fondDeCaisse + cloture.compte.cb
   return (
     <div className={s.page}>
       <Card>
-        <div className={s.done}>
-          <span className={s.doneIcon}><Check size={28} /></span>
-          <h2>Clôture enregistrée</h2>
-          <p className={s.muted}>{cloture.caisse || 'Toutes les caisses'} · écart {signed(cloture.ecart.total)} · signée par {cloture.signataire}</p>
+        <div className={`${s.done} yc-stagger`}>
+          <SuccessCheck size={64} />
+          <p className={s.muted}>{cloture.caisse || 'Toutes les caisses'} · signée par {cloture.signataire}</p>
+          <b className={s.doneAmount}><AnimatedNumber from={0} value={encaisse} format={fmt} duration={1200} /></b>
+          <div className={s.doneBadges}>
+            <Badge tone="neutral">{cloture.recharges} recharge{cloture.recharges > 1 ? 's' : ''}</Badge>
+            <Badge tone={ecartTone(cloture.ecart.total)}>{juste ? 'Écart 0,00 €' : `Écart ${signed(cloture.ecart.total)}`}</Badge>
+          </div>
+          <h2>{juste ? 'Caisse juste. Merci, bonne fin de soirée.' : 'Écart noté et signé. Merci, bonne fin de soirée.'}</h2>
           <div className={s.doneActions}>
             <Button icon={Printer} onClick={onPrint}>Imprimer le procès-verbal</Button>
             <Button variant="secondary" icon={RotateCcw} onClick={onRestart}>Nouvelle clôture</Button>

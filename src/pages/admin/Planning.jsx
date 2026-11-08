@@ -14,11 +14,12 @@ import { addCreneau, updateCreneau, deleteCreneau, watchArtistConsumptions } fro
 import { db } from '../../firebase/config'
 import { collection, onSnapshot } from 'firebase/firestore'
 import { compressImage } from '../../utils/imageUtils'
+import { friendlyError } from '../../utils/errors'
 import {
   Plus, Pencil, Trash2, Copy, Save, ChevronDown, ChevronUp, Calendar, Clock, MapPin,
-  ExternalLink, AlertCircle, AlertTriangle, BarChart3, Printer, Search, X, List, GanttChart, Camera,
+  ExternalLink, AlertCircle, AlertTriangle, BarChart3, Printer, Search, SearchX, X, List, GanttChart, Camera,
 } from 'lucide-react'
-import { Button, Card, Badge, Tabs, Empty, Dialog, toast } from '../../ui'
+import { Button, Card, Badge, Tabs, Empty, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
 import TimelineView from './planning/TimelineView'
 import { AvantagesArtisteBlock, CreneauAvantagesPanel } from './planning/Avantages'
 import ConsommationsModal from './planning/ConsommationsModal'
@@ -99,10 +100,10 @@ const SORTS = [
   { value: 'type',    label: 'Trier par type' },
 ]
 
-export default function Planning() {
+export default function Planning({ onNavigate }) {
   const { planning } = useAppStore()
   const { currentEventId } = useEventStore()
-  const { user } = useAuthStore()
+  const { user, canAccessPage } = useAuthStore()
   const { isMobile } = useBreakpoint()
   const canManageAvantages = user?.role === 'admin' || user?.role === 'super_admin'
 
@@ -112,6 +113,8 @@ export default function Planning() {
   const [notifier, setNotifier] = useState(false)
   const [loading, setLoading]   = useState(false)
   const [err, setErr]           = useState('')
+  const [tried, setTried]       = useState(false)
+  const formRef = useRef()
   const [success, setSuccess]   = useState('')
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState('')
@@ -149,6 +152,14 @@ export default function Planning() {
   }, [currentEventId])
 
   const scenes   = [...new Set(planning.map(p => p.scene).filter(Boolean))]
+
+  // Règles du formulaire, affichées sous chaque champ
+  const dDebut = new Date(form.debut).getTime()
+  const dFin   = new Date(form.fin).getTime()
+  const artisteError = form.artiste.trim() ? null : "Indique le nom de l'artiste"
+  const debutError   = !form.debut ? "Indique l'heure de début" : isNaN(dDebut) ? 'Cette date est invalide' : null
+  const finError     = !form.fin ? "Indique l'heure de fin" : isNaN(dFin) ? 'Cette date est invalide'
+    : dFin <= dDebut ? "L'heure de fin doit être après l'heure de début" : null
 
   let filtered = filterType === 'tous'
     ? [...planning]
@@ -188,6 +199,7 @@ export default function Planning() {
 
   const openCreate = () => {
     setEditing(null)
+    setTried(false)
     // Pré-remplir lat/lng depuis le premier créneau qui en a
     const ref = planning.find(p => p.latitude && p.longitude)
     setForm({ ...EMPTY_FORM, latitude: ref?.latitude || '', longitude: ref?.longitude || '' })
@@ -199,6 +211,7 @@ export default function Planning() {
 
   const openDuplicate = (cr) => {
     setEditing(null) // pas d'édition, c'est une création
+    setTried(false)
     setNotifier(false)
     setForm({
       artiste:  cr.artiste || '',
@@ -230,6 +243,7 @@ export default function Planning() {
 
   const openEdit = (cr) => {
     setEditing(cr.id)
+    setTried(false)
     setForm({
       artiste:     cr.artiste || '',
       titre:       cr.titre   || '',
@@ -273,13 +287,7 @@ export default function Planning() {
   }
 
   const handleSubmit = async () => {
-    if (!form.artiste.trim()) { setErr('Le nom de l\'artiste est requis'); return }
-    if (!form.debut)           { setErr('L\'heure de début est requise');  return }
-    if (!form.fin)             { setErr('L\'heure de fin est requise');    return }
-    const dDebut = new Date(form.debut).getTime()
-    const dFin   = new Date(form.fin).getTime()
-    if (isNaN(dDebut) || isNaN(dFin)) { setErr('Dates invalides'); return }
-    if (dFin <= dDebut) { setErr('L\'heure de fin doit être après l\'heure de début'); return }
+    if (artisteError || debutError || finError) { setTried(true); focusFirstInvalid(formRef.current); return }
     setLoading(true); setErr('')
     try {
       const photoUrl = await uploadPhoto()
@@ -312,7 +320,7 @@ export default function Planning() {
       setSuccess(editing ? 'Créneau mis à jour !' : 'Créneau ajouté !')
       setTimeout(() => setSuccess(''), 3000)
       setShowForm(false)
-    } catch(e) { console.error('Planning submit:', e); setErr(e?.message || 'Erreur inconnue — vérifiez la console') }
+    } catch(e) { setErr(friendlyError(e, "Le créneau n'a pas été enregistré.")) }
     finally { setLoading(false) }
   }
 
@@ -398,12 +406,13 @@ export default function Planning() {
   const statutInfo = (s) => STATUTS.find(x => x.value === s) || STATUTS[0]
 
   if (!currentEventId) return (
-    <Empty icon={Calendar} title="Aucun événement sélectionné">
-      Sélectionnez un événement pour gérer le planning.
+    <Empty icon={Calendar} title="Aucun événement sélectionné"
+      action={canAccessPage('evenements') && <Button variant="secondary" onClick={() => onNavigate('evenements')}>Choisir un événement</Button>}>
+      Le planning de ton événement apparaîtra ici dès que tu en auras choisi un.
     </Empty>
   )
 
-  // Actions secondaires de l'en-tête, reprises dans l'état vide
+  // Actions secondaires de l'en-tête
   const consoButton = canManageAvantages && (
     <Button variant="secondary" icon={BarChart3} iconOnly onClick={() => setShowConsoModal(true)}
       title="Consommations artistes" aria-label="Consommations artistes" />
@@ -419,6 +428,20 @@ export default function Planning() {
   ]
   const typeItems = [{ value: 'tous', label: '🎭 Tous' }, ...TYPES.map(t => ({ value: t.value, label: `${t.icon} ${t.label}` }))]
   const lienArtiste = editing ? window.location.origin + '/artiste?ev=' + currentEventId + '&cr=' + editing : ''
+
+  // État vide commun à la liste et à la frise : premier créneau ou filtres trop stricts
+  const q = search.trim()
+  const noCreneau = q || filterType !== 'tous' ? (
+    <Empty icon={SearchX} title={q ? `Aucun créneau pour « ${q} »` : 'Aucun créneau de ce type'}
+      action={<Button variant="secondary" onClick={() => { setSearch(''); setFilterType('tous') }}>{filterType !== 'tous' ? 'Effacer les filtres' : 'Effacer la recherche'}</Button>}>
+      {q ? "Vérifie l'orthographe, ou cherche un autre artiste, titre ou scène." : 'Les créneaux de ce type apparaîtront ici dès que tu en ajouteras.'}
+    </Empty>
+  ) : (
+    <Empty icon={Calendar} title="Aucun créneau pour le moment"
+      action={<Button icon={Plus} onClick={openCreate}>Ajouter le premier créneau</Button>}>
+      Les concerts, lectures et projections que tu ajoutes apparaîtront ici et sur la vue live.
+    </Empty>
+  )
 
   return (
     <div className={s.page}>
@@ -473,19 +496,10 @@ export default function Planning() {
       </Card>
 
       {/* ── Frise ── */}
-      {viewMode === 'timeline' && <TimelineView planning={filtered} conflicts={conflicts} onEdit={openEdit} onDelete={handleDelete} onStatut={handleStatut} onUpdateDebut={async (id, newDebut, newFin) => { await updateCreneau(id, { debut: newDebut, fin: newFin }, true) }} />}
+      {viewMode === 'timeline' && <TimelineView planning={filtered} conflicts={conflicts} onEdit={openEdit} onDelete={handleDelete} onStatut={handleStatut} onUpdateDebut={async (id, newDebut, newFin) => { await updateCreneau(id, { debut: newDebut, fin: newFin }, true) }} empty={noCreneau} />}
 
       {viewMode === 'liste' && filtered.length === 0 && (
-        <Card>
-          <Empty icon={Calendar} title="Aucun créneau pour le moment"
-            action={
-              <div className={s.headActions}>
-                {consoButton}
-                {printButton}
-                <Button icon={Plus} onClick={openCreate}>Ajouter le premier créneau</Button>
-              </div>
-            } />
-        </Card>
+        <Card>{noCreneau}</Card>
       )}
 
       {viewMode === 'liste' && filtered.length > 0 && (
@@ -579,7 +593,7 @@ export default function Planning() {
             {loading ? 'Enregistrement…' : editing ? 'Mettre à jour' : 'Ajouter'}
           </Button>
         </>}>
-        <div className={s.form}>
+        <div ref={formRef} className={s.form}>
 
           {/* Photo */}
           <div className={s.photoRow}>
@@ -620,18 +634,18 @@ export default function Planning() {
 
           {/* Champs */}
           {[
-            { key: 'artiste',     label: 'Nom artiste / intervenant *', placeholder: 'ex : Samba Babou' },
+            { key: 'artiste',     label: 'Nom artiste / intervenant *', placeholder: 'ex : Samba Babou', error: artisteError },
             { key: 'titre',       label: 'Titre du set / œuvre',        placeholder: 'ex : Live acoustique' },
             { key: 'scene',       label: 'Scène / lieu',                placeholder: 'ex : Scène principale', list: scenes },
-          ].map(({ key, label, placeholder, list }) => (
-            <label key={key} className={s.field}>
-              <span className={s.label}>{label}</span>
-              <input list={list ? `dl-${key}` : undefined}
-                value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                placeholder={placeholder}
-                className={s.input}/>
+          ].map(({ key, label, placeholder, list, error }) => (
+            <React.Fragment key={key}>
+              <Field label={<span className={s.label}>{label}</span>} error={error} valid={error === null} showError={tried}>
+                <input list={list ? `dl-${key}` : undefined}
+                  value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  placeholder={placeholder}/>
+              </Field>
               {list && <datalist id={`dl-${key}`}>{list.map(l => <option key={l} value={l}/>)}</datalist>}
-            </label>
+            </React.Fragment>
           ))}
 
           {/* Type */}
@@ -650,12 +664,11 @@ export default function Planning() {
 
           {/* Horaires */}
           <div className={s.grid2}>
-            {[['debut','Début *'],['fin','Fin *']].map(([key, label]) => (
-              <label key={key} className={s.field}>
-                <span className={s.label}>{label}</span>
+            {[['debut','Début *', debutError],['fin','Fin *', finError]].map(([key, label, error]) => (
+              <Field key={key} label={<span className={s.label}>{label}</span>} error={error} showError={tried}>
                 <input type="datetime-local" value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                  className={clsx(s.input, s.inputSm)}/>
-              </label>
+                  className={s.dateInput}/>
+              </Field>
             ))}
           </div>
 

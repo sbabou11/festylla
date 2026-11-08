@@ -50,6 +50,7 @@
 }
 .noticeGold  { background: var(--gold-light);  color: var(--gold-dark); }
 .noticeBrand { background: var(--brand-light); color: var(--brand-dark); animation: slideIn var(--dur-slow) var(--ease); }
+.noticeGreen { background: var(--green-light); color: var(--green-dark); animation: slideIn var(--dur-slow) var(--ease); }
 .noticeRed   { background: var(--red-light);   color: var(--red-dark); }
 
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--space-4); align-items: start; }
@@ -309,7 +310,7 @@
   color: #fff;
   animation: flashIn var(--dur-base) var(--ease);
 }
-.flashOk  { background: #0E8D7A; }
+.flashPending { background: #006666; }
 .flashErr { background: #C02626; }
 .flashCheck { animation: popIn var(--dur-slow) var(--ease); }
 .flashIcon { width: 120px; height: 120px; border-radius: 50%; border: 5px solid #fff; display: grid; place-items: center; animation: popIn var(--dur-slow) var(--ease); }

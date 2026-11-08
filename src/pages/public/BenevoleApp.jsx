@@ -18,6 +18,7 @@ import {
 import { nowStr, makeResaCode } from '../../utils/helpers'
 import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleToPost, pointerArrivee } from '../../firebase/service'
 import { hashPassword } from '../../utils/kpis'
+import { friendlyError } from '../../utils/errors'
 import {
   currentOrNext, myShifts, relativeLabel, canCheckIn, fmtHour,
   parsePostScan, postQrText, CHECKIN_EARLY_MIN,
@@ -191,9 +192,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
   const changePwd = async () => {
     setPwdMsg(null)
-    if (!pwdForm.current) { setPwdMsg({ ok:false, text:'Veuillez saisir votre mot de passe actuel.' }); return }
-    if (pwdForm.new1.length < 6) { setPwdMsg({ ok:false, text:'Le nouveau mot de passe doit faire au moins 6 caractères.' }); return }
-    if (pwdForm.new1 !== pwdForm.new2) { setPwdMsg({ ok:false, text:'Les mots de passe ne correspondent pas.' }); return }
+    // Champs requis et longueur : contrôlés dans BenevoleProfil avant l'appel
 
     // Vérifier le mot de passe actuel
     const currentPwd = benev?.password || (benev?.username + '123')
@@ -215,7 +214,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         const nowPwd = new Date()
         await addDoc(auditColPwd, {
           action: 'CHANGEMENT_PWD_BENEV', benevoleId: docId,
-          benevoleNom,
+          benevoleNom: benevNom,
           userType: 'benevole',
           label: `Changement mot de passe bénévole`,
           date: nowPwd.toLocaleString('fr-FR'), timestamp: nowPwd.toISOString(),
@@ -225,7 +224,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       setPwdMsg({ ok:true, text:'Mot de passe modifié avec succès !' })
       setPwdForm({ current:'', new1:'', new2:'' })
     } catch (e) {
-      setPwdMsg({ ok:false, text:'Erreur : ' + e.message })
+      setPwdMsg({ ok:false, text:friendlyError(e, "Le mot de passe n'a pas été modifié.") })
     } finally { setPwdLoading(false) }
   }
 
@@ -305,7 +304,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       const nowAnnu = new Date()
       await addDoc(auditColAnnu, {
         action: 'BENEV_ANNULATION', benevoleId: docId,
-        benevoleNom,
+        benevoleNom: benevNom,
         resaId, resaCode: code, userType: 'benevole',
         label: `Annulation réservation bénévole #${code}`,
         date: nowAnnu.toLocaleString('fr-FR'), timestamp: nowAnnu.toISOString(),
@@ -322,7 +321,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         lu: false, timestamp: new Date().toISOString(), createdAt: serverTimestamp(),
       })
       toast.success(`Réservation #${code} annulée`)
-    } catch (e) { toast.error('Annulation impossible : ' + e.message) }
+    } catch (e) { toast.error(friendlyError(e, "La réservation n'a pas pu être annulée.")) } // pas de « Réessayer » : le quota pourrait être rendu deux fois
   }
 
   const doCommande = async () => {
@@ -446,14 +445,14 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       const nowAudit = new Date()
       await addDoc(auditCol, {
         action: 'BENEV_RESERVATION', benevoleId: docId,
-        benevoleNom,
+        benevoleNom: benevNom,
         resaCode: code, montant: total, items: itemsLabel,
         userType: 'benevole',
         label: `Réservation bénévole #${code} : ${itemsLabel}`,
         date: nowAudit.toLocaleString('fr-FR'), timestamp: nowAudit.toISOString(),
         createdAt: serverTimestamp(),
       })
-    } catch (e) { setResaErr(e.message || 'Erreur') }
+    } catch (e) { setResaErr(friendlyError(e, "La commande n'a pas été envoyée.")) }
     finally { setResaLoading(false) }
   }
 
@@ -518,7 +517,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       }
       setPointage({ state: 'done', at: res.at, already: res.already, post })
     } catch (e) {
-      setPointage({ state: 'error', msg: 'Pointage impossible : ' + (e.message || 'erreur réseau') })
+      setPointage({ state: 'error', msg: friendlyError(e, "Le pointage n'a pas été enregistré.") })
     }
   }
 

@@ -4,7 +4,7 @@
  * Catégories : collection(db, 'categories') — racine, simple, fiable
  * Articles    : via useAppStore (déjà fonctionnel)
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import {
@@ -14,8 +14,9 @@ import {
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
+import { friendlyError } from '../../utils/errors'
 import { Plus, Trash2, Pencil, X, Save, PackagePlus } from 'lucide-react'
-import { Button, Card, Badge, Tabs, Empty, Dialog, toast } from '../../ui'
+import { Button, Card, Badge, Tabs, Empty, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './menu/menu.module.css'
 
 // ── Icônes ──────────────────────────────────────────────────────────
@@ -73,15 +74,21 @@ export default function Menu() {
   const [editingCat, setEditingCat] = useState(null)
   const [catForm,    setCatForm]    = useState({ nom:'', couleur:COLORS[0], icon:'utensils', ordre:99 })
   const [savingCat,  setSavingCat]  = useState(false)
+  const [catTried,   setCatTried]   = useState(false)
+  const catFormRef = useRef(null)
 
   // ── Articles ─────────────────────────────────────────────────────
   const [editingItem, setEditingItem] = useState(null)
   const [itemForm,    setItemForm]    = useState({ nom:'', prix:0, stock:100, cat:'', typeConsommation:'' })
   const [savingItem,  setSavingItem]  = useState(false)
+  const [itemTried,   setItemTried]   = useState(false)
+  const itemFormRef = useRef(null)
 
   // ── Confirmations (remplacent confirm/prompt) ────────────────────
   const [pendingCat, setPendingCat] = useState(null)     // catégorie à supprimer
   const [restock,    setRestock]    = useState(null)     // { item, qty }
+  const [restockTried, setRestockTried] = useState(false)
+  const restockRef = useRef(null)
 
   // Listener Firebase direct — avec retry automatique si erreur
   useEffect(() => {
@@ -113,16 +120,18 @@ export default function Menu() {
   // ── CRUD Catégories — directement Firebase ────────────────────────
   const startNewCat = () => {
     setCatForm({ nom:'', couleur:COLORS[0], icon:'utensils', ordre: categories.length + 1 })
+    setCatTried(false)
     setEditingCat('new')
   }
 
   const startEditCat = (cat) => {
     setCatForm({ nom:cat.nom, couleur:cat.couleur, icon:cat.icon, ordre:cat.ordre||99 })
+    setCatTried(false)
     setEditingCat(cat.id)
   }
 
   const saveCat = async () => {
-    if (!catForm.nom.trim()) return
+    if (!catForm.nom.trim()) { setCatTried(true); focusFirstInvalid(catFormRef.current); return }
     setSavingCat(true)
     try {
       if (editingCat === 'new') {
@@ -133,7 +142,9 @@ export default function Menu() {
         await updateDoc(catDocRef, catForm)
       }
       setEditingCat(null)
-    } catch (e) { toast.error('Erreur : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, "La catégorie n'a pas été enregistrée."), { action: { label: 'Réessayer', onClick: () => saveCat() } })
+    }
     finally { setSavingCat(false) }
   }
 
@@ -150,32 +161,39 @@ export default function Menu() {
   // ── CRUD Articles ─────────────────────────────────────────────────
   const startNewItem = () => {
     setItemForm({ nom:'', prix:0, stock:100, cat: categories[0]?.nom || '', typeConsommation:'' })
+    setItemTried(false)
     setEditingItem('new')
   }
 
   const startEditItem = (m) => {
     setItemForm({ nom:m.nom, prix:(m.prix||0)/100, stock:m.stock||0, cat:m.cat, seuilAlerte:m.seuilAlerte??10, typeConsommation:m.typeConsommation||'' })
+    setItemTried(false)
     setEditingItem(m.id)
   }
 
   const saveItem = async () => {
-    if (!itemForm.nom.trim()) return
+    if (!itemForm.nom.trim()) { setItemTried(true); focusFirstInvalid(itemFormRef.current); return }
     setSavingItem(true)
     try {
       const data = { nom:itemForm.nom.trim(), prix:Math.round(itemForm.prix*100), stock:itemForm.stock, cat:itemForm.cat, seuilAlerte:itemForm.seuilAlerte??10, typeConsommation:itemForm.typeConsommation||'' }
       if (editingItem === 'new') await addMenuItem(data)
       else await updateMenuItem(editingItem, data)
       setEditingItem(null)
-    } catch (e) { toast.error('Erreur : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, "L'article n'a pas été enregistré."), { action: { label: 'Réessayer', onClick: () => saveItem() } })
+    }
     finally { setSavingItem(false) }
   }
 
-  // Réassort : même règle que l'ancien prompt (entier > 0 sinon rien)
+  // Réassort : même règle que l'ancien prompt (entier > 0), l'erreur s'affiche sous le champ
+  const restockQtyOk = (qty) => { const n = parseInt(qty); return !isNaN(n) && n > 0 }
+  const openRestock = (m) => { setRestockTried(false); setRestock({ item: m, qty: '' }) }
   const confirmRestock = () => {
     const m = restock?.item
+    if (!restockQtyOk(restock?.qty)) { setRestockTried(true); focusFirstInvalid(restockRef.current); return }
     const delta = parseInt(restock?.qty)
     setRestock(null)
-    if (m && !isNaN(delta) && delta > 0) updateMenuItem(m.id, { stock: (m.stock||0) + delta })
+    if (m) updateMenuItem(m.id, { stock: (m.stock||0) + delta })
   }
 
   const pendingCount = pendingCat ? menu.filter(m => m.cat === pendingCat.nom).length : 0
@@ -198,7 +216,7 @@ export default function Menu() {
       <div className={s.itemSide}>
         <span className={s.price}>{fmt(m.prix||0)}</span>
         <Button variant="secondary" size="sm" icon={PackagePlus}
-          onClick={() => setRestock({ item: m, qty: '' })}>Stock</Button>
+          onClick={() => openRestock(m)}>Stock</Button>
         <Button variant="ghost" size="sm" icon={Pencil} iconOnly aria-label={`Modifier ${m.nom}`}
           onClick={() => startEditItem(m)}/>
         <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer ${m.nom}`}
@@ -233,12 +251,12 @@ export default function Menu() {
           {/* Formulaire catégorie */}
           {editingCat !== null && (
             <Card className={s.formCard} title={editingCat === 'new' ? 'Créer une catégorie' : 'Modifier la catégorie'}>
-              <div className={s.form}>
-                <label className={s.field}>
-                  <span className={s.label}>Nom</span>
-                  <input className={s.input} value={catForm.nom} onChange={e => setCatForm(f => ({...f,nom:e.target.value}))}
+              <div ref={catFormRef} className={s.form}>
+                <Field label={<span className={s.label}>Nom</span>}
+                  error={catForm.nom.trim() ? null : 'Indique un nom pour cette catégorie'} valid={!!catForm.nom.trim()} showError={catTried}>
+                  <input value={catForm.nom} onChange={e => setCatForm(f => ({...f,nom:e.target.value}))}
                     placeholder="ex : Boissons chaudes"/>
-                </label>
+                </Field>
 
                 <div className={s.field}>
                   <span className={s.label}>Couleur</span>
@@ -296,12 +314,9 @@ export default function Menu() {
           {/* Liste catégories */}
           {catsLoading && <div className={s.loading}>Chargement des catégories…</div>}
           {!catsLoading && categories.length === 0 && editingCat === null && (
-            <Empty
-              icon={Tag}
-              title="Aucune catégorie"
-              action={<Button variant="ghost" size="sm" onClick={() => setCatsRetry(r => r+1)}>Réessayer</Button>}
-            >
-              Créez-en une avec « Nouvelle catégorie ».
+            <Empty icon={Tag} title="Aucune catégorie pour l'instant"
+              action={<Button icon={Plus} onClick={startNewCat}>Créer une catégorie</Button>}>
+              Les catégories rangent les articles de ta carte, à la caisse comme côté spectateurs.
             </Empty>
           )}
           {categories.map(cat => {
@@ -333,12 +348,12 @@ export default function Menu() {
         <div className={s.list}>
           {editingItem !== null && (
             <Card className={s.formCard} title={editingItem === 'new' ? 'Nouvel article' : "Modifier l'article"}>
-              <div className={s.form}>
+              <div ref={itemFormRef} className={s.form}>
                 <div className={s.grid}>
-                  <label className={s.field}>
-                    <span className={s.label}>Nom</span>
-                    <input className={s.input} value={itemForm.nom} onChange={e => setItemForm(f=>({...f,nom:e.target.value}))} placeholder="ex : Bière artisanale"/>
-                  </label>
+                  <Field label={<span className={s.label}>Nom</span>}
+                    error={itemForm.nom.trim() ? null : 'Indique un nom pour cet article'} valid={!!itemForm.nom.trim()} showError={itemTried}>
+                    <input value={itemForm.nom} onChange={e => setItemForm(f=>({...f,nom:e.target.value}))} placeholder="ex : Bière artisanale"/>
+                  </Field>
                   <label className={s.field}>
                     <span className={s.label}>Catégorie</span>
                     <select className={s.input} value={itemForm.cat} onChange={e => setItemForm(f=>({...f,cat:e.target.value}))}>
@@ -375,6 +390,13 @@ export default function Menu() {
                 </div>
               </div>
             </Card>
+          )}
+
+          {menu.length === 0 && editingItem === null && (
+            <Empty icon={Tag} title="La carte est vide"
+              action={<Button icon={Plus} onClick={startNewItem}>Ajouter un article</Button>}>
+              Les articles ajoutés ici apparaissent à la caisse et côté spectateurs.
+            </Empty>
           )}
 
           {categories.map(cat => {
@@ -444,15 +466,15 @@ export default function Menu() {
           <Button icon={PackagePlus} onClick={confirmRestock}>Ajouter au stock</Button>
         </>}
       >
-        <form className={s.dialogStack} onSubmit={e => { e.preventDefault(); confirmRestock() }}>
+        <form ref={restockRef} className={s.dialogStack} onSubmit={e => { e.preventDefault(); confirmRestock() }}>
           <p className={s.dialogText}>
             <b>{restock?.item.nom}</b> · stock actuel : {restock?.item.stock || 0}
           </p>
-          <label className={s.field}>
-            <span className={s.label}>Quantité à ajouter</span>
-            <input type="number" min="1" inputMode="numeric" autoFocus className={s.input}
+          <Field label={<span className={s.label}>Quantité à ajouter</span>}
+            error={restockQtyOk(restock?.qty) ? null : 'Indique une quantité supérieure à 0'} valid={restockQtyOk(restock?.qty)} showError={restockTried}>
+            <input type="number" min="1" inputMode="numeric" autoFocus
               value={restock?.qty ?? ''} onChange={e => setRestock(r => ({ ...r, qty: e.target.value }))}/>
-          </label>
+          </Field>
         </form>
       </Dialog>
     </div>

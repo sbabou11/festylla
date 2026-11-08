@@ -3,10 +3,11 @@
  * Écran affiché si aucun événement n'est sélectionné
  * Permet de choisir ou créer un événement avant d'accéder à l'app
  */
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import useEventStore from '../store/useEventStore'
 import { Calendar, Plus, ArrowRight, CheckCircle } from 'lucide-react'
 import { setCurrentEvent } from '../firebase/service'
+import { Field, focusFirstInvalid } from '../ui'
 
 const formatDate = (d) => {
   if (!d) return null
@@ -19,6 +20,10 @@ export default function EventSelector({ onSelect }) {
   const [creating, setCreating] = useState(false)
   const [nom, setNom]           = useState('')
   const [saving, setSaving]     = useState(false)
+  const [tried, setTried]       = useState(false)
+  const createRef = useRef(null)
+
+  const nomErr = nom.trim() ? null : "Indique un nom pour l'événement."
 
   useEffect(() => {
     const unsub = watchEvents()
@@ -32,7 +37,7 @@ export default function EventSelector({ onSelect }) {
   }
 
   const handleCreate = async () => {
-    if (!nom.trim()) return
+    if (nomErr) { setTried(true); focusFirstInvalid(createRef.current); return }
     setSaving(true)
     try {
       const id = await createEvent({ nom: nom.trim(), emoji: '🎵', couleur: '#1a6b7a' })
@@ -99,15 +104,16 @@ export default function EventSelector({ onSelect }) {
                     <Plus size={15}/> Créer un nouvel événement
                   </button>
                 ) : (
-                  <div style={{ display:'flex', gap:8 }}>
-                    <input value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleCreate()}
-                      placeholder="Nom de l'événement…" autoFocus
-                      style={{ flex:1, minHeight:44, padding:'0 12px', border:'1.5px solid #1a6b7a', borderRadius:10, fontSize:14, outline:'none', fontFamily:'system-ui' }}/>
-                    <button onClick={handleCreate} disabled={!nom.trim()||saving}
+                  <div ref={createRef} style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) auto auto', alignItems:'start', gap:8 }}>
+                    <Field error={nomErr} showError={tried}>
+                      <input value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleCreate()}
+                        placeholder="Nom de l'événement…" autoFocus/>
+                    </Field>
+                    <button onClick={handleCreate} disabled={saving}
                       style={{ minHeight:44, padding:'0 16px', background:'#1a6b7a', color:'#fff', border:'none', borderRadius:10, fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'system-ui', flexShrink:0 }}>
                       {saving ? '…' : 'Créer'}
                     </button>
-                    <button onClick={()=>setCreating(false)}
+                    <button onClick={()=>{ setCreating(false); setTried(false) }}
                       style={{ minHeight:44, padding:'0 12px', background:'#f1f5f9', border:'none', borderRadius:10, cursor:'pointer', fontFamily:'system-ui', flexShrink:0, color:'#64748b' }}>
                       ✕
                     </button>
@@ -121,12 +127,13 @@ export default function EventSelector({ onSelect }) {
                 <div style={{ fontSize:40, marginBottom:12 }}>🎵</div>
                 <div style={{ fontSize:16, fontWeight:700, color:'#0f172a', marginBottom:6 }}>Aucun événement</div>
                 <div style={{ fontSize:13, color:'#6b6b6b', marginBottom:20 }}>Créez votre premier événement pour commencer</div>
-                <div style={{ display:'flex', gap:8 }}>
-                  <input value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleCreate()}
-                    placeholder="Nom de l'événement…" autoFocus
-                    style={{ flex:1, minHeight:48, padding:'0 14px', border:'1.5px solid #1a6b7a', borderRadius:12, fontSize:15, outline:'none', fontFamily:'system-ui' }}/>
-                  <button onClick={handleCreate} disabled={!nom.trim()||saving}
-                    style={{ minHeight:48, padding:'0 20px', background:'#1a6b7a', color:'#fff', border:'none', borderRadius:12, fontSize:15, fontWeight:700, cursor:'pointer', fontFamily:'system-ui', flexShrink:0 }}>
+                <div ref={createRef} style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) auto', alignItems:'start', gap:8, textAlign:'left' }}>
+                  <Field error={nomErr} showError={tried}>
+                    <input value={nom} onChange={e=>setNom(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleCreate()}
+                      placeholder="Nom de l'événement…" autoFocus/>
+                  </Field>
+                  <button onClick={handleCreate} disabled={saving}
+                    style={{ minHeight:44, padding:'0 20px', background:'#1a6b7a', color:'#fff', border:'none', borderRadius:12, fontSize:15, fontWeight:700, cursor:'pointer', fontFamily:'system-ui', flexShrink:0 }}>
                     {saving ? '…' : 'Créer →'}
                   </button>
                 </div>

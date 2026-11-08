@@ -80,7 +80,7 @@ export default function ConsommationsModal({ consumptions, planning, onClose }) 
 
       {/* Détail par artiste */}
       {creneauList.length === 0 ? (
-        <Empty icon={Receipt} title="Aucune consommation enregistrée" />
+        <Empty icon={Receipt} title="Aucune consommation enregistrée">Les boissons, repas et eau servis aux artistes apparaîtront ici.</Empty>
       ) : (
         <div className={s.consoList}>
           {creneauList.map(({ creneau, consos }) => (

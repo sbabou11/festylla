@@ -4,7 +4,7 @@
  * Onglets (barre du bas, mobile d'abord) : Droits, Consos, Réserver, Mes résas, Programme.
  * Contenu des onglets : artiste/ArtisteSections.jsx ; styles : artiste/EspaceArtiste.module.css
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import { getSettings, creerReservationArtiste, annulerReservationArtiste, watchArtistReservations, linkArtistToSpec, unlinkArtistFromSpec } from '../../firebase/service'
@@ -15,7 +15,8 @@ import ThemeToggle from '../../components/ThemeToggle'
 import NotifBell from '../../components/NotifBell'
 import { useTheme } from '../../hooks/useTheme'
 import { useNotifications } from '../../hooks/useNotifications'
-import { Button, Dialog, Sheet, Empty, Skeleton, toast } from '../../ui'
+import { friendlyError } from '../../utils/errors'
+import { Button, Dialog, Sheet, Empty, Field, Skeleton, toast, focusFirstInvalid } from '../../ui'
 import { TYPES, fmtHour, fmtDate } from './artiste/artisteUtils'
 import { DroitsTab, ConsosTab, ReserverTab, ResasTab, ProgrammeTab } from './artiste/ArtisteSections'
 import s from './artiste/EspaceArtiste.module.css'
@@ -46,6 +47,8 @@ export default function EspaceArtiste() {
   const [showLinkModal, setShowLinkModal] = useState(false)
   const [linkInput, setLinkInput] = useState('')
   const [linkErr, setLinkErr] = useState('')
+  const [linkTried, setLinkTried] = useState(false)
+  const linkFormRef = useRef(null)
   const [linkLoading, setLinkLoading] = useState(false)
   const [cancelAsk,   setCancelAsk]   = useState(null)  // id de la réservation à annuler
   const [unlinkAsk,   setUnlinkAsk]   = useState(false)
@@ -161,7 +164,7 @@ export default function EspaceArtiste() {
     return (
       <div className={s.invalid}>
         <Empty icon={Mic} title="Espace artiste introuvable">
-          Le lien est incomplet ou le créneau n'existe plus. Lien attendu : <code>/artiste?ev=…&cr=…</code>
+          Ce lien est incomplet ou le créneau n'existe plus. Vos avantages apparaîtront ici avec le lien reçu de l'organisation.
         </Empty>
       </div>
     )
@@ -245,7 +248,7 @@ export default function EspaceArtiste() {
       setTimeout(() => setResaSuccess(''), 4000)
       setTab('resas')
     } catch (e) {
-      setResaErr("La réservation n'a pas pu être envoyée : " + e.message)
+      setResaErr(friendlyError(e, "La réservation n'a pas pu être envoyée."))
     }
   }
 
@@ -255,7 +258,7 @@ export default function EspaceArtiste() {
       await annulerReservationArtiste(resaId, eventId)
       toast.success('Réservation annulée')
     } catch (e) {
-      toast.error("Impossible d'annuler la réservation : " + e.message)
+      toast.error(friendlyError(e, "La réservation n'a pas pu être annulée."), { action: { label: 'Réessayer', onClick: () => handleCancelResa(resaId) } })
     }
   }
 
@@ -280,14 +283,14 @@ export default function EspaceArtiste() {
 
   const handleLinkSpec = async () => {
     const v = linkInput.trim().toUpperCase()
-    if (!v) { setLinkErr('Veuillez saisir votre numéro spectateur'); return }
+    if (!v) { setLinkTried(true); focusFirstInvalid(linkFormRef.current); return }
     setLinkLoading(true); setLinkErr('')
     try {
       await linkArtistToSpec(creneauId, v, eventId)
       setShowLinkModal(false)
       setLinkInput('')
     } catch (e) {
-      setLinkErr(e.message || 'Erreur de liaison')
+      setLinkErr(friendlyError(e, "Le compte n'a pas pu être lié."))
     } finally {
       setLinkLoading(false)
     }
@@ -298,7 +301,7 @@ export default function EspaceArtiste() {
     try {
       await unlinkArtistFromSpec(creneauId, eventId)
     } catch (e) {
-      toast.error('Impossible de délier le compte : ' + e.message)
+      toast.error(friendlyError(e, "Le compte n'a pas pu être délié."), { action: { label: 'Réessayer', onClick: () => handleUnlinkSpec() } })
     }
   }
 
@@ -338,7 +341,7 @@ export default function EspaceArtiste() {
               </button>
             ) : (
               <button type="button" className={clsx(s.headBtn, s.headBtnDashed)}
-                onClick={() => { setLinkInput(''); setLinkErr(''); setShowLinkModal(true) }}
+                onClick={() => { setLinkInput(''); setLinkErr(''); setLinkTried(false); setShowLinkModal(true) }}
                 title="Lier mon compte spectateur" aria-label="Lier mon compte spectateur">
                 <Link2 size={16}/>
               </button>
@@ -393,9 +396,10 @@ export default function EspaceArtiste() {
         {tab === 'reserver' && (
           <ReserverTab av={av} eligibleArticles={eligibleArticles} cart={cart} cartTotal={cartTotal}
             remain={{ drink: remainDrinks, meal: remainMeals, eau: remainEaux }}
-            onAdd={addToCart} onRemove={removeFromCart} onReserve={handleReserve} resaErr={resaErr}/>
+            onAdd={addToCart} onRemove={removeFromCart} onReserve={handleReserve} resaErr={resaErr}
+            onSeeResas={() => setTab('resas')}/>
         )}
-        {tab === 'resas' && <ResasTab reservations={reservations} onCancel={setCancelAsk}/>}
+        {tab === 'resas' && <ResasTab reservations={reservations} onCancel={setCancelAsk} onReserve={() => setTab('reserver')}/>}
         {tab === 'programme' && <ProgrammeTab planning={planning} creneauId={creneauId}/>}
 
         <footer className={s.footer}>
@@ -430,19 +434,18 @@ export default function EspaceArtiste() {
             {linkLoading ? 'Vérification…' : 'Lier mon compte'}
           </Button>
         </>}>
-        <div className={s.form}>
+        <div className={s.form} ref={linkFormRef}>
           <p className={s.muted}>
             Saisissez votre numéro spectateur (écrit sous votre QR personnel, par exemple <code>FY-4A2B</code>)
             pour passer d'un espace à l'autre en un geste.
           </p>
-          <label className={s.field}>
-            <span>Numéro spectateur</span>
+          <Field label="Numéro spectateur" error={linkInput.trim() ? null : 'Veuillez saisir votre numéro spectateur.'} showError={linkTried}>
             <input type="text" className={s.input} value={linkInput}
               onChange={(e) => setLinkInput(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === 'Enter' && handleLinkSpec()}
               placeholder="FY-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false}
-              autoFocus aria-invalid={!!linkErr || undefined}/>
-          </label>
+              autoFocus/>
+          </Field>
           {linkErr && (
             <div className={s.error} role="alert"><AlertCircle size={16} aria-hidden="true"/><span>{linkErr}</span></div>
           )}

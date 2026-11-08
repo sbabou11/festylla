@@ -22,7 +22,8 @@ import { useNotifications } from '../../hooks/useNotifications'
 import NotifBell from '../../components/NotifBell'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
-import { Button, Badge, Empty, Tabs, Dialog, AnimatedNumber } from '../../ui'
+import { friendlyError } from '../../utils/errors'
+import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, focusFirstInvalid } from '../../ui'
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
 import sp from './spectateur/SoldePage.module.css'
@@ -85,6 +86,7 @@ export default function SoldePage({ demo = null }) {
   const [menu, setMenu]               = useState(demo?.menu || [])
   const [loading, setLoading]         = useState(false)
   const [err, setErr]                 = useState('')
+  const [codeTried, setCodeTried]     = useState(false)
   const [tab, setTab]                 = useState('accueil')
   const [qtys, setQtys]               = useState({})
   const [resaLoading, setResaLoading] = useState(false)
@@ -247,7 +249,7 @@ export default function SoldePage({ demo = null }) {
         specId:spec.id, resaCode:code, lu:false,
         timestamp:new Date().toISOString(), createdAt:serverTimestamp(),
       })
-    } catch(e) { setResaErr(e.message||'Erreur') }
+    } catch(e) { setResaErr(friendlyError(e, "La commande n'a pas été envoyée.")) }
     finally { setResaLoading(false) }
   }
 
@@ -424,10 +426,16 @@ export default function SoldePage({ demo = null }) {
             {loading ? (
               <p className={sp.loading}>Recherche du compte…</p>
             ) : (
-              <form className={sp.loginRow} onSubmit={e => { e.preventDefault(); findSpec() }}>
+              <form className={sp.loginRow} noValidate onSubmit={e => {
+                e.preventDefault()
+                if (!inputId.trim()) { setCodeTried(true); focusFirstInvalid(e.currentTarget); return }
+                setCodeTried(false); findSpec()
+              }}>
                 <label htmlFor="spec-code" className={sp.srOnly}>Code du QR</label>
-                <input id="spec-code" value={inputId} onChange={e => setInputId(e.target.value.toUpperCase())}
-                  placeholder="FY-XXXX" autoCapitalize="characters" autoComplete="off" className={sp.codeInput} />
+                <Field error={inputId.trim() ? null : 'Entrez le code inscrit sous votre QR.'} showError={codeTried} className={sp.codeField}>
+                  <input id="spec-code" value={inputId} onChange={e => setInputId(e.target.value.toUpperCase())}
+                    placeholder="FY-XXXX" autoCapitalize="characters" autoComplete="off" className={sp.codeInput} />
+                </Field>
                 <Button type="submit" icon={Search} iconOnly aria-label="Ouvrir mon compte" />
               </form>
             )}
@@ -497,7 +505,7 @@ export default function SoldePage({ demo = null }) {
                   <span>Dépensé <b className={sp.coralText}>{fmt(totalDepense)}</b></span>
                 </div>
                 {txs.length === 0 ? (
-                  <Empty icon={Wallet} title="Aucune opération">Vos recharges et achats apparaîtront ici.</Empty>
+                  <Empty icon={Wallet} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
                 ) : chartMode ? (
                   <SoldeChart timeline={timeline} maxBal={maxBal} hoverIdx={hoverIdx} setHoverIdx={setHoverIdx}
                     zoom={chartZoom} setZoom={setChartZoom} fmt={fmt} />
@@ -521,7 +529,7 @@ export default function SoldePage({ demo = null }) {
                 <span className={sp.muted}>{txTotal} opération{txTotal > 1 ? 's' : ''}</span>
               </header>
               {txTotal === 0 ? (
-                <Empty icon={Clock} title="Aucune opération" />
+                <Empty icon={Clock} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
               ) : (
                 <>
                   <ul className={sp.txList}>{txSlice.map((t, i) => <TxRow key={i} t={t} />)}</ul>
@@ -576,7 +584,7 @@ export default function SoldePage({ demo = null }) {
                       </ul>
                     </section>
                   ))}
-                  {menu.length === 0 && <Empty icon={UtensilsCrossed} title="La carte n'est pas encore disponible" />}
+                  {menu.length === 0 && <Empty icon={UtensilsCrossed} title="La carte n'est pas encore disponible">Les plats et boissons apparaîtront ici dès leur mise en ligne.</Empty>}
                 </>
               )}
             </div>
@@ -591,7 +599,7 @@ export default function SoldePage({ demo = null }) {
               </header>
               {resaTotal === 0 ? (
                 <Empty icon={Bookmark} title="Aucune réservation" action={<Button size="sm" onClick={() => go('reserver')}>Commander</Button>}>
-                  Commandez depuis la carte, récupérez quand c'est prêt.
+                  Vos commandes apparaîtront ici : commandez depuis la carte, récupérez quand c'est prêt.
                 </Empty>
               ) : (
                 <>

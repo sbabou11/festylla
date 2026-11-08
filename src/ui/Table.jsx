@@ -2,6 +2,7 @@
  * ui/Table.jsx — tableau qui devient une liste de cartes quand sa place est étroite
  * columns : [{ key, label, align?: 'right', render?: (row) => node, card?: 'title' | 'value' | 'hide' }]
  * rows    : tableau d'objets ; rowKey : clé unique (défaut 'id')
+ * empty   : texte, ou un <Empty … /> complet avec icône et action
  * loading : affiche des lignes squelettes à la place des données
  * En carte (conteneur < 560 px) : la 1re colonne sert de titre, la 1re colonne alignée à droite
  * passe en haut à droite, les autres s'affichent « libellé · valeur ». `card` force ce rôle.
@@ -13,7 +14,7 @@ import Skeleton from './Skeleton'
 import s from './Table.module.css'
 
 export default function Table({ columns = [], rows = [], rowKey = 'id', onRowClick, empty = 'Aucune donnée', loading = false, skeletonRows = 5, className }) {
-  if (!loading && rows.length === 0) return <Empty title={empty} />
+  if (!loading && rows.length === 0) return typeof empty === 'string' ? <Empty title={empty} /> : empty
 
   const visible = columns.filter(Boolean)
   const titleKey = (visible.find(c => c.card === 'title') || visible[0])?.key

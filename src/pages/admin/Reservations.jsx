@@ -9,8 +9,9 @@ import clsx from 'clsx'
 import useAppStore  from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt }      from '../../utils/helpers'
+import { friendlyError } from '../../utils/errors'
 import { Clock, ChefHat, CheckCircle, Package, XCircle, Trash2, ShoppingBag } from 'lucide-react'
-import { Button, Badge, Tabs, Empty, Dialog, HoldButton } from '../../ui'
+import { Button, Badge, Tabs, Empty, Dialog, HoldButton, Field, focusFirstInvalid } from '../../ui'
 import s from './reservations/reservations.module.css'
 
 const STATUTS = {
@@ -45,9 +46,9 @@ const MOTIFS = [
   'Autres',
 ]
 
-export default function Reservations() {
+export default function Reservations({ onNavigate }) {
   const { reservations, prendreEnCharge, marquerResaPrete, validerRetrait, annulerReservation, deleteReservation, menu } = useAppStore()
-  const { user } = useAuthStore()
+  const { user, canAccessPage } = useAuthStore()
 
   const [filter,     setFilter]     = useState('all')
   const [loading,    setLoading]    = useState(null)
@@ -57,6 +58,8 @@ export default function Reservations() {
   const [visible,    setVisible]    = useState(10)
   const [motifIdx,   setMotifIdx]   = useState(0)
   const [motifTexte, setMotifTexte] = useState('')
+  const [motifTried, setMotifTried] = useState(false)
+  const motifRef = React.useRef(null)
   const [sortBy,     setSortBy]     = useState('date_desc') // date_desc | date_asc | statut | montant_desc | montant_asc
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
@@ -99,20 +102,21 @@ export default function Reservations() {
     })
   }, [reservations, filter, sortBy])
 
-  const act = async (fn, id) => {
+  const act = async (fn, id, whatFailed) => {
     setLoading(id); setErr('')
     try { await fn() }
-    catch (e) { setErr(e.message) }
+    catch (e) { setErr(friendlyError(e, whatFailed)) }
     finally { setLoading(null) }
   }
 
   const doAnnuler = async () => {
+    if (motifIdx === 2 && !motifTexte.trim()) { setMotifTried(true); focusFirstInvalid(motifRef.current); return }
     const motif = motifIdx === 2 ? (motifTexte.trim() || 'Autres') : MOTIFS[motifIdx]
     setLoading(annulModal); setErr('')
     try {
       await annulerReservation(annulModal, motif)
-      setAnnulModal(null); setMotifIdx(0); setMotifTexte('')
-    } catch (e) { setErr(e.message) }
+      setAnnulModal(null); setMotifIdx(0); setMotifTexte(''); setMotifTried(false)
+    } catch (e) { setErr(friendlyError(e, "La réservation n'a pas été annulée.")) }
     finally { setLoading(null) }
   }
 
@@ -121,10 +125,10 @@ export default function Reservations() {
   const confirmDelete = async () => {
     const resa = pendingDel
     setPendingDel(null)
-    if (resa) await act(() => deleteReservation(resa.id), resa.id)
+    if (resa) await act(() => deleteReservation(resa.id), resa.id, "La réservation n'a pas été supprimée.")
   }
 
-  const closeAnnul = () => { setAnnulModal(null); setErr('') }
+  const closeAnnul = () => { setAnnulModal(null); setErr(''); setMotifTried(false) }
 
   // Total affiché : celui de la résa, sinon recalculé depuis les articles (résa bénévole)
   const totalOf = (resa) => {
@@ -160,7 +164,26 @@ export default function Reservations() {
 
       {err && !annulModal && <div className={s.error} role="alert">{err}</div>}
 
-      {sorted.length === 0 && <Empty icon={ShoppingBag} title="Aucune réservation"/>}
+      {reservations.length === 0 && (
+        <div className={s.firstRun}>
+          {/* Billet fantôme : montre à quoi ressemblera une réservation */}
+          <div className={s.ghost} aria-hidden="true">
+            <div className={s.ghostHead}><span className={s.ghostTag}>Exemple</span><span>#A42</span></div>
+            <div className={s.ghostName}>Camille</div>
+            <div>Bière ×2, Frites</div>
+          </div>
+          <Empty icon={ShoppingBag} title="Aucune réservation pour l'instant"
+            action={canAccessPage('menu') && <Button variant="secondary" onClick={() => onNavigate('menu')}>Vérifier la carte</Button>}>
+            Les commandes passées depuis la carte par les spectateurs apparaîtront ici.
+          </Empty>
+        </div>
+      )}
+      {reservations.length > 0 && sorted.length === 0 && (
+        <Empty icon={STATUTS[filter]?.icon || ShoppingBag} title={`Aucune réservation « ${STATUTS[filter]?.label || filter} »`}
+          action={<Button variant="secondary" onClick={() => setFilter('all')}>Effacer le filtre</Button>}>
+          Les réservations à ce statut apparaîtront ici.
+        </Empty>
+      )}
 
       <div className={clsx(s.list, 'yc-stagger')}>
         {sorted.slice(0, visible).map(resa => {
@@ -205,7 +228,7 @@ export default function Reservations() {
                 {resa.status === 'pending' && (
                   <>
                     <Button variant="coral" size="sm" icon={ChefHat} loading={isLoading}
-                      onClick={() => act(() => prendreEnCharge(resa.id), resa.id)}>Prendre en charge</Button>
+                      onClick={() => act(() => prendreEnCharge(resa.id), resa.id, "La prise en charge n'est pas passée.")}>Prendre en charge</Button>
                     <Button variant="danger" size="sm" icon={XCircle} onClick={() => setAnnulModal(resa.id)}>Annuler</Button>
                   </>
                 )}
@@ -214,7 +237,7 @@ export default function Reservations() {
                 {resa.status === 'processing' && can && (
                   <>
                     <Button size="sm" icon={CheckCircle} loading={isLoading}
-                      onClick={() => act(() => marquerResaPrete(resa.id), resa.id)}>Marquer prête</Button>
+                      onClick={() => act(() => marquerResaPrete(resa.id), resa.id, "La réservation n'a pas été marquée prête.")}>Marquer prête</Button>
                     <Button variant="danger" size="sm" icon={XCircle} onClick={() => setAnnulModal(resa.id)}>Annuler</Button>
                   </>
                 )}
@@ -227,7 +250,7 @@ export default function Reservations() {
                 {/* Ready → Valider retrait */}
                 {resa.status === 'ready' && can && (
                   <Button size="sm" icon={Package} loading={isLoading}
-                    onClick={() => act(() => validerRetrait(resa.id), resa.id)}>Valider le retrait</Button>
+                    onClick={() => act(() => validerRetrait(resa.id), resa.id, "Le retrait n'a pas été validé.")}>Valider le retrait</Button>
                 )}
 
                 {/* Supprimer (admin uniquement, après annulation ou retrait) */}
@@ -255,15 +278,14 @@ export default function Reservations() {
       )}
 
       {/* Annulation : choix du motif */}
-      <Dialog open={!!annulModal} onClose={() => setAnnulModal(null)} title="Motif d'annulation"
+      <Dialog open={!!annulModal} onClose={closeAnnul} title="Motif d'annulation"
         footer={<>
           <Button variant="secondary" onClick={closeAnnul}>Retour</Button>
-          <Button variant="danger" icon={XCircle} onClick={doAnnuler} loading={loading === annulModal}
-            disabled={motifIdx === 2 && !motifTexte.trim()}>
+          <Button variant="danger" icon={XCircle} onClick={doAnnuler} loading={loading === annulModal}>
             Confirmer l’annulation
           </Button>
         </>}>
-        <div className={s.dialogStack}>
+        <div ref={motifRef} className={s.dialogStack}>
           <div className={s.motifs} role="radiogroup" aria-label="Motif">
             {MOTIFS.map((m, i) => (
               <label key={i} className={clsx(s.motifOpt, motifIdx === i && s.motifOn)}>
@@ -274,11 +296,11 @@ export default function Reservations() {
           </div>
 
           {motifIdx === 2 && (
-            <div className={s.field}>
-              <label className={s.label} htmlFor="resa-motif-texte">Précisez le motif</label>
-              <textarea id="resa-motif-texte" className={s.textarea} value={motifTexte} rows={3} autoFocus
-                onChange={e => setMotifTexte(e.target.value)} placeholder="Précisez le motif…"/>
-            </div>
+            <Field label={<span className={s.label}>Précise le motif</span>}
+              error={motifTexte.trim() ? null : "Indique le motif de l'annulation"} valid={!!motifTexte.trim()} showError={motifTried}>
+              <textarea id="resa-motif-texte" value={motifTexte} rows={3} autoFocus
+                onChange={e => setMotifTexte(e.target.value)} placeholder="Précise le motif…"/>
+            </Field>
           )}
 
           {err && <div className={s.error} role="alert">{err}</div>}

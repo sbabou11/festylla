@@ -1,9 +1,11 @@
 // pages/billetterie/Nouveau.jsx
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
+import { friendlyError } from '../../utils/errors'
 import QrCode from '../../components/QrCode'
 import useAuthStore from '../../store/useAuthStore'
+import { Field, focusFirstInvalid } from '../../ui'
 
 export default function Nouveau() {
   const { createSpectateur } = useAppStore()
@@ -14,36 +16,43 @@ export default function Nouveau() {
   const [created, setCreated] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]   = useState('')
+  const [tried, setTried]   = useState(false)
+  const [formKey, setFormKey] = useState(0) // repart d'un champ vierge après une création
+  const formRef = useRef(null)
+
+  const nomErr = nom.trim() ? null : 'Indique le nom du spectateur.'
 
   const create = async () => {
-    if (!nom.trim()) return
+    if (nomErr) { setTried(true); focusFirstInvalid(formRef.current); return }
+    setTried(false)
     setLoading(true)
     setError('')
     try {
       const id = await createSpectateur(nom.trim(), solde, user?.nom || 'Billetterie', { moyen: solde > 0 ? moyen : null })
       setCreated({ id, nom: nom.trim(), solde: solde * 100 })
-      setNom(''); setSolde(0)
+      setNom(''); setSolde(0); setFormKey(k => k + 1)
     } catch (err) {
-      setError('Erreur : ' + err.message)
+      setError(friendlyError(err, "Le compte spectateur n'a pas été créé."))
     } finally {
       setLoading(false)
     }
   }
 
-  const inp = { width:'100%', padding:'8px 10px', border:'0.5px solid var(--border2)', borderRadius:8, fontSize:13, background:'var(--bg2)', color:'var(--text)', fontFamily:'var(--font)' }
   const card = { background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'14px 16px' }
 
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:12 }}>
-      <div style={card}>
+      <div style={card} ref={formRef}>
         <div style={{ fontSize:13, fontWeight:600, marginBottom:12, color:'var(--text)' }}>Créer un compte spectateur</div>
         <div style={{ marginBottom:10 }}>
-          <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Nom complet</label>
-          <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Prénom Nom" style={inp} />
+          <Field key={formKey} label="Nom complet" error={nomErr} valid={!nomErr} showError={tried}>
+            <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Prénom Nom" />
+          </Field>
         </div>
         <div style={{ marginBottom:10 }}>
-          <label style={{ fontSize:12, color:'var(--muted)', display:'block', marginBottom:4 }}>Solde initial (€)</label>
-          <input type="number" value={solde} onChange={e => setSolde(parseInt(e.target.value)||0)} style={inp} />
+          <Field label="Solde initial (€)">
+            <input type="number" value={solde} onChange={e => setSolde(parseInt(e.target.value)||0)} />
+          </Field>
         </div>
         <div style={{ display:'flex', gap:6, marginBottom:12 }}>
           {[0,20,50,100].map(v => (

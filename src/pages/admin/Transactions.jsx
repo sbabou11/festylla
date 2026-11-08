@@ -8,6 +8,7 @@ import clsx from 'clsx'
 import useAppStore from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt } from '../../utils/helpers'
+import { friendlyError } from '../../utils/errors'
 import { Trash2, Receipt } from 'lucide-react'
 import { db } from '../../firebase/config'
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore'
@@ -20,9 +21,9 @@ const TYPE_TONE  = { credit: 'brand', debit: 'danger', reservation: 'warning', a
 // Types affichés sans signe (ni + ni −)
 const NO_SIGN = ['reservation','benev-reservation','annulation','benev-annulation','benev-retrait','artist-gift']
 
-export default function Transactions() {
+export default function Transactions({ onNavigate }) {
   const { logs, spectateurs } = useAppStore()
-  const { user }              = useAuthStore()
+  const { user, canAccessPage } = useAuthStore()
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
   const { currentEventId } = useEventStore()
 
@@ -44,14 +45,24 @@ export default function Transactions() {
       // Chercher par label + date (identifiants uniques fiables)
       const q = query(txCollection, where('label', '==', tx.label), where('date', '==', tx.date))
       const snap = await getDocs(q)
-      if (snap.empty) throw new Error('Transaction introuvable dans Firestore')
+      if (snap.empty) throw new Error('Cette transaction a déjà été supprimée.')
       for (const d of snap.docs) await deleteDoc(d.ref)
       toast.success('Transaction supprimée')
-    } catch (e) { toast.error('Suppression impossible : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, "La transaction n'a pas été supprimée."), { action: { label: 'Réessayer', onClick: () => handleDelete(tx) } })
+    }
     finally { setDeleting(null) }
   }
 
-  if (!allTx.length) return <Empty icon={Receipt} title="Aucune transaction enregistrée">Les recharges, achats et réservations apparaîtront ici.</Empty>
+  if (!allTx.length) {
+    const start = canAccessPage('credit') ? ['credit', 'Créditer un compte'] : canAccessPage('debit') ? ['debit', 'Encaisser une vente'] : null
+    return (
+      <Empty icon={Receipt} title="Aucune transaction pour l'instant"
+        action={start && <Button variant="secondary" onClick={() => onNavigate(start[0])}>{start[1]}</Button>}>
+        Les recharges, achats et réservations apparaîtront ici.
+      </Empty>
+    )
+  }
 
   const sign = (t) => t.type === 'credit' ? '+' : NO_SIGN.includes(t.type) ? '' : '−'
 

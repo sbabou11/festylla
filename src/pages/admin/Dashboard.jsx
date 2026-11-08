@@ -10,11 +10,11 @@ import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
 import { computeKPIs } from '../../utils/kpis'
-import { dayStats, hourlyFlow, topSellers, dashboardAlerts, txTime } from '../../utils/dashboardData'
+import { dayStats, hourlyFlow, topSellers, dashboardAlerts, txTime, dayStart } from '../../utils/dashboardData'
 import { stockForecast } from '../../utils/analyticsData'
 import { Stat, Card, Tabs, Button, Empty, Dialog, AnimatedNumber, toast } from '../../ui'
 import FlowChart  from './dashboard/FlowChart'
-import GoalRing   from './dashboard/GoalRing'
+import GoalRing, { useGoalParty } from './dashboard/GoalRing'
 import ResaKanban from './dashboard/ResaKanban'
 import s from './dashboard/Dashboard.module.css'
 
@@ -76,6 +76,7 @@ export default function Dashboard({ onNavigate, view }) {
     .slice(0, 7), [allTx])
 
   const vsYesterday = day.hasYesterday ? 'vs hier même heure' : null
+  const party = useGoalParty(goal > 0 && day.revenue >= goal, currentEventId ? `${currentEventId}-${dayStart(now)}` : null)
 
   return (
     <div className={s.page}>
@@ -129,14 +130,17 @@ export default function Dashboard({ onNavigate, view }) {
           <Card title="Objectif du jour"
             actions={canEditGoal && goal > 0 && <Button size="sm" variant="ghost" onClick={() => setGoalOpen(true)}>Modifier</Button>}>
             {goal > 0 ? (
+              <>
               <div className={s.goal}>
-                <GoalRing revenue={day.revenue} projected={day.projected} goal={goal} />
+                <GoalRing revenue={day.revenue} projected={day.projected} goal={goal} party={party} />
                 <dl className={s.goalFacts}>
                   <div><dt>Encaissé</dt><dd>{fmt(day.revenue)} <span>sur {fmt(goal)}</span></dd></div>
                   <div><dt>Projeté à {day.closingLabel}</dt><dd className={s.proj}>≈ {fmt(day.projected)}</dd></div>
                   {best && <div><dt>Meilleure caisse</dt><dd>{best.staff} <span>· {fmt(best.total)}</span></dd></div>}
                 </dl>
               </div>
+              {party && <p className={s.goalWin} role="status">Objectif du jour atteint · {fmt(goal)}</p>}
+              </>
             ) : (
               <Empty icon={Target} title="Aucun objectif fixé"
                 action={canEditGoal && <Button size="sm" onClick={() => setGoalOpen(true)}>Fixer un objectif</Button>}>
@@ -241,7 +245,7 @@ function GoalDialog({ open, onClose, initial, onSave }) {
     <Dialog open={open} onClose={onClose} title="Objectif de recettes par jour"
       footer={<>
         <Button variant="secondary" onClick={onClose}>Annuler</Button>
-        <Button type="submit" form="goal-form" loading={saving} disabled={!valid}>Enregistrer</Button>
+        <Button type="submit" form="goal-form" loading={saving}>Enregistrer</Button>
       </>}>
       <form id="goal-form" onSubmit={submit} className={s.goalForm}>
         <label htmlFor="goal-input">Montant visé pour une journée (6h–6h), en euros</label>

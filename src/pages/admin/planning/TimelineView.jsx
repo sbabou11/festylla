@@ -5,10 +5,9 @@
 import React from 'react'
 import clsx from 'clsx'
 import { Calendar } from 'lucide-react'
-import { Empty } from '../../../ui'
 import s from './planning.module.css'
 
-export default function TimelineView({ planning, conflicts, onEdit, onUpdateDebut }) {
+export default function TimelineView({ planning, conflicts, onEdit, onUpdateDebut, empty }) {
   // Couleurs de type : données, transmises au CSS par --c
   const TYPES = {
     musical:           { icon: '🎵', color: '#1a6b7a' },
@@ -136,7 +135,7 @@ export default function TimelineView({ planning, conflicts, onEdit, onUpdateDebu
   const dayKeys = Object.keys(byDay).sort()
 
   if (dayKeys.length === 0) {
-    return <Empty icon={Calendar} title="Aucun créneau à afficher dans la frise" />
+    return empty
   }
 
   return (

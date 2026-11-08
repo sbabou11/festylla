@@ -3,19 +3,20 @@
  * Équipe (membres, mots de passe, événements accessibles) + rôles personnalisés
  * Design system : composants ui/ + staff/staff.module.css
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
 import useAuthStore, { genUsername } from '../../store/useAuthStore'
 import useEventStore from '../../store/useEventStore'
 import { addAuditLog } from '../../firebase/service'
+import { friendlyError } from '../../utils/errors'
 import { db } from '../../firebase/config'
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore'
 import {
   Trash2, KeyRound, ShieldCheck, Plus, Pencil,
-  X, Save, User, Lock, Eye, EyeOff, MailQuestion, Check, Tags,
+  X, Save, Lock, Eye, EyeOff, MailQuestion, Check, Tags,
 } from 'lucide-react'
-import { Button, Card, Badge, Tabs, Empty, Dialog, Sheet, PasswordStrength, toast } from '../../ui'
+import { Button, Card, Badge, Tabs, Empty, Dialog, Sheet, PasswordStrength, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './staff/staff.module.css'
 
 // ── Pages assignables ──────────────────────────────────────────────
@@ -131,22 +132,30 @@ export default function Staff() {
   const [memberForm, setMemberForm] = useState(null) // null | { nom, email, role, couleur, _docId? }
   const [showPwd, setShowPwd]       = useState(false)
   const [savingMember, setSavingMember] = useState(false)
+  const [memberTried, setMemberTried]   = useState(false)
+  const memberFormRef = useRef(null)
 
   // ── Rôles ──────────────────────────────────────────────────────────
   const [editingRole, setEditingRole] = useState(null)
   const [roleForm, setRoleForm]       = useState({ nom:'', couleur:ROLE_COLORS[0].hex, pages:[], permissions:{} })
   const [savingRole, setSavingRole]   = useState(false)
+  const [roleTried, setRoleTried]     = useState(false)
+  const roleFormRef = useRef(null)
 
   // ── Confirmations et saisie du nouveau mot de passe (remplacent confirm/prompt) ──
   const [pending, setPending]     = useState(null) // { title, message, label, run }
   const [confirming, setConfirming] = useState(false)
   const [pwdTarget, setPwdTarget] = useState(null) // membre dont on change le mot de passe
   const [pwdValue, setPwdValue]   = useState('')
+  const [pwdTried, setPwdTried]   = useState(false)
+  const pwdFormRef = useRef(null)
 
   // ── Demandes de réinitialisation de mot de passe ───────────────────
   const [pwdRequests, setPwdRequests] = useState([])
   const [resolvingRequest, setResolvingRequest] = useState(null) // { id, identifier, ... }
   const [newPwdValue, setNewPwdValue] = useState('')
+  const [reqTried, setReqTried] = useState(false)
+  const reqFormRef = useRef(null)
   useEffect(() => {
     if (!isSuperAdmin && user?.role !== 'admin') return
     const q = query(collection(db, 'password-reset-requests'), where('status', '==', 'pending'))
@@ -165,12 +174,11 @@ export default function Staff() {
   const roleInfo = (id) => allRoles.find(r => r.id === id) || { nom:id, couleur:'#888' }
 
   // ── Handlers membre ───────────────────────────────────────────────
-  const openNewMember = () => setMemberForm({ nom:'', username:'', role:'stand', couleur:'#1a6b7a', pwd:'', eventIds:[] })
-  const openEditMember = (s) => setMemberForm({ ...s, email: undefined, pwd:'', username: s.username || genUsername(s.nom), eventIds: s.eventIds || [] })
+  const openNewMember = () => { setMemberTried(false); setMemberForm({ nom:'', username:'', role:'stand', couleur:'#1a6b7a', pwd:'', eventIds:[] }) }
+  const openEditMember = (s) => { setMemberTried(false); setMemberForm({ ...s, email: undefined, pwd:'', username: s.username || genUsername(s.nom), eventIds: s.eventIds || [] }) }
 
   const saveMember = async () => {
-    if (!memberForm.nom.trim()) { toast.error('Le nom est requis'); return }
-    if (!memberForm.username?.trim() && !memberForm.nom.trim()) { toast.error('Le nom est requis'); return }
+    if (!memberForm.nom.trim()) { setMemberTried(true); focusFirstInvalid(memberFormRef.current); return }
     setSavingMember(true)
     try {
       const docId = memberForm._docId || memberForm.id
@@ -212,7 +220,9 @@ export default function Staff() {
         await addAuditLog('CREATION_STAFF', { staffNom: memberForm.nom.trim(), role: memberForm.role, username: autoUsername, userType: 'admin', label: `Création staff : ${memberForm.nom.trim()} (${memberForm.role})` })
       }
       setMemberForm(null)
-    } catch (e) { toast.error('Erreur : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, "Le membre n'a pas été enregistré."), { action: { label: 'Réessayer', onClick: () => saveMember() } })
+    }
     finally { setSavingMember(false) }
   }
 
@@ -235,12 +245,12 @@ export default function Staff() {
     },
   })
 
-  const handleResetPwd = (s) => { setPwdTarget(s); setPwdValue('') }
+  const handleResetPwd = (s) => { setPwdTried(false); setPwdTarget(s); setPwdValue('') }
   const submitResetPwd = async () => {
     const s = pwdTarget
     const pwd = pwdValue
     if (!s) return
-    if (!pwd || pwd.length < 6) { toast.error('Mot de passe trop court'); return }
+    if (!pwd || pwd.length < 6) { setPwdTried(true); focusFirstInvalid(pwdFormRef.current); return }
     setPwdTarget(null)
     setPwdValue('')
     const ok = await resetStaffPassword(s.id, pwd, currentEventId)
@@ -263,15 +273,17 @@ export default function Staff() {
   // ── Handlers rôle ─────────────────────────────────────────────────
   const openNewRole = () => {
     setRoleForm({ nom:'', couleur:ROLE_COLORS[0].hex, pages:['mon-profil'], permissions:{} })
+    setRoleTried(false)
     setEditingRole('new')
   }
   const openEditRole = (r) => {
     setRoleForm({ nom:r.nom, couleur:r.couleur, pages:r.pages||[], permissions:r.permissions||{} })
+    setRoleTried(false)
     setEditingRole(r.id)
   }
 
   const saveRole = async () => {
-    if (!roleForm.nom.trim()) { toast.error('Nom requis'); return }
+    if (!roleForm.nom.trim()) { setRoleTried(true); focusFirstInvalid(roleFormRef.current); return }
     setSavingRole(true)
     const data = {
       nom:         roleForm.nom.trim(),
@@ -287,7 +299,9 @@ export default function Staff() {
         await updateRole(editingRole, data)
       }
       setEditingRole(null)
-    } catch (e) { toast.error('Erreur : ' + e.message) }
+    } catch (e) {
+      toast.error(friendlyError(e, "Le rôle n'a pas été enregistré."), { action: { label: 'Réessayer', onClick: () => saveRole() } })
+    }
     finally { setSavingRole(false) }
   }
 
@@ -305,7 +319,8 @@ export default function Staff() {
 
   // Résoudre une demande : choisir un nouveau mdp et l'appliquer
   const handleResolveRequest = async () => {
-    if (!resolvingRequest || newPwdValue.length < 6) return
+    if (!resolvingRequest) return
+    if (newPwdValue.length < 6) { setReqTried(true); focusFirstInvalid(reqFormRef.current); return }
     const r = resolvingRequest
     if (r.staffId) {
       const ok = await resetStaffPassword(r.staffId, newPwdValue, r.eventId || null)
@@ -362,7 +377,7 @@ export default function Staff() {
                   </div>
                   <div className={s.reqActions}>
                     {r.staffId && (
-                      <Button size="sm" onClick={() => { setResolvingRequest(r); setNewPwdValue('') }}>
+                      <Button size="sm" onClick={() => { setReqTried(false); setResolvingRequest(r); setNewPwdValue('') }}>
                         Réinitialiser
                       </Button>
                     )}
@@ -382,18 +397,20 @@ export default function Staff() {
         footer={
           <div className={s.sheetFoot}>
             <Button variant="secondary" onClick={() => setResolvingRequest(null)}>Annuler</Button>
-            <Button icon={Check} onClick={handleResolveRequest} disabled={newPwdValue.length < 6}>Appliquer</Button>
+            <Button icon={Check} onClick={handleResolveRequest}>Appliquer</Button>
           </div>
         }>
         {resolvingRequest && (
-          <div className={s.form}>
+          <div ref={reqFormRef} className={s.form}>
             <p className={s.muted}>
               Pour <strong>{resolvingRequest.staffNom || resolvingRequest.identifier}</strong>
             </p>
             <div className={s.field}>
-              <label className={s.label} htmlFor="staff-req-pwd">Nouveau mot de passe</label>
-              <input id="staff-req-pwd" className={s.input} type="text" value={newPwdValue}
-                onChange={e => setNewPwdValue(e.target.value)} autoFocus placeholder="Minimum 6 caractères"/>
+              <Field label={<span className={s.label}>Nouveau mot de passe</span>}
+                error={newPwdValue.length >= 6 ? null : 'Choisis un mot de passe de 6 caractères minimum'} valid={newPwdValue.length >= 6} showError={reqTried}>
+                <input id="staff-req-pwd" type="text" value={newPwdValue}
+                  onChange={e => setNewPwdValue(e.target.value)} autoFocus placeholder="Minimum 6 caractères"/>
+              </Field>
               <PasswordStrength value={newPwdValue}/>
             </div>
             <p className={s.hint}>
@@ -493,16 +510,13 @@ export default function Staff() {
           </div>
         }>
         {memberForm && (
-          <div className={s.form}>
+          <div ref={memberFormRef} className={s.form}>
             {/* Nom */}
-            <div className={s.field}>
-              <label className={s.label} htmlFor="staff-nom">Nom complet</label>
-              <div className={s.inputWrap}>
-                <User size={16} className={s.inputIcon} aria-hidden="true"/>
-                <input id="staff-nom" className={clsx(s.input, s.withIcon)} value={memberForm.nom}
-                  onChange={e => setMemberForm(f => ({...f, nom:e.target.value}))} placeholder="Prénom Nom"/>
-              </div>
-            </div>
+            <Field label={<span className={s.label}>Nom complet</span>}
+              error={memberForm.nom.trim() ? null : 'Indique le nom du membre'} valid={!!memberForm.nom.trim()} showError={memberTried}>
+              <input id="staff-nom" value={memberForm.nom}
+                onChange={e => setMemberForm(f => ({...f, nom:e.target.value}))} placeholder="Prénom Nom"/>
+            </Field>
 
             {/* Nom d'utilisateur */}
             <div className={s.field}>
@@ -631,13 +645,13 @@ export default function Staff() {
           {/* Formulaire rôle */}
           {editingRole !== null && (
             <Card className={s.formCard} title={editingRole==='new' ? 'Créer un rôle personnalisé' : 'Modifier le rôle'}>
-              <div className={s.form}>
+              <div ref={roleFormRef} className={s.form}>
                 {/* Nom */}
-                <div className={s.field}>
-                  <label className={s.label} htmlFor="role-nom">Nom du rôle</label>
-                  <input id="role-nom" className={s.input} value={roleForm.nom}
+                <Field label={<span className={s.label}>Nom du rôle</span>}
+                  error={roleForm.nom.trim() ? null : 'Indique un nom pour ce rôle'} valid={!!roleForm.nom.trim()} showError={roleTried}>
+                  <input id="role-nom" value={roleForm.nom}
                     onChange={e => setRoleForm(f=>({...f,nom:e.target.value}))} placeholder="ex : Sécurité, Photographe…"/>
-                </div>
+                </Field>
 
                 {/* Couleur */}
                 <ColorPicker colors={ROLE_COLORS} value={roleForm.couleur} onChange={c => setRoleForm(f=>({...f,couleur:c}))} label="Couleur du badge"/>
@@ -692,8 +706,9 @@ export default function Staff() {
 
           {/* Liste rôles personnalisés */}
           {(roles||[]).length === 0 && editingRole === null && (
-            <Empty icon={Tags} title="Aucun rôle personnalisé">
-              Cliquez sur « Nouveau rôle » pour en créer un.
+            <Empty icon={Tags} title="Aucun rôle personnalisé"
+              action={<Button icon={Plus} onClick={openNewRole}>Créer un rôle</Button>}>
+              Les rôles que tu crées, avec leurs pages et permissions, apparaîtront ici.
             </Empty>
           )}
           {(roles||[]).length > 0 && (
@@ -740,13 +755,15 @@ export default function Staff() {
           <Button icon={Check} onClick={submitResetPwd}>Appliquer</Button>
         </>}>
         {pwdTarget && (
-          <div className={s.form}>
+          <div ref={pwdFormRef} className={s.form}>
             <p className={s.muted}>Pour <strong>{pwdTarget.nom}</strong> (min. 6 caractères)</p>
             <div className={s.field}>
-              <label className={s.label} htmlFor="staff-reset-pwd">Nouveau mot de passe</label>
-              <input id="staff-reset-pwd" className={s.input} type="text" value={pwdValue} autoFocus
-                onChange={e => setPwdValue(e.target.value)} placeholder="Minimum 6 caractères"
-                onKeyDown={e => { if (e.key === 'Enter') submitResetPwd() }}/>
+              <Field label={<span className={s.label}>Nouveau mot de passe</span>}
+                error={pwdValue.length >= 6 ? null : 'Choisis un mot de passe de 6 caractères minimum'} valid={pwdValue.length >= 6} showError={pwdTried}>
+                <input id="staff-reset-pwd" type="text" value={pwdValue} autoFocus
+                  onChange={e => setPwdValue(e.target.value)} placeholder="Minimum 6 caractères"
+                  onKeyDown={e => { if (e.key === 'Enter') submitResetPwd() }}/>
+              </Field>
               <PasswordStrength value={pwdValue}/>
             </div>
           </div>

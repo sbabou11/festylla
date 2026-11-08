@@ -71,8 +71,10 @@
 .login { display: grid; gap: var(--space-3); padding: var(--space-6) 0; }
 .login h1 { font-family: var(--font-display); font-size: var(--fs-32); font-weight: 800; line-height: 1.1; text-wrap: balance; }
 .login p { color: var(--muted); }
-.loginRow { display: flex; gap: var(--space-2); }
-.codeInput {
+.loginRow { display: flex; align-items: flex-start; gap: var(--space-2); }
+.loginRow .codeField { flex: 1; }
+.loginRow p { color: var(--red-dark); } /* message d'erreur de ui/Field, sinon grisé par .login p */
+.loginRow .codeInput {
   flex: 1;
   min-width: 0;
   height: 52px;

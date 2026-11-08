@@ -72,6 +72,20 @@
   border-top: 1px solid var(--border);
 }
 
+/* Sortie : plus rapide que l'entrée */
+.closing { animation: fadeOut var(--dur-exit) ease-in forwards; pointer-events: none; }
+.closing .dialogPanel { animation: popOut var(--dur-exit) ease-in forwards; }
+.closing .right { animation: toRight var(--dur-exit) ease-in forwards; }
+.closing .left  { animation: toLeft var(--dur-exit) ease-in forwards; }
+@media (max-width: 640px) {
+  .closing .sheetPanel { animation: toBottom var(--dur-exit) ease-in forwards; }
+}
+
+@keyframes fadeOut  { to { opacity: 0; } }
+@keyframes popOut   { to { transform: scale(.97); opacity: 0; } }
+@keyframes toRight  { to { transform: translateX(100%); } }
+@keyframes toLeft   { to { transform: translateX(-100%); } }
+@keyframes toBottom { to { transform: translateY(100%); } }
 @keyframes fade      { from { opacity: 0; } }
 @keyframes pop       { from { transform: scale(.96); opacity: 0; } }
 @keyframes fromRight { from { transform: translateX(100%); } }
