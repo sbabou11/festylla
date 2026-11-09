@@ -10,8 +10,8 @@ import useAppStore  from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt }      from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
-import { Clock, ChefHat, CheckCircle, Package, XCircle, Trash2, ShoppingBag } from 'lucide-react'
-import { Button, Badge, Tabs, Empty, Dialog, HoldButton, Field, focusFirstInvalid } from '../../ui'
+import { Clock, ChefHat, CheckCircle, Package, XCircle, Trash2, ShoppingBag, Lock } from 'lucide-react'
+import { Button, Badge, Tabs, Empty, Dialog, HoldButton, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './reservations/reservations.module.css'
 
 const STATUTS = {
@@ -63,8 +63,13 @@ export default function Reservations({ onNavigate }) {
   const [sortBy,     setSortBy]     = useState('date_desc') // date_desc | date_asc | statut | montant_desc | montant_asc
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+  // Le rôle consultation est en lecture seule — il voit tout mais ne peut rien modifier.
+  // Note : la vraie sécurité passe par les règles Firestore côté serveur ;
+  // ceci n'est qu'une protection UI/UX cohérente.
+  const isReadOnly = user?.role === 'consultation'
 
   const canAct = (resa) => {
+    if (isReadOnly) return false
     if (isAdmin) return true
     if (resa.status === 'pending') return true
     return resa.assignedStaffId === user?.id
@@ -110,6 +115,13 @@ export default function Reservations({ onNavigate }) {
   }
 
   const doAnnuler = async () => {
+    // Garde-fou : le rôle consultation ne peut pas annuler (lecture seule).
+    // Protection client uniquement — la vraie sécurité passe par les règles Firestore.
+    if (isReadOnly) {
+      toast.error("Vous n'avez pas le droit de modifier les réservations.")
+      setAnnulModal(null)
+      return
+    }
     if (motifIdx === 2 && !motifTexte.trim()) { setMotifTried(true); focusFirstInvalid(motifRef.current); return }
     const motif = motifIdx === 2 ? (motifTexte.trim() || 'Autres') : MOTIFS[motifIdx]
     setLoading(annulModal); setErr('')
@@ -142,6 +154,14 @@ export default function Reservations({ onNavigate }) {
 
   return (
     <div className={s.page}>
+      {/* Bandeau "Lecture seule" pour le rôle consultation */}
+      {isReadOnly && (
+        <div className={s.readOnly} role="status">
+          <Lock size={14} aria-hidden="true"/>
+          <span><strong>Lecture seule.</strong> Vous pouvez consulter les réservations mais pas modifier leur statut.</span>
+        </div>
+      )}
+
       {/* Filtres + tri */}
       <div className={s.toolbar}>
         <Tabs
@@ -222,7 +242,8 @@ export default function Reservations({ onNavigate }) {
                 )}
               </div>
 
-              {/* Actions */}
+              {/* Actions — masquées pour le rôle consultation (lecture seule) */}
+              {!isReadOnly && (
               <div className={s.actions}>
                 {/* Pending → Prendre en charge ou Annuler */}
                 {resa.status === 'pending' && (
@@ -259,6 +280,7 @@ export default function Reservations({ onNavigate }) {
                     onClick={() => setPendingDel(resa)}>Supprimer</Button>
                 )}
               </div>
+              )}
             </article>
           )
         })}

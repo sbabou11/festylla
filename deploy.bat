@@ -29,6 +29,29 @@ if %errorlevel% equ 0 (
     exit /b 1
 )
 
+:: === 0. Nettoyage des anciens api/*.cjs obsoletes ===
+:: Les endpoints sont retournes en .js (avec api/package.json type:commonjs).
+:: S'ils trainent encore en local, ils pourraient confondre le routage Vercel.
+echo [0/5] Nettoyage anciens api/*.cjs obsoletes...
+echo [0/5] Cleanup api/*.cjs obsoletes >> %LOGFILE%
+set REMOVED=0
+for %%f in (audit cachets comptabilite process-reminders rapport send-push transactions) do (
+  if exist "api\%%f.cjs" (
+    del /q "api\%%f.cjs"
+    echo   Supprime: api\%%f.cjs >> %LOGFILE%
+    set /a REMOVED+=1
+  )
+)
+if %REMOVED% gtr 0 (
+  echo   %REMOVED% fichier(s) obsolete(s) supprime(s)
+  echo   Total supprime: %REMOVED% >> %LOGFILE%
+) else (
+  echo   Aucun fichier obsolete trouve ^(deja propre^)
+  echo   Rien a nettoyer >> %LOGFILE%
+)
+echo  OK
+echo  OK >> %LOGFILE%
+
 :: === 1. .env.local ===
 echo [1/5] Creation .env.local...
 echo [1/5] .env.local >> %LOGFILE%

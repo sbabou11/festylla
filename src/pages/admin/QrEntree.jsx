@@ -13,6 +13,7 @@ import clsx from 'clsx'
 import { Printer, Lightbulb } from 'lucide-react'
 import { Button, Card } from '../../ui'
 import s from './qrentree/qrentree.module.css'
+import { APP_FULL_LABEL } from '../../utils/buildInfo'
 
 // Carte d'un QR : la teinte (teal ou violet) vient de la classe tone
 const QrCard = ({ canvasRef, url, titre, description, tone, label, boutonLabel, onPrint }) => (
@@ -106,12 +107,6 @@ export default function QrEntree() {
           box-shadow: 0 4px 24px rgba(0,0,0,.08);
           max-width: 380px; width: 100%;
         }
-        .logo-wrap {
-          width: 48px; height: 48px; border-radius: 12px;
-          background: ${color}22; display: flex; align-items: center;
-          justify-content: center; margin-bottom: 12px;
-          font-size: 22px; font-weight: 800; color: ${color};
-        }
         h2 { color: ${color}; font-size: 18px; font-weight: 800; margin-bottom: 6px; text-align:center; }
         .desc { color: #64748b; font-size: 13px; margin-bottom: 20px; text-align:center; line-height:1.5; }
         img.qr { width: 260px; height: 260px; border-radius: 16px; margin-bottom: 16px; }
@@ -134,13 +129,12 @@ export default function QrEntree() {
       </style></head><body>
       ${evHeader}
       <div class="card">
-        <div class="logo-wrap">Y</div>
         <h2>${titre}</h2>
         <p class="desc">${desc}</p>
         <img class="qr" src="${imgSrc}" alt="QR Code"/>
         <code>${url}</code>
         <footer>
-          <div class="app">YllaCash v1.0 &nbsp;·&nbsp; 05/2026</div>
+          <div class="app">${APP_FULL_LABEL}</div>
           <div class="dev">Développée par <strong>Maison Ylla</strong></div>
           <div class="tagline">"Toute la gestion financière de votre événement en un seul endroit, et bien plus encore"</div>
         </footer>

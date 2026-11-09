@@ -8,14 +8,35 @@ import useEventStore from '../store/useEventStore'
 import { fmt } from '../utils/helpers'
 import { computeKPIs } from '../utils/kpis'
 import { loadAllTransactions, exportBody } from '../utils/fullTransactions'
+import { APP_VERSION_LABEL } from '../utils/buildInfo'
+import { collection, getDocs } from 'firebase/firestore'
+import { db } from '../firebase/config'
 
 export function useExport() {
-  const { spectateurs, reservations, menu, logs, staff } = useAppStore()
+  const { spectateurs, reservations, menu, logs, staff, expositions } = useAppStore()
   const { theme } = useTheme()
   const { currentEvent: currentEventFn, currentEventId } = useEventStore()
-  // Utiliser le getter du store pour éviter les race conditions au chargement
   const currentEvent = (typeof currentEventFn === 'function' ? currentEventFn() : currentEventFn)
                     || { nom: 'Événement', id: currentEventId }
+
+  /**
+   * Charge TOUTES les transactions de l'événement depuis Firestore.
+   * Le store (logs) est plafonné à 5000 pour les perfs temps réel, ce qui
+   * peut tronquer les exports comptables qui doivent être exhaustifs.
+   * Lecture SANS orderBy pour ne JAMAIS exclure de documents (un orderBy
+   * exclut silencieusement les documents où le champ n'existe pas).
+   * En cas d'erreur, on retombe sur le store comme filet de sécurité.
+   */
+  const fetchAllTransactions = async () => {
+    if (!currentEventId) return logs || []
+    try {
+      const snap = await getDocs(collection(db, 'events', currentEventId, 'transactions'))
+      return snap.docs.map(d => ({ ...d.data(), id: d.id }))
+    } catch (e) {
+      console.warn('fetchAllTransactions:', e.message)
+      return logs || []
+    }
+  }
 
   const dateStr = () => new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-')
   const nowStr  = () => new Date().toLocaleString('fr-FR')
@@ -83,6 +104,7 @@ export function useExport() {
   // ── Export Transactions XLSX ─────────────────────────────────────────────
   const exportTransactionsCsv = async () => {
     if (!currentEvent || !currentEventId) { alert('Aucun événement sélectionné.'); return }
+
     try {
       // Toutes les transactions de l'événement, pas seulement les 500 de la liste en direct
       const transactions = await loadAllTransactions(currentEventId, logs)
@@ -92,12 +114,20 @@ export function useExport() {
         headers: { 'Content-Type': 'application/json' },
         body: exportBody({
           event:        { nom: currentEvent.nom, couleur: theme?.brand || '#1a6b7a' },
+          appVersion:   APP_VERSION_LABEL,
           spectateurs:  spectateurs,
           transactions,
           staff:        staff,
         }),
       })
-      if (!resp.ok) throw new Error('Erreur serveur ' + resp.status)
+      if (!resp.ok) {
+        let serverMsg = ''
+        try {
+          const errBody = await resp.json()
+          serverMsg = errBody?.error || errBody?.message || ''
+        } catch {}
+        throw new Error('Erreur serveur ' + resp.status + (serverMsg ? ' — ' + serverMsg : ''))
+      }
       const blob = await resp.blob()
       const url  = URL.createObjectURL(blob)
       const a    = Object.assign(document.createElement('a'), {
@@ -133,6 +163,7 @@ export function useExport() {
         headers: { 'Content-Type': 'application/json' },
         body: exportBody({
           event:        { nom: currentEvent.nom, couleur: theme?.brand || '#1a6b7a' },
+          appVersion:   APP_VERSION_LABEL,
           spectateurs:  spectateurs,
           transactions,
           // Marque le rapport comme complet : l'Event Manager refuse un rapport de 500 transactions sans cette mention
@@ -141,6 +172,7 @@ export function useExport() {
           menu:         menu,
           staff:        staff,
           audit:        auditData,
+          expositions:  expositions || [],
           kpis: {
             totalCredits:   kpis.totalCredits,
             totalVentes:    kpis.totalVentes,
@@ -155,7 +187,14 @@ export function useExport() {
           },
         }),
       })
-      if (!resp.ok) throw new Error('Erreur serveur ' + resp.status)
+      if (!resp.ok) {
+        let serverMsg = ''
+        try {
+          const errBody = await resp.json()
+          serverMsg = errBody?.error || errBody?.message || ''
+        } catch {}
+        throw new Error('Erreur serveur ' + resp.status + (serverMsg ? ' — ' + serverMsg : ''))
+      }
       const blob = await resp.blob()
       const url  = URL.createObjectURL(blob)
       const a    = Object.assign(document.createElement('a'), {
@@ -234,10 +273,18 @@ export function useExport() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event: { nom: currentEvent.nom, couleur: theme?.brand || '#1a6b7a' },
+          appVersion: APP_VERSION_LABEL,
           audit: auditData,
         }),
       })
-      if (!resp.ok) throw new Error('Erreur serveur ' + resp.status)
+      if (!resp.ok) {
+        let serverMsg = ''
+        try {
+          const errBody = await resp.json()
+          serverMsg = errBody?.error || errBody?.message || ''
+        } catch {}
+        throw new Error('Erreur serveur ' + resp.status + (serverMsg ? ' — ' + serverMsg : ''))
+      }
       const blob = await resp.blob()
       const url  = URL.createObjectURL(blob)
       const a    = Object.assign(document.createElement('a'), {

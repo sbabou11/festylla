@@ -3,37 +3,69 @@
  * Super admin : paramètres + exports + réinitialisation complète événement
  */
 import React, { useRef, useState } from 'react'
-import { Download, FileSpreadsheet, Wand2, Save, AlertTriangle, ShieldAlert, Eye, EyeOff, FileText, Check, RefreshCw } from 'lucide-react'
+import { Download, FileSpreadsheet, Wand2, Save, AlertTriangle, ShieldAlert, Eye, EyeOff, Check, RefreshCw } from 'lucide-react'
+import clsx from 'clsx'
+import DiagnosticTransactions from '../../components/DiagnosticTransactions'
+import FacturationSettings from './settings/FacturationSettings'
+import RapportCloture from './settings/RapportCloture'
 import { useExport }             from '../../hooks/useExport'
 import { migrerVersV2 }          from '../../utils/migrationV2'
 import { migrerVersEvenement }   from '../../utils/migrationRacineVersEvent'
 import { friendlyError }         from '../../utils/errors'
 import useEventStore             from '../../store/useEventStore'
-import { useRapportCloture } from '../../hooks/useRapportCloture'
 import useAppStore   from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
+import PushDiagnostic from '../../components/PushDiagnostic'
+import UpdateDiagnostic from '../../components/UpdateDiagnostic'
 import { db } from '../../firebase/config'
 import {
   collection, getDocs, deleteDoc, doc,
   writeBatch, addDoc, serverTimestamp,
 } from 'firebase/firestore'
-import { Button, Card, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
+import { Button, Card, Dialog, Field, focusFirstInvalid } from '../../ui'
 import s from './settings/settings.module.css'
 
 // ── Réinitialisation complète Firebase ──────────────────────────────────────
-// Collections dans events/{id} vs racine
+// Toutes les collections dans events/{id} qui peuvent être réinitialisées
+// Le champ `group` permet de regrouper visuellement dans l'UI
 const EVENT_COLS = {
-  spectateurs:   { label: 'Comptes spectateurs & soldes', racine: false },
-  transactions:  { label: 'Transactions',                  racine: false },
-  reservations:  { label: 'Réservations',                  racine: false },
-  menu:          { label: 'Carte & menu',                  racine: false },
-  benevoles:     { label: 'Bénévoles',                     racine: false },
-  notifications: { label: 'Notifications',                 racine: false },
-  audit:         { label: "Journal d'audit",               racine: false },
-  staff:         { label: 'Équipe / Staff',                racine: false, withRoot: true },
-  categories:    { label: 'Catégories menu',               racine: false, withRoot: true },
-  roles:         { label: 'Rôles utilisateurs',            racine: false },
-  settings:      { label: 'Paramètres événement',          racine: false, settingsDoc: true },
+  // Argent & opérations
+  spectateurs:    { label: 'Comptes spectateurs & soldes', group: 'argent',  racine: false },
+  transactions:   { label: 'Transactions financières',     group: 'argent',  racine: false },
+  reservations:   { label: 'Réservations spectateurs',     group: 'argent',  racine: false },
+  cachets:        { label: 'Cachets artistes & décharges', group: 'argent',  racine: false },
+  // Programmation
+  planning:       { label: "Créneaux du planning (artistes)", group: 'progra', racine: false },
+  'artist-consumptions': { label: 'Consommations artistes (droits)', group: 'progra', racine: false },
+  'artist-reservations': { label: 'Réservations artistes',          group: 'progra', racine: false },
+  'scheduled-reminders': { label: 'Rappels planifiés (balance/prestation)', group: 'progra', racine: false },
+  // Bénévoles
+  benevoles:      { label: 'Bénévoles (comptes)',           group: 'beneve',  racine: false },
+  'volunteer-posts':  { label: 'Postes de bénévoles',       group: 'beneve',  racine: false },
+  'volunteer-shifts': { label: 'Créneaux & affectations bénévoles', group: 'beneve', racine: false },
+  // Catalogue
+  menu:           { label: 'Carte & menu',                  group: 'cat', racine: false },
+  categories:     { label: 'Catégories de menu',            group: 'cat', racine: false, withRoot: true },
+  // Communication
+  notifications:  { label: 'Notifications',                 group: 'comm', racine: false },
+  'team-chat':    { label: 'Messages chat équipe',          group: 'comm', racine: false },
+  'team-chat-typing': { label: 'Indicateurs "est en train d\'écrire"', group: 'comm', racine: false },
+  'walkie-chunks':{ label: 'Talkie-walkie (extraits audio)',group: 'comm', racine: false },
+  // Administration
+  staff:          { label: 'Équipe / staff (comptes)',      group: 'admin', racine: false, withRoot: true },
+  roles:          { label: 'Rôles personnalisés',           group: 'admin', racine: false },
+  audit:          { label: "Journal d'audit",               group: 'admin', racine: false },
+  settings:       { label: "Paramètres et thème de l'événement", group: 'admin', racine: false, settingsDoc: true },
+}
+
+// Libellés des groupes (affichage seulement)
+const EVENT_COL_GROUPS = {
+  argent: { label: '💳 Argent & opérations', desc: 'Soldes, achats, réservations' },
+  progra: { label: '🎤 Programmation',        desc: 'Créneaux artistes et leurs droits' },
+  beneve: { label: '🦺 Bénévoles',            desc: 'Comptes, postes, planning' },
+  cat:    { label: '🍔 Catalogue',            desc: 'Carte et catégories' },
+  comm:   { label: '💬 Communication',        desc: 'Notifications, chat, walkie' },
+  admin:  { label: '🔧 Administration',       desc: 'Équipe, rôles, audit, paramètres' },
 }
 
 async function resetEventData(eventId, toDelete = []) {
@@ -86,13 +118,11 @@ async function resetEventData(eventId, toDelete = []) {
   }
 }
 
-export default function Settings() {
+export default function Settings({ onNavigate }) {
   const { theme, updateTheme } = useAppStore()
   const { user, verifyOwnPassword } = useAuthStore()
   const { currentEventId }     = useEventStore()
   const { exportTransactionsCsv, exportRapportExcel, exportAuditCsv } = useExport()
-  const { generer: genererRapportCloture } = useRapportCloture()
-  const [generatingPdf, setGeneratingPdf] = useState(false)
   const [migratingV2,   setMigratingV2]   = useState(false)
   const [migrV2Log,     setMigrV2Log]     = useState([])
   const [migrV2Done,    setMigrV2Done]    = useState(false)
@@ -165,18 +195,17 @@ export default function Settings() {
     finally { setMigratingV2(false) }
   }
 
-  const handlePdf = async () => {
-    setGeneratingPdf(true)
-    try { await genererRapportCloture() }
-    catch (e) { toast.error(friendlyError(e, "Le rapport de clôture n'a pas été généré."), { action: { label: 'Réessayer', onClick: () => handlePdf() } }) }
-    finally { setGeneratingPdf(false) }
-  }
-
   const title = (Icon, label) => <span className={s.cardTitle}><Icon size={16}/>{label}</span>
   const running = resetStep === 'running'
 
   return (
-    <div className={s.page}>
+    <div className={clsx(s.page, 'yc-settings-grid')}>
+
+      {/* Diagnostic notifications push */}
+      <PushDiagnostic/>
+
+      {/* Diagnostic mises à jour de l'app */}
+      <UpdateDiagnostic/>
 
       {/* Paramètres généraux */}
       <Card title={title(Save, 'Paramètres généraux')}>
@@ -201,6 +230,9 @@ export default function Settings() {
         </div>
       </Card>
 
+      {/* Exposants et facturation (thématiques, organisateur, identité, TVA, templates) */}
+      <FacturationSettings currentEventId={currentEventId} onNavigate={onNavigate}/>
+
       {/* Exports */}
       <Card title={title(Download, 'Export des données')} subtitle="Générés côté client — aucun serveur requis.">
         <div className={s.actions}>
@@ -214,6 +246,11 @@ export default function Settings() {
             {exporting === 'audit' ? 'Génération…' : "Journal d’audit (XLSX)"}
           </Button>
         </div>
+      </Card>
+
+      {/* Outil de diagnostic transactions */}
+      <Card>
+        <DiagnosticTransactions/>
       </Card>
 
       {/* Studio */}
@@ -249,21 +286,10 @@ export default function Settings() {
       )}
 
       {/* ── RAPPORT DE CLÔTURE ── */}
-      <Card className={s.brandCard} title={title(FileText, 'Rapport de clôture PDF')}>
-        <div className={s.stack}>
-          <p className={s.text}>
-            Génère un rapport PDF complet de l'événement : récapitulatif financier, réconciliation comptable, top articles, statistiques par stand, toutes les transactions, spectateurs & soldes restants, réservations et journal d'audit complet.
-          </p>
-          <div className={s.actions}>
-            <Button icon={FileText} onClick={handlePdf} loading={generatingPdf}>
-              {generatingPdf ? 'Génération en cours… (quelques secondes)' : 'Générer le rapport de clôture (PDF)'}
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <RapportCloture currentEventId={currentEventId}/>
 
       {/* ── ZONE DANGER — Réinitialisation événement ── */}
-      <Card className={s.dangerCard} title={title(ShieldAlert, 'Zone dangereuse — Réinitialisation')}>
+      <Card className={clsx(s.dangerCard, 'yc-settings-wide')} title={title(ShieldAlert, 'Zone dangereuse — Réinitialisation')}>
         <div className={s.stack}>
           <p className={s.text}>
             Supprime définitivement toutes les transactions, réservations et comptes spectateurs. Action irréversible.
@@ -328,20 +354,52 @@ export default function Settings() {
           <div ref={resetFormRef} className={s.stack}>
             <div className={s.field}>
               <span className={s.label}>Éléments à supprimer</span>
+              <div className={s.actions}>
+                <Button variant="secondary" size="sm" onClick={() => setToDelete(Object.keys(EVENT_COLS))}>Tout sélectionner</Button>
+                <Button variant="ghost" size="sm" onClick={() => setToDelete([])}>Désélectionner</Button>
+              </div>
               <div className={s.checks}>
-                {Object.entries(EVENT_COLS).map(([key, cfg]) => (
-                  <label key={key} className={s.check} htmlFor={`del-${key}`}>
-                    <input
-                      type="checkbox"
-                      id={`del-${key}`}
-                      checked={toDelete.includes(key)}
-                      onChange={e => setToDelete(prev =>
-                        e.target.checked ? [...prev, key] : prev.filter(k => k !== key)
-                      )}
-                    />
-                    {cfg.label}
-                  </label>
-                ))}
+                {Object.entries(EVENT_COL_GROUPS).map(([gKey, group]) => {
+                  const inGroup = Object.entries(EVENT_COLS).filter(([, c]) => c.group === gKey).map(([k]) => k)
+                  const allSelected = inGroup.length > 0 && inGroup.every(k => toDelete.includes(k))
+                  const someSelected = inGroup.some(k => toDelete.includes(k))
+                  return (
+                    <div key={gKey} className={s.checkGroup}>
+                      {/* En-tête du groupe : tout cocher / décocher */}
+                      <label className={s.check} htmlFor={`grp-${gKey}`}>
+                        <input
+                          type="checkbox"
+                          id={`grp-${gKey}`}
+                          checked={allSelected}
+                          ref={el => { if (el) el.indeterminate = someSelected && !allSelected }}
+                          onChange={e => setToDelete(prev => {
+                            const without = prev.filter(k => !inGroup.includes(k))
+                            return e.target.checked ? [...without, ...inGroup] : without
+                          })}
+                        />
+                        <span>
+                          <span className={s.groupName}>{group.label}</span>
+                          <span className={s.groupDesc}>{group.desc}</span>
+                        </span>
+                      </label>
+                      <div className={s.groupItems}>
+                        {inGroup.map(key => (
+                          <label key={key} className={s.check} htmlFor={`del-${key}`}>
+                            <input
+                              type="checkbox"
+                              id={`del-${key}`}
+                              checked={toDelete.includes(key)}
+                              onChange={e => setToDelete(prev =>
+                                e.target.checked ? [...prev, key] : prev.filter(k => k !== key)
+                              )}
+                            />
+                            {EVENT_COLS[key].label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
             {toDelete.length > 0 && (

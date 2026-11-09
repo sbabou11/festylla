@@ -16,7 +16,10 @@ import {
   serverTimestamp, increment,
 } from 'firebase/firestore'
 import { nowStr, makeResaCode } from '../../utils/helpers'
-import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleToPost, pointerArrivee } from '../../firebase/service'
+import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleToPost, pointerArrivee, getNextCommandeNumero } from '../../firebase/service'
+import { APP_VERSION_LABEL, APP_FULL_LABEL } from '../../utils/buildInfo'
+import CheckUpdateButton from '../../components/CheckUpdateButton'
+import PageTransition from '../../components/PageTransition'
 import { hashPassword } from '../../utils/kpis'
 import { friendlyError } from '../../utils/errors'
 import {
@@ -354,7 +357,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       const total = itemsWithPrice.reduce((acc, i) => acc + (i.prix * i.qty), 0)
 
       if (demo) {
-        setResas(rs => [{ id: 'd' + Date.now(), code, items: itemsWithPrice, total, status: 'pending', date: nowStr() }, ...rs])
+        setResas(rs => [{ id: 'd' + Date.now(), code, items: itemsWithPrice, total, status: 'processing', date: nowStr() }, ...rs])
         setBenev(b => {
           const conso = { ...(b.consommation || {}) }
           Object.entries(grouped).forEach(([t, q]) => { conso[t] = (conso[t] || 0) + q })
@@ -365,16 +368,26 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         return
       }
 
+      // Numéro séquentiel partagé avec les commandes et résas spectateurs (Lot 1 Cuisine unifiée).
+      // Permet à la cuisine d'afficher #42 plutôt que le code interne BNV-XXXX.
+      const numero = await getNextCommandeNumero(eventId)
+
       await addDoc(resaCol(), {
         benevoleId:  docId,
         benevoleNom: benev.nom + ' ' + benev.prenom,
         items:  itemsWithPrice,
         total,
-        status: 'pending',
-        code,
+        // Status 'processing' direct (= "pris en charge automatiquement") pour que la
+        // cuisine puisse marquer prête sans étape "prendre en charge" préalable.
+        // Aligné avec creerReservation (spectateurs) post-Lot 1.
+        status: 'processing',
+        code, numero,
+        assignedStaffId: '__auto__',
+        assignedStaff: 'Auto (bénévole)',
         date:       nowStr(),
         isBenev:    true,
         createdAt:  serverTimestamp(),
+        processingAt: serverTimestamp(),
       })
 
       // Décrémenter le stock du menu pour chaque article
@@ -586,6 +599,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       </header>
 
       <main className={s.wrap}>
+        {/* Animation entre les onglets */}
+        <PageTransition pageKey={tab}>
         {tab === 'accueil' && (
           benev ? (
             <>
@@ -594,6 +609,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                 <div className={s.helloText}>
                   <span>Bénévole{benev.poste ? ` · ${benev.poste}` : ''}</span>
                   <h1>Bonjour {benev.prenom || benev.nom}</h1>
+                  <small className={s.helloId}>BNV-{docId?.slice(-6)}</small>
                 </div>
                 <button type="button" className={s.avatar} onClick={openQr} aria-label="Afficher mon QR code">
                   {initialsOf(benev)}
@@ -660,6 +676,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                         <ChevronRight size={18} className={s.chev}/>
                       </button>
                     )}
+                    <button type="button" className={s.textLink} onClick={() => setTab('planning')}>
+                      Voir tout mon planning <ChevronRight size={14}/>
+                    </button>
                   </>
                 ) : (
                   <div className={s.noSlot}>
@@ -680,8 +699,10 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                 )}
               </section>
 
+              <DernieresCommandes resas={resas} setTab={setTab}/>
+
               <Button size="lg" block icon={UtensilsCrossed} onClick={() => setTab('commander')}>Commander mon repas</Button>
-              <p className={s.hint}>Présentez votre QR code au stand pour retirer votre commande.</p>
+              <p className={s.hint}>Présentez votre QR code au stand pour retirer votre commande. Touchez votre pastille en haut à droite pour l'agrandir.</p>
             </>
           ) : (
             <div className={s.loading}>Chargement…</div>
@@ -693,15 +714,15 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             posts={posts} shifts={shifts} onAssign={demo ? demoAssign : undefined}/>
         )}
 
-        {tab === 'commander' && (
-          <BenevoleCommander
-            menu={menu} cartItems={cartItems}
-            qtys={qtys} setQtys={setQtys} resaDone={resaDone} setResaDone={setResaDone}
-            resaLoading={resaLoading} resaErr={resaErr} doCommande={doCommande}
-            quotaRestant={quotaRestant} TYPE_CFG={TYPE_CFG} BRAND={BRAND}
-            setTab={setTab} benev={benev}
-          />
-        )}
+          {tab === 'commander' && (
+            <BenevoleCommander
+              menu={menu} cartItems={cartItems}
+              qtys={qtys} setQtys={setQtys} resaDone={resaDone} setResaDone={setResaDone}
+              resaLoading={resaLoading} resaErr={resaErr} doCommande={doCommande}
+              quotaRestant={quotaRestant} TYPE_CFG={TYPE_CFG} BRAND={BRAND}
+              setTab={setTab} benev={benev}
+            />
+          )}
 
         {tab === 'mes-resas' && (
           <BenevoleResas
@@ -717,10 +738,13 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             pwdMsg={pwdMsg} pwdLoading={pwdLoading} changePwd={changePwd}
           />
         )}
+        </PageTransition>
 
         <footer className={s.footer}>
-          <b>YllaCash v1.0 · 05/2026</b>
+          <b>{APP_FULL_LABEL}</b>
           <span>Développée par <strong>Maison Ylla</strong></span>
+          <span className={s.build}>Build {APP_VERSION_LABEL}</span>
+          <CheckUpdateButton variant="compact"/>
         </footer>
       </main>
 
@@ -802,5 +826,66 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         />
       )}
     </div>
+  )
+}
+
+// ── Accueil : les 3 dernières commandes ─────────────────────────────
+const RESA_STATUTS = {
+  collected:  { label: 'Retirée',        tone: 'success' },
+  ready:      { label: 'Prête',          tone: 'warning' },
+  cancelled:  { label: 'Annulée',        tone: 'danger' },
+  processing: { label: 'En préparation', tone: 'brand' },
+  pending:    { label: 'En attente',     tone: 'neutral' },
+}
+
+const fmtResaDate = (r) => {
+  const ts = r.createdAt?.toDate ? r.createdAt.toDate() : (r.createdAt?.seconds ? new Date(r.createdAt.seconds * 1000) : null)
+  if (!ts) return r.date || ''
+  const heure = ts.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  const now = new Date()
+  const hier = new Date(now); hier.setDate(now.getDate() - 1)
+  if (ts.toDateString() === now.toDateString()) return "Aujourd'hui " + heure
+  if (ts.toDateString() === hier.toDateString()) return 'Hier ' + heure
+  return ts.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) + ' ' + heure
+}
+
+function DernieresCommandes({ resas, setTab }) {
+  const dernieres = resas.slice(0, 3)
+  return (
+    <section className={s.card}>
+      <div className={s.cardHead}>
+        <h2>Mes dernières commandes</h2>
+        {resas.length > 3 && (
+          <button type="button" className={s.textLink} onClick={() => setTab('mes-resas')}>
+            Voir tout <ChevronRight size={14}/>
+          </button>
+        )}
+      </div>
+      {dernieres.length === 0 ? (
+        <div className={s.noSlot}>
+          <p>Aucune commande pour le moment.</p>
+          <Button variant="secondary" size="sm" icon={ShoppingCart} onClick={() => setTab('commander')}>Faire ma première commande</Button>
+        </div>
+      ) : (
+        <ul className={s.resaList}>
+          {dernieres.map(r => {
+            const statut = RESA_STATUTS[r.status] || RESA_STATUTS.pending
+            const items = r.items || []
+            const titre = items.length === 0 ? 'Commande'
+              : items.length === 1 ? items[0].nom
+              : `${items[0].nom} +${items.length - 1}`
+            return (
+              <li key={r.id} className={s.resaRow}>
+                <span className={s.resaText}>
+                  <b>{titre}</b>
+                  <span>{fmtResaDate(r)}</span>
+                </span>
+                <Badge tone={statut.tone}>{statut.label}</Badge>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
   )
 }

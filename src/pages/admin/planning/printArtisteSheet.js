@@ -4,6 +4,7 @@
  */
 import { getSettings } from '../../../firebase/service'
 import { toast } from '../../../ui'
+import { APP_VERSION_LABEL } from '../../../utils/buildInfo'
 
 export default async function printArtisteSheet(form, creneauId, eventId) {
   const url = window.location.origin + '/artiste?ev=' + eventId + '&cr=' + creneauId
@@ -181,7 +182,7 @@ export default async function printArtisteSheet(form, creneauId, eventId) {
 
   // Foot
   html += '<div class="foot">'
-  html += 'YllaCash v1.0 · 05/2026 — Édité le ' + new Date().toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
+  html += 'YllaCash ' + APP_VERSION_LABEL + ' — Édité le ' + new Date().toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' })
   html += ' à ' + new Date().toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })
   html += ' — Développée par <strong>Maison Ylla</strong>'
   html += '</div>'

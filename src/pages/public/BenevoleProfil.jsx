@@ -1,5 +1,5 @@
 /**
- * pages/public/BenevoleProfil.jsx
+ * pages/public/BenevoleProfil.jsx — v8 debug modernisé
  * Onglet "Profil" de l'espace bénévole (changement de mot de passe)
  */
 import React, { useRef, useState } from 'react'

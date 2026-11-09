@@ -1,0 +1,69 @@
+name: Process Artist Reminders
+
+# Déclenche le traitement des rappels artistes (balance + prestation) toutes
+# les minutes. GitHub Actions appelle l'endpoint Vercel /api/process-reminders.
+#
+# Note : GitHub n'exécute pas le cron à la seconde près. Décalage typique 1-3 min.
+
+on:
+  schedule:
+    - cron: '*/1 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Call Vercel endpoint to process reminders
+        env:
+          REMINDERS_URL: ${{ secrets.REMINDERS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        shell: bash
+        run: |
+          set +e   # On ne veut pas qu'une commande échoue silencieusement
+
+          if [ -z "$REMINDERS_URL" ]; then
+            echo "❌ Secret REMINDERS_URL manquant."
+            echo "Allez dans Settings → Secrets and variables → Actions et ajoutez REMINDERS_URL."
+            exit 1
+          fi
+
+          echo "🔔 Appel de l'endpoint de rappels…"
+          echo "URL: $REMINDERS_URL"
+
+          # On sauve body et status dans des fichiers séparés pour éviter
+          # tout problème de parsing avec le JSON
+          body_file=$(mktemp)
+          status_file=$(mktemp)
+
+          curl -sS \
+            -o "$body_file" \
+            -w "%{http_code}" \
+            -H "x-cron-secret: $CRON_SECRET" \
+            -H "User-Agent: github-actions-cron" \
+            --max-time 60 \
+            "$REMINDERS_URL" > "$status_file"
+
+          curl_exit=$?
+          http_status=$(cat "$status_file")
+          body=$(cat "$body_file")
+
+          echo "Curl exit code: $curl_exit"
+          echo "HTTP status: $http_status"
+          echo "Response body:"
+          echo "$body"
+
+          rm -f "$body_file" "$status_file"
+
+          if [ "$curl_exit" != "0" ]; then
+            echo "❌ Curl a échoué (exit $curl_exit)"
+            exit 1
+          fi
+
+          if [ "$http_status" != "200" ]; then
+            echo "❌ Statut HTTP non-OK ($http_status)"
+            exit 1
+          fi
+
+          echo "✅ Rappels traités avec succès"

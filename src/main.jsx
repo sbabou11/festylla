@@ -14,20 +14,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>,
 )
 
-// Service Worker — mise à jour automatique
-if ('serviceWorker' in navigator) {
-  window.addEventListener('message', (event) => {
-    if (event.data?.type === 'SW_UPDATED') window.location.reload()
-  })
-
-  setInterval(async () => {
-    try {
-      const reg = await navigator.serviceWorker.getRegistration()
-      if (reg) await reg.update()
-    } catch {}
-  }, 60_000)
-
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload()
-  })
-}
+// Note : la gestion du service worker et des mises à jour est maintenant
+// centralisée dans src/hooks/useAppUpdate.js + src/components/UpdateBanner.jsx
+// (mode 'prompt' dans vite.config.js — vite-plugin-pwa enregistre le SW automatiquement)

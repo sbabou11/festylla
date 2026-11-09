@@ -367,3 +367,6 @@
 
 @keyframes rise { from { transform: translateY(10px); opacity: .4; } }
 @keyframes pop  { from { transform: scale(.6); } }
+
+/* Transition entre onglets : garde l'espacement de la colonne (will-change retiré : il piègerait les fenêtres en position fixe) */
+.wrap > :global(.page-transition) { display: grid; gap: var(--space-4); min-width: 0; will-change: auto; }

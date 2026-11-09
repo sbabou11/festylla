@@ -4,19 +4,20 @@
  * Vue liste (détail, statut, avantages) ou frise horaire glissable.
  * Accessible aux rôles admin et super_admin
  */
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import clsx from 'clsx'
 import useAppStore from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import useAuthStore from '../../store/useAuthStore'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
-import { addCreneau, updateCreneau, deleteCreneau, watchArtistConsumptions } from '../../firebase/service'
+import { addCreneau, updateCreneau, deleteCreneau, watchArtistConsumptions, watchCachets } from '../../firebase/service'
 import { db } from '../../firebase/config'
 import { collection, onSnapshot } from 'firebase/firestore'
 import { compressImage } from '../../utils/imageUtils'
 import { friendlyError } from '../../utils/errors'
+import { APP_FULL_LABEL } from '../../utils/buildInfo'
 import {
-  Plus, Pencil, Trash2, Copy, Save, ChevronDown, ChevronUp, Calendar, Clock, MapPin,
+  Plus, Pencil, Trash2, Copy, Save, ChevronDown, ChevronUp, Calendar, Clock, MapPin, Coins,
   ExternalLink, AlertCircle, AlertTriangle, BarChart3, Printer, Search, SearchX, X, List, GanttChart, Camera,
 } from 'lucide-react'
 import { Button, Card, Badge, Tabs, Empty, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
@@ -43,6 +44,8 @@ const STATUTS = [
 const EMPTY_FORM = {
   artiste: '', titre: '', type: 'musical', scene: '',
   debut: '', fin: '', description: '', bio: '', photo: '',
+  // Balance optionnelle (admin peut la remplir ou laisser vide)
+  balanceDebut: '', balanceFin: '', balanceScene: '',
   avantages: { drinks: 0, meals: 0, eaux: 0, drinkIds: [], mealIds: [], eauIds: [] },
   liens: { spotify: '', instagram: '', facebook: '', tiktok: '', youtube: '', site: '' },
   statut: 'a-venir',
@@ -126,8 +129,10 @@ export default function Planning({ onNavigate }) {
   const [sortBy, setSortBy]         = useState('debut') // 'debut' | 'artiste' | 'scene' | 'type'
   const [menuItems, setMenuItems]   = useState([])
   const [artistConsumptions, setArtistConsumptions] = useState([])
+  const [cachets, setCachets]       = useState([])
   const [showConsoModal, setShowConsoModal] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null) // { id, artiste } en attente de confirmation
+  const [pendingDuplicate, setPendingDuplicate] = useState(null) // créneau à dupliquer, en attente du choix
   const fileRef = useRef()
 
   // Les messages de réussite s'affichent en toast (visibles même formulaire ouvert)
@@ -150,6 +155,27 @@ export default function Planning({ onNavigate }) {
     const unsub = watchArtistConsumptions(setArtistConsumptions, currentEventId)
     return unsub
   }, [currentEventId])
+
+  // Charger les cachets pour afficher le statut sur chaque créneau
+  useEffect(() => {
+    if (!currentEventId) return
+    const unsub = watchCachets(setCachets, currentEventId)
+    return unsub
+  }, [currentEventId])
+
+  // Map creneauId → statut cachet ('paye' | 'planifie' | 'aucun' | 'annule')
+  const cachetStatusByCreneau = useMemo(() => {
+    const map = {}
+    cachets.forEach(c => {
+      if (!c.creneauId) return
+      const existing = map[c.creneauId]
+      // Priorité d'affichage : payé > planifié > annulé
+      if (!existing || (c.statut === 'paye' && existing !== 'paye')) {
+        map[c.creneauId] = c.statut
+      }
+    })
+    return map
+  }, [cachets])
 
   const scenes   = [...new Set(planning.map(p => p.scene).filter(Boolean))]
 
@@ -209,32 +235,38 @@ export default function Planning({ onNavigate }) {
     setShowForm(true)
   }
 
-  const openDuplicate = (cr) => {
+  // Demander si on duplique le même artiste (set 2, par ex.) ou si c'est un nouveau créneau vierge
+  const openDuplicate = (cr) => setPendingDuplicate(cr)
+
+  const applyDuplicate = (sameArtist) => {
+    const cr = pendingDuplicate
+    setPendingDuplicate(null)
+    if (!cr) return
     setEditing(null) // pas d'édition, c'est une création
     setTried(false)
     setNotifier(false)
     setForm({
-      artiste:  cr.artiste || '',
-      titre:    cr.titre   || '',
+      // Toujours conservés : type, scène, horaires
       type:     cr.type    || 'musical',
       scene:    cr.scene   || '',
       debut:    toLocalDatetimeString(cr.debut),
       fin:      toLocalDatetimeString(cr.fin),
       statut:   'a-venir',
-      bio:      cr.bio || '',
-      description: cr.description || '',
-      photo:    cr.photo || '',
-      photoPosition: cr.photoPosition || 'center center',
-      latitude: cr.latitude || '',
-      longitude: cr.longitude || '',
-      liens: { ...(cr.liens || {}) },
+      // Infos artiste : selon le choix
+      artiste:     sameArtist ? (cr.artiste || '') : '',
+      titre:       sameArtist ? (cr.titre   || '') : '',
+      bio:         sameArtist ? (cr.bio || '') : '',
+      description: sameArtist ? (cr.description || '') : '',
+      liens:       sameArtist ? { ...EMPTY_FORM.liens, ...(cr.liens || {}) } : { ...EMPTY_FORM.liens },
+      // Toujours vidés : photo, position, lat/lng, avantages
+      // (l'admin re-uploadera une photo si besoin, et ré-attribuera les avantages)
+      photo:         '',
+      photoPosition: 'center center',
+      latitude:      '',
+      longitude:     '',
       avantages: {
-        drinks:   cr.avantages?.drinks   || 0,
-        meals:    cr.avantages?.meals    || 0,
-        eaux:     cr.avantages?.eaux     || 0,
-        drinkIds: cr.avantages?.drinkIds || [],
-        mealIds:  cr.avantages?.mealIds  || [],
-        eauIds:   cr.avantages?.eauIds   || [],
+        drinks:   0, meals: 0, eaux: 0,
+        drinkIds: [], mealIds: [], eauIds: [],
       },
     })
     setErr('')
@@ -251,6 +283,10 @@ export default function Planning({ onNavigate }) {
       scene:       cr.scene   || '',
       debut:       cr.debut ? toLocalDatetimeString(cr.debut) : '',
       fin:         cr.fin   ? toLocalDatetimeString(cr.fin)   : '',
+      // Balance optionnelle
+      balanceDebut: cr.balanceDebut ? toLocalDatetimeString(cr.balanceDebut) : '',
+      balanceFin:   cr.balanceFin   ? toLocalDatetimeString(cr.balanceFin)   : '',
+      balanceScene: cr.balanceScene || '',
       description: cr.description || '',
       bio:         cr.bio    || '',
       photo:       cr.photo  || '',
@@ -299,6 +335,10 @@ export default function Planning({ onNavigate }) {
         photo:  photoUrl,
         debut:  new Date(form.debut),
         fin:    new Date(form.fin),
+        // Balance : convertit en Date si renseignée, sinon null pour effacer
+        balanceDebut: form.balanceDebut ? new Date(form.balanceDebut) : null,
+        balanceFin:   form.balanceFin   ? new Date(form.balanceFin)   : null,
+        balanceScene: form.balanceScene || '',
         liens:  form.liens,
         // Stocke en number ; sinon chaîne vide (pas de coordonnées)
         latitude:  !isNaN(latParsed) ? latParsed : '',
@@ -389,7 +429,7 @@ export default function Planning({ onNavigate }) {
       html += '</tbody></table>'
     })
 
-    html += '<div class="foot">YllaCash v1.0 · 05/2026 — Développée par <strong>Maison Ylla</strong></div>'
+    html += '<div class="foot">' + APP_FULL_LABEL + ' — Développée par <strong>Maison Ylla</strong></div>'
     html += '</body></html>'
 
     const w = window.open('', '_blank')
@@ -528,6 +568,14 @@ export default function Planning({ onNavigate }) {
                       {cr.titre && <span className={s.sousTitre}>— {cr.titre}</span>}
                       <Badge tone={STATUT_TONE[stI.value]}>{stI.label}</Badge>
                       {conflicts.has(cr.id) && <Badge tone="warning" icon={AlertTriangle}>Chevauchement</Badge>}
+                      {/* Pastille statut cachet */}
+                      {(() => {
+                        const st = cachetStatusByCreneau[cr.id]
+                        if (st === 'paye') return <Badge tone="success" icon={Coins} title="Cachet payé">Payé</Badge>
+                        if (st === 'planifie') return <Badge tone="warning" icon={Coins} title="Cachet à payer">À payer</Badge>
+                        if (st === 'annule') return null // pas d'affichage
+                        return <Badge tone="neutral" icon={Coins} title="Aucun cachet enregistré pour cet artiste">Aucun</Badge>
+                      })()}
                     </div>
                     <div className={s.itemMeta}>
                       <span className={s.num}><Clock size={12} aria-hidden="true" /> {fmt2(cr.debut)} → {fmt2(cr.fin)} {duree(cr.debut,cr.fin) && '('+duree(cr.debut,cr.fin)+')'}</span>
@@ -672,6 +720,58 @@ export default function Planning({ onNavigate }) {
             ))}
           </div>
 
+          {/* Balance (optionnelle) — l'artiste recevra des rappels 15min et 5min avant */}
+          <div className={s.balance}>
+            <div className={s.balanceHead}>
+              <span className={s.label}>Balance (optionnel)</span>
+              {(form.balanceDebut || form.balanceFin || form.balanceScene) && (
+                <Button variant="ghost" size="sm" onClick={() => setForm(f => ({ ...f, balanceDebut: '', balanceFin: '', balanceScene: '' }))}>
+                  Effacer
+                </Button>
+              )}
+            </div>
+            <p className={s.hint}>Si renseignée, l'artiste reçoit un rappel par notification (son + popup) 15 min et 5 min avant la balance.</p>
+            <div className={s.grid2}>
+              <label className={s.field}>
+                <span className={s.hint}>Début</span>
+                <input type="datetime-local" value={form.balanceDebut || ''}
+                  onChange={e => setForm(f => ({ ...f, balanceDebut: e.target.value }))}
+                  className={clsx(s.input, s.inputSm)}/>
+              </label>
+              <label className={s.field}>
+                <span className={s.hint}>Fin</span>
+                <input type="datetime-local" value={form.balanceFin || ''}
+                  onChange={e => setForm(f => ({ ...f, balanceFin: e.target.value }))}
+                  className={clsx(s.input, s.inputSm)}/>
+              </label>
+            </div>
+            <label className={s.field}>
+              <span className={s.hint}>Scène/Lieu de la balance (laisser vide pour reprendre la scène de prestation)</span>
+              <input type="text" value={form.balanceScene || ''}
+                onChange={e => setForm(f => ({ ...f, balanceScene: e.target.value }))}
+                placeholder={form.scene || 'Ex : Studio, Régie, Scène principale...'}
+                className={clsx(s.input, s.inputSm)}/>
+            </label>
+          </div>
+
+          {/* Raccourci vers Cachets — visible uniquement en édition */}
+          {editing && (
+            <div className={s.cachetLink}>
+              <span className={s.cachetIcon}><Coins size={16} aria-hidden="true"/></span>
+              <div className={s.cachetText}>
+                <div className={s.cachetTitle}>Cachet de cet artiste</div>
+                <div className={s.hint}>Ouvrir la page Cachets pour gérer la rémunération</div>
+              </div>
+              <Button variant="secondary" size="sm" onClick={() => {
+                setShowForm(false)
+                setEditing(null)
+                if (typeof onNavigate === 'function') onNavigate('cachets')
+              }}>
+                Gérer →
+              </Button>
+            </div>
+          )}
+
           {/* Bio */}
           <label className={s.field}>
             <span className={s.label}>Biographie</span>
@@ -762,6 +862,18 @@ export default function Planning({ onNavigate }) {
       </Dialog>
 
       {/* Confirmation de suppression */}
+      <Dialog open={!!pendingDuplicate} onClose={() => setPendingDuplicate(null)} title="Dupliquer ce créneau"
+        footer={<>
+          <Button variant="secondary" onClick={() => applyDuplicate(false)}>Créneau vierge</Button>
+          <Button icon={Copy} onClick={() => applyDuplicate(true)}>Même artiste</Button>
+        </>}>
+        <p className={s.muted}>
+          <b>Même artiste</b> garde l'artiste, le titre, la bio, la description et les liens (utile pour un 2e set).{' '}
+          <b>Créneau vierge</b> garde uniquement le type, la scène et les horaires.
+          Dans tous les cas, la photo et la localisation ne sont pas recopiées.
+        </p>
+      </Dialog>
+
       <Dialog open={!!pendingDelete} onClose={() => setPendingDelete(null)} title="Supprimer le créneau ?"
         footer={<>
           <Button variant="secondary" onClick={() => setPendingDelete(null)}>Annuler</Button>

@@ -24,7 +24,19 @@ export function computeKPIs({ spectateurs = [], reservations = [], logs = [], me
 
   const totalSoldes     = spectateurs.reduce((a, s) => a + (s.solde || 0), 0)
 
-  const ecartComptable  = totalCredits - totalVentes - totalSoldes
+  // Mouvements de correction (Lot A) : remboursement = sortie cash, credit_correction = ajout solde virtuel
+  const totalRemboursements    = allTx.filter(t => t.type === 'remboursement')
+                                      .reduce((a, t) => a + (t.montant || 0), 0)
+  const totalCreditsCorrection = allTx.filter(t => t.type === 'credit_correction')
+                                      .reduce((a, t) => a + (t.montant || 0), 0)
+
+  // Écart comptable : sommes ENTRANTES - sommes SORTANTES - soldes courants devrait = 0
+  //   Entrées : crédits + crédits de correction
+  //   Sorties : ventes (debit/retrait/benev-retrait) + remboursements de solde
+  //   Soldes  : ce qu'il reste sur les comptes
+  const ecartComptable  = (totalCredits + totalCreditsCorrection)
+                          - (totalVentes + totalRemboursements)
+                          - totalSoldes
 
   // ── Bénévoles ──────────────────────────────────────────────────────
   const benevResas      = reservations.filter(r => r.isBenev && r.status === 'collected')
@@ -67,7 +79,15 @@ export function computeKPIs({ spectateurs = [], reservations = [], logs = [], me
   const topArticles = Object.values(articlesMap).sort((a, b) => b.ca - a.ca)
 
   // ── Répartition par type ──────────────────────────────────────────
-  const TX_TYPES = ['credit','debit','retrait','benev-retrait','reservation','annulation','benev-reservation','benev-annulation']
+  // Liste exhaustive de tous les types de transactions traités par le système.
+  // Toute nouvelle fonction de service.js créant un type doit l'ajouter ici sinon
+  // il ne figurera ni dans la répartition par type ni dans les exports détaillés.
+  const TX_TYPES = [
+    'credit','debit','retrait','benev-retrait',
+    'reservation','annulation','benev-reservation','benev-annulation',
+    'artist-gift','cachet-artiste',
+    'remboursement','credit_correction',
+  ]
   const txByType = TX_TYPES.map(typ => ({
     type: typ,
     nb:   allTx.filter(t => t.type === typ).length,
@@ -91,6 +111,7 @@ export function computeKPIs({ spectateurs = [], reservations = [], logs = [], me
     // Financier
     totalCredits, totalVentes, totalSoldes, ecartComptable,
     coutBenev, caNette,
+    totalRemboursements, totalCreditsCorrection,
     // Spectateurs
     nbSpectateurs, specAvecSolde, soldeMax, soldeMoyen,
     // Bénévoles

@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
-import { collection, query, where, getDocs, onSnapshot, doc, getDoc } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore'
 import { serveArtistItem, watchArtistReservations, servirReservationArtiste } from '../../firebase/service'
 import QrScanner from '../../components/QrScanner'
 import { friendlyError } from '../../utils/errors'

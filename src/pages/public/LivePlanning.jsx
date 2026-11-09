@@ -10,6 +10,7 @@ import { MapPin, Clock, ChevronRight, X, Search, Rows3, Image as ImageIcon, GitC
 import { TimeRibbon } from '../../ui'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
+import { APP_FULL_LABEL } from '../../utils/buildInfo'
 
 const BRAND  = '#1a6b7a'
 const TYPES  = {
@@ -813,7 +814,7 @@ export default function LivePlanning({ demo = null } = {}) {
 
         {/* Footer */}
         <div style={{ textAlign:'center', padding:'28px 0 0', marginTop:16, borderTop:'0.5px solid var(--border)' }}>
-          <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)' }}>YllaCash v1.0 · 05/2026</div>
+          <div style={{ fontSize:11, fontWeight:700, color:'var(--muted)' }}>{APP_FULL_LABEL}</div>
           <div style={{ fontSize:10, color:'var(--muted)', opacity:.6, marginTop:2 }}>Développée par <strong>Maison Ylla</strong></div>
         </div>
       </div>

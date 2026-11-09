@@ -1,0 +1,4 @@
+{
+  "type": "commonjs",
+  "comment": "Force le mode CommonJS pour les Serverless Functions Vercel. Le package.json racine est en ESM (type: module) pour Vite/frontend, mais nos endpoints API utilisent module.exports (CommonJS). Cette declaration locale prevaut pour les fichiers de ce dossier."
+}

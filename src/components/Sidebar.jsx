@@ -6,27 +6,40 @@
  */
 import React, { useState } from 'react'
 import {
-  LayoutDashboard, Bookmark, Users, List, UtensilsCrossed, BadgeCheck, Calendar, CalendarDays,
+  LayoutDashboard, Home, Bookmark, Users, List, UtensilsCrossed, BadgeCheck, Calendar, CalendarDays,
   Settings, PlusCircle, QrCode, Package, ShoppingCart, Wallet, User,
   BarChart3, AlertTriangle, PanelLeftClose, PanelLeftOpen, X, LogOut,
   Sun, Moon, Palette, ClipboardList, Calculator,
+  Music2, ArrowLeftRight, Banknote, Briefcase, ChefHat, Building2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../store/useAppStore'
 import useEventStore from '../store/useEventStore'
 import { ROLE_PAGES } from '../store/useAuthStore'
+import { APP_FULL_LABEL } from '../utils/buildInfo'
 import { useBreakpoint }   from '../hooks/useBreakpoint'
 import { useOfflineQueue } from '../hooks/useOfflineQueue'
 import s from './Sidebar.module.css'
 
 export const ALL_PAGES = {
   evenements:           { icon: Calendar,        label: 'Événements' },
+  accueil:              { icon: Home,            label: 'Accueil' },
   dashboard:            { icon: LayoutDashboard, label: 'Tableau de bord' },
   analytics:            { icon: BarChart3,       label: 'Analytics' },
   cloture:              { icon: Calculator,      label: 'Clôture de caisse' },
   alertes:              { icon: AlertTriangle,   label: 'Alertes financières',   badge: 'alertes' },
-  planning:             { icon: CalendarDays,    label: 'Planning Festival' },
+  comptabilite:         { icon: Briefcase,        label: 'Comptabilité' },
+  'gestion-artistes':   { icon: Music2,           label: 'Gestion artistes' },
+  exposants:            { icon: Building2,        label: 'Exposants' },
+  finances:             { icon: Wallet,           label: 'Finances' },
+  // Note : 'cachets' n'apparaît plus dans le menu latéral.
+  // La page reste accessible via le hub "Gestion artistes" et via le bouton
+  // "Gérer le cachet" dans le formulaire d'édition d'un créneau planning.
+  planning:             { icon: CalendarDays,     label: 'Planning Festival' },
   'qr-entree':          { icon: QrCode,          label: 'QR code entrée' },
+  'spectateurs-hub':    { icon: Users,           label: 'Spectateurs & Accès' },
+  'equipe-hub':         { icon: Users,           label: 'Équipe & Bénévoles' },
+  operations:           { icon: ArrowLeftRight,   label: 'Opérations' },
   benevoles:            { icon: Users,           label: 'Bénévoles' },
   'reservations-admin': { icon: Bookmark,        label: 'Réservations',          badge: true },
   spectateurs:          { icon: Users,           label: 'Spectateurs' },
@@ -36,8 +49,12 @@ export const ALL_PAGES = {
   settings:             { icon: Settings,        label: 'Paramètres' },
   credit:               { icon: PlusCircle,      label: 'Créditer' },
   nouveau:              { icon: QrCode,          label: 'Nouveau QR' },
+  remboursement:        { icon: Banknote,        label: 'Remboursement' },
   retrait:              { icon: Package,         label: 'Retrait réservation',   badge: true },
   debit:                { icon: ShoppingCart,    label: 'Encaisser' },
+  'prendre-commande':   { icon: ClipboardList,   label: 'Prendre commande' },
+  'retrait-commande':   { icon: Package,         label: 'Retrait commande' },
+  cuisine:              { icon: ChefHat,         label: 'Cuisine' },
   'mon-qr':             { icon: QrCode,          label: 'Mon QR code' },
   'mes-reservations':   { icon: Bookmark,        label: 'Mes réservations',      badge: true },
   solde:                { icon: Wallet,          label: 'Mon solde' },
@@ -86,7 +103,39 @@ export default function Sidebar({
   const currentEvent = events.find(e => e.id === currentEventId && !e.deleted)
   const customRole   = (roles || []).find(r => r.id === view)
   const allowed      = ROLE_PAGES[view] || customRole?.pages || ['mon-profil']
-  const pages        = allowed.map(id => ({ id, ...ALL_PAGES[id] })).filter(p => p.label)
+  // Pour les rôles qui ont accès aux hubs, on masque ces entrées du menu pour ne garder que les hubs.
+  // (Elles restent accessibles via les pancartes des hubs.)
+  const HUB_HIDDEN_FROM_SIDEBAR = [
+    // Hub Opérations
+    'credit', 'debit', 'retrait', 'prendre-commande', 'retrait-commande', 'cuisine', 'remboursement', 'transactions', 'reservations-admin', 'nouveau', 'alertes',
+    // Hub Équipe & Bénévoles
+    'benevoles', 'staff',
+    // Hub Spectateurs & Accès
+    'spectateurs', 'qr-entree',
+    // Hub Finances (exposants + cachets accessibles via la page Finances)
+    'exposants',
+  ]
+  // Hub Gestion artistes : planning et cachets ne sont masqués QUE si l'utilisateur
+  // accède à gestion-artistes (admin/super_admin). Les autres rôles (ex: directeur_artistique)
+  // gardent un accès direct via la sidebar.
+  const HIDDEN_IF_GESTION_ARTISTES = ['planning', 'cachets']
+
+  const showsHubs = allowed.includes('operations') || allowed.includes('equipe-hub') || allowed.includes('spectateurs-hub')
+  const hasGestionArtistes = allowed.includes('gestion-artistes')
+  const hasFinancesHub = allowed.includes('finances')
+
+  let visibleIds = allowed
+  if (showsHubs) {
+    visibleIds = visibleIds.filter(id => !HUB_HIDDEN_FROM_SIDEBAR.includes(id))
+  }
+  // Hub Finances : exposants et cachets accessibles via la page Finances
+  if (hasFinancesHub) {
+    visibleIds = visibleIds.filter(id => !['exposants', 'cachets'].includes(id))
+  }
+  if (hasGestionArtistes) {
+    visibleIds = visibleIds.filter(id => !HIDDEN_IF_GESTION_ARTISTES.includes(id))
+  }
+  const pages        = visibleIds.map(id => ({ id, ...ALL_PAGES[id] })).filter(p => p.label)
   const pendingCount = reservations.filter(r => r.status === 'pending' || r.status === 'ready').length
   const roleName     = BUILTIN_NAMES[view] || customRole?.nom || view
 
@@ -163,7 +212,7 @@ export default function Sidebar({
             <Item icon={collapsed ? PanelLeftOpen : PanelLeftClose} label={collapsed ? 'Déplier le menu' : 'Replier le menu'} onClick={toggle} />
           )}
           <Item icon={LogOut} label="Se déconnecter" onClick={onLogout} danger />
-          {!collapsed && <p className={s.about}>YllaCash · Maison Ylla</p>}
+          {!collapsed && <p className={s.about}>{APP_FULL_LABEL} · Maison Ylla</p>}
         </div>
       </aside>
     </>

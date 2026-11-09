@@ -28,7 +28,7 @@ const DEFAULT_THEME = {
 const useAppStore = create(
   persist(
     (set, get) => ({
-      spectateurs:[],reservations:[],menu:[],staff:[],logs:[],roles:[],categories:[],planning:[],
+      spectateurs:[],reservations:[],menu:[],staff:[],logs:[],roles:[],categories:[],planning:[],expositions:[],
       currentSpecId:'FY-4A2B',currentStaffId:'s5',
       offline:false,offlineQueue:[],
       theme:DEFAULT_THEME,
@@ -42,6 +42,11 @@ const useAppStore = create(
       setStaff:       (d)=>set({staff:d}),
       setLogs:        (d)=>set({logs:d}),
       setPlanning:    (d)=>set({planning:d}),
+      setExpositions: (d)=>set({expositions:d}),
+      // ID du template de facture en cours d'édition (utilisé pour ouvrir
+      // l'éditeur visuel sur un template précis). null = nouveau, sinon id Firestore.
+      editingTemplateId: null,
+      setEditingTemplateId: (id)=>set({editingTemplateId:id}),
 
       // Spectateurs
       createSpectateur:(nom,euros,staff,opts)=>svc.createSpectateur(nom,euros,staff,opts),

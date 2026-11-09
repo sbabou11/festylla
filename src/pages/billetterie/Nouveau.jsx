@@ -51,7 +51,7 @@ export default function Nouveau() {
         </div>
         <div style={{ marginBottom:10 }}>
           <Field label="Solde initial (€)">
-            <input type="number" value={solde} onChange={e => setSolde(parseInt(e.target.value)||0)} />
+            <input type="number" value={solde === 0 ? '' : solde} placeholder="0" onChange={e => setSolde(parseInt(e.target.value)||0)} />
           </Field>
         </div>
         <div style={{ display:'flex', gap:6, marginBottom:12 }}>

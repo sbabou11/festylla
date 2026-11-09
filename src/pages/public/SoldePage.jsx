@@ -27,6 +27,9 @@ import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, focusFirstIn
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
 import sp from './spectateur/SoldePage.module.css'
+import { APP_FULL_LABEL } from '../../utils/buildInfo'
+import CheckUpdateButton from '../../components/CheckUpdateButton'
+import PageTransition from '../../components/PageTransition'
 
 const PAGE_SIZE = 15
 
@@ -444,6 +447,8 @@ export default function SoldePage({ demo = null }) {
         )}
 
         {spec && (<>
+          {/* Contenu : animation entre les onglets */}
+          <PageTransition pageKey={tab}>
           {/* ── SOLDE ── */}
           {tab === 'accueil' && (
             <div className={sp.stack}>
@@ -635,9 +640,13 @@ export default function SoldePage({ demo = null }) {
           {tab === 'programme' && (
             <PlanningSpec planning={planningData} eventId={eventId} specId={spec?.id} themeColor={themeColor} />
           )}
+          </PageTransition>
         </>)}
 
-        <footer className={sp.footer}>YllaCash · Maison Ylla</footer>
+        <footer className={sp.footer}>
+          <div>{APP_FULL_LABEL} · Maison Ylla</div>
+          <CheckUpdateButton variant="compact"/>
+        </footer>
       </main>
 
       {/* Panier de commande : toujours visible au-dessus des onglets */}

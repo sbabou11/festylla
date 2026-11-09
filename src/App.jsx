@@ -6,7 +6,7 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { flushSync } from 'react-dom'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
-import { Sun, Moon, Palette, WifiOff, Search, X, HandHeart } from 'lucide-react'
+import { Sun, Moon, Palette, WifiOff, Search, X, HandHeart, ArrowLeft } from 'lucide-react'
 import CommandPalette from './components/CommandPalette'
 import './utils/pendingSales' // envoie au démarrage les encaissements restés en attente
 import { ToastViewport, Skeleton } from './ui'
@@ -20,6 +20,7 @@ import Sidebar  from './components/Sidebar'
 import BottomNav from './components/BottomNav'
 import Studio   from './components/Studio'
 import Avatar   from './components/Avatar'
+import UpdateBanner from './components/UpdateBanner'
 import { useTheme }      from './hooks/useTheme'
 import { useOffline }    from './hooks/useOffline'
 import { useFirestore }  from './hooks/useFirestore'
@@ -30,14 +31,27 @@ import useAppStore from './store/useAppStore'
 import { setCurrentEvent } from './firebase/service'
 import useEventStore from './store/useEventStore'
 
+// Hubs : y arriver efface la page parente (pas de flèche retour)
+const HUB_PAGES = ['accueil', 'operations', 'equipe-hub', 'spectateurs-hub', 'gestion-artistes', 'finances']
+
 const PAGES = {
   evenements:           lazy(() => import('./pages/admin/Evenements')),
+  accueil:              lazy(() => import('./pages/admin/Accueil')),
   dashboard:            lazy(() => import('./pages/admin/Dashboard')),
   benevoles:            lazy(() => import('./pages/admin/Benevoles')),
   'qr-entree':          lazy(() => import('./pages/admin/QrEntree')),
   analytics:            lazy(() => import('./pages/admin/Analytics')),
   cloture:              lazy(() => import('./pages/admin/Cloture')),
   alertes:              lazy(() => import('./pages/admin/Alertes')),
+  comptabilite:         lazy(() => import('./pages/admin/Comptabilite')),
+  operations:           lazy(() => import('./pages/admin/Operations')),
+  'equipe-hub':         lazy(() => import('./pages/admin/EquipeHub')),
+  'spectateurs-hub':    lazy(() => import('./pages/admin/SpectateursHub')),
+  cachets:              lazy(() => import('./pages/admin/Cachets')),
+  'gestion-artistes':   lazy(() => import('./pages/admin/GestionArtistes')),
+  exposants:            lazy(() => import('./pages/admin/Exposants')),
+  finances:             lazy(() => import('./pages/admin/Finances')),
+  'editeur-template':   lazy(() => import('./pages/admin/InvoiceTemplateEditor')),
   planning:             lazy(() => import('./pages/admin/Planning')),
   'reservations-admin': lazy(() => import('./pages/admin/Reservations')),
   spectateurs:          lazy(() => import('./pages/admin/Spectateurs')),
@@ -47,8 +61,12 @@ const PAGES = {
   settings:             lazy(() => import('./pages/admin/Settings')),
   credit:               lazy(() => import('./pages/billetterie/Credit')),
   nouveau:              lazy(() => import('./pages/billetterie/Nouveau')),
+  remboursement:        lazy(() => import('./pages/billetterie/Remboursement')),
   retrait:              lazy(() => import('./pages/stand/Retrait')),
   debit:                lazy(() => import('./pages/stand/Debit')),
+  'prendre-commande':   lazy(() => import('./pages/stand/PrendreCommande')),
+  'retrait-commande':   lazy(() => import('./pages/stand/RetraitCommande')),
+  cuisine:              lazy(() => import('./pages/stand/Cuisine')),
   'mon-qr':             lazy(() => import('./pages/spectateur/MonQr')),
   'mes-reservations':   lazy(() => import('./pages/spectateur/MesReservations')),
   solde:                lazy(() => import('./pages/spectateur/Solde')),
@@ -57,10 +75,23 @@ const PAGES = {
 }
 
 const PAGE_TITLES = {
-  evenements: 'Événements', dashboard: 'Tableau de bord', analytics: 'Analytics', 'qr-entree': 'QR code entrée', cloture: 'Clôture de caisse', benevoles: 'Bénévoles', alertes: 'Alertes financières',
+  evenements: 'Événements', accueil: 'Accueil', dashboard: 'Tableau de bord', analytics: 'Analytics', 'qr-entree': 'QR code entrée', cloture: 'Clôture de caisse', benevoles: 'Bénévoles', alertes: 'Alertes financières',
   'reservations-admin': 'Réservations', spectateurs: 'Spectateurs', transactions: 'Transactions',
+  cachets: 'Cachets artistes',
+  comptabilite: 'Comptabilité',
+  operations: 'Opérations',
+  'equipe-hub': 'Équipe & Bénévoles',
+  'spectateurs-hub': 'Spectateurs & Accès',
+  'gestion-artistes': 'Gestion des artistes',
+  exposants: 'Exposants',
+  finances: 'Finances',
+  'editeur-template': 'Éditeur template facture',
   menu: 'Carte & menu', staff: 'Équipe', settings: 'Paramètres', credit: 'Créditer',
   nouveau: 'Nouveau QR', retrait: 'Retrait réservation', debit: 'Encaisser',
+  remboursement: 'Remboursement',
+  'prendre-commande': 'Prendre commande',
+  'retrait-commande': 'Retrait commande',
+  cuisine: 'Cuisine',
   'mon-qr': 'Mon QR code', 'mes-reservations': 'Mes réservations', solde: 'Mon solde',
   carte: 'La carte', 'mon-profil': 'Mon profil',
 }
@@ -69,14 +100,40 @@ const ROLE_COLOR = {
   super_admin: '#F07848', admin: '#F07848', billetterie: '#0E8D7A', stand: '#D89030', consultation: '#888780', directeur_artistique: '#5EB8E4',
 }
 
-const Loader = ({ msg = 'Chargement…' }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontSize: 14, color: 'var(--muted)', flexDirection: 'column', gap: 12 }}>
-    <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ color: '#fff', fontSize: 18, fontWeight: 700 }}>Y</span>
+// Loader avec message évolutif + bouton recharger si bloqué (>10s)
+const Loader = ({ msg = 'Chargement…' }) => {
+  const [phase, setPhase] = React.useState(0) // 0 = ok, 1 = lent, 2 = bloqué
+  React.useEffect(() => {
+    const t1 = setTimeout(() => setPhase(1), 3000)
+    const t2 = setTimeout(() => setPhase(2), 10000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [])
+  const displayMsg = phase === 0 ? msg
+    : phase === 1 ? 'Première connexion un peu lente…'
+    : 'Le chargement semble bloqué.'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 14, padding: 20, textAlign: 'center' }}>
+      <div style={{ position: 'relative', width: 48, height: 48 }}>
+        <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(0,144,144,0.25)', overflow: 'hidden' }}>
+          <img src="/logo.png" alt="Maison Ylla" style={{ width: 40, height: 40, objectFit: 'contain' }}
+            onError={e => {
+              // Fallback texte si le logo ne charge pas (mode dégradé)
+              e.target.style.display = 'none'
+              e.target.parentElement.innerHTML = '<span style="color:#fff;font-size:18px;font-weight:800;letter-spacing:-.02em">MY</span>'
+            }}/>
+        </div>
+        <div style={{ position: 'absolute', inset: -6, border: '2px solid var(--brand)', borderTopColor: 'transparent', borderRadius: 14, animation: 'ycSpin 0.8s linear infinite' }}/>
+      </div>
+      <div style={{ fontSize: 13, color: 'var(--muted)' }}>{displayMsg}</div>
+      {phase === 2 && (
+        <button onClick={() => window.location.reload()}
+          style={{ padding: '8px 16px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
+          Recharger la page
+        </button>
+      )}
     </div>
-    {msg}
-  </div>
-)
+  )
+}
 
 
 // Pendant le chargement d'une page : sa silhouette plutôt qu'un texte
@@ -149,6 +206,8 @@ const DevLogin      = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevAu
 const DevEspace     = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevAuth').then(m => ({ default: m.DevEspace }))) : null
 
 const page = (el) => <Suspense fallback={<Loader />}>{el}</Suspense>
+const Borne        = lazy(() => import('./pages/public/Borne'))
+const EcranPublic  = lazy(() => import('./pages/public/EcranPublic'))
 
 export default function App() {
   return (
@@ -159,6 +218,10 @@ export default function App() {
       <Route path="/artiste"     element={page(<EspaceArtiste />)} />
       <Route path="/demo"        element={page(<DemoLogin />)} />
       <Route path="/benevole"    element={page(<BenevoleApp />)} />
+      {/* Borne self-service au stand : /borne?ev=<eventId>&stand=<numéro> */}
+      <Route path="/borne"       element={page(<Borne />)} />
+      {/* Écran TV des commandes prêtes : /ecran?ev=<eventId> */}
+      <Route path="/ecran"       element={page(<EcranPublic />)} />
       <Route path="/inscription" element={page(<Inscription />)} />
       <Route path="/register"    element={page(<Inscription />)} />
       <Route path="/solde"       element={page(<SoldePage />)} />
@@ -178,6 +241,7 @@ export default function App() {
     </Routes>
     {/* Un seul conteneur de toasts pour toutes les pages, publiques comme staff */}
     <ToastViewport />
+    <UpdateBanner />
     </>
   )
 }
@@ -208,6 +272,8 @@ function StaffApp() {
   const { notifications, nonLuCount, marquerToutLu } = useNotifications({ isStaff: true, staffId: user?.id, staffRole: user?.role, eventId: notifEventId })
   useFCM() // Push notifications natives
 
+  // Hub depuis lequel on est arrivé : affiche la flèche retour dans la barre du haut
+  const [parentPage, setParentPage]         = useState(null)
   const [studioOpen, setStudioOpen]         = useState(false)
   const [auditOpen, setAuditOpen]           = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -278,9 +344,12 @@ function StaffApp() {
   const urlPage  = decodeURIComponent(location.pathname.split('/')[1] || '')
   const currentPage = (PAGES[urlPage] && canAccessPage(urlPage)) ? urlPage : homePage
 
-  const navigate = (pid, search = '') => {
+  // 2e argument : une recherche d'URL ('?x=1') ou l'id du hub d'origine (flèche retour)
+  const navigate = (pid, arg = '') => {
     if (!canAccessPage(pid)) return
-    const go = () => { routerNavigate(`/${pid}${search}`); setStudioOpen(false); setMobileMenuOpen(false) }
+    const search = typeof arg === 'string' && arg.startsWith('?') ? arg : ''
+    const parent = arg && !search && !HUB_PAGES.includes(pid) ? arg : null
+    const go = () => { routerNavigate(`/${pid}${search}`); setParentPage(parent); setStudioOpen(false); setMobileMenuOpen(false) }
     // Seul le contenu (view-transition-name: page) glisse ; rien si l'utilisateur réduit les animations
     const animate = pid !== currentPage && document.startViewTransition
       && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -349,6 +418,12 @@ function StaffApp() {
         <div className={shell.main}>
           {/* Barre du haut : titre, événement, état, recherche, actions */}
           <header className={shell.bar}>
+            {parentPage && (
+              <button type="button" onClick={() => navigate(parentPage)} className={shell.iconBtn}
+                title={`Retour à ${PAGE_TITLES[parentPage] || parentPage}`} aria-label={`Retour à ${PAGE_TITLES[parentPage] || parentPage}`}>
+                <ArrowLeft size={18} />
+              </button>
+            )}
             <h1 className={shell.title}>{PAGE_TITLES[currentPage] || currentPage}</h1>
             {currentEv && !isMobile && (
               <span className={shell.event}>

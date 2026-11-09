@@ -31,7 +31,7 @@ module.exports = async (req, res) => {
   try {
     const ExcelJS = require('exceljs')
     const wb = new ExcelJS.Workbook()
-    wb.creator = 'YllaCash'; wb.created = new Date()
+    wb.creator = `YllaCash ${data.appVersion || 'v1.0.0'}`; wb.created = new Date()
 
     const event    = data.event || {}
     const auditLst = data.audit || []
@@ -82,8 +82,15 @@ module.exports = async (req, res) => {
       if(fmt) cell.numFmt = fmt
     }
 
-    // Trier par date desc
-    const sorted = [...auditLst].sort((a,b) => (b.timestamp||'').localeCompare(a.timestamp||''))
+    // ─── Helpers de robustesse ──────────────────────────────────────────
+    const num = (v) => {
+      if (v === null || v === undefined || v === '') return 0
+      const n = Number(v)
+      return isFinite(n) ? n : 0
+    }
+
+    // Trier par date desc (robuste : ignore les entrées null)
+    const sorted = [...auditLst].filter(Boolean).sort((a,b) => String(b&&b.timestamp||'').localeCompare(String(a&&a.timestamp||'')))
 
     // ── Feuille unique — Journal d'audit ─────────────────────────────
     const ws = wb.addWorksheet("📋 Journal d'audit", { views:[{showGridLines:false}] })
@@ -110,7 +117,7 @@ module.exports = async (req, res) => {
 
     // Sous-titre
     ws.mergeCells('A2:L2')
-    ap(ws.getCell('A2'), S.sub, `Export généré le ${now} — ${sorted.length} entrée(s) — YllaCash`)
+    ap(ws.getCell('A2'), S.sub, `Export généré le ${now} — ${sorted.length} entrée(s) — YllaCash ${data.appVersion || 'v1.0.0'}`)
     ws.getRow(2).height = 16
 
     // En-têtes
@@ -121,54 +128,61 @@ module.exports = async (req, res) => {
     headers.forEach((h, j) => ap(ws.getCell(4, j+1), S.th, h))
     ws.getRow(4).height = 22
 
-    // Données
+    // Données — try/catch par ligne pour ne pas tout casser
+    let writeErrors = 0
     sorted.forEach((l, i) => {
-      const row = i + 5
-      const st  = i % 2 === 0 ? S.td : S.td2
-      const cenR = { ...st, alignment:{horizontal:'center',vertical:'middle'} }
-      const numR = { ...st, alignment:{horizontal:'right',vertical:'middle'} }
-
-      let ds = l.date || '—', hs = l.heure || '—'
       try {
-        const d = new Date(l.timestamp || '')
-        if (!isNaN(d)) {
-          ds = d.toLocaleDateString('fr-FR')
-          hs = d.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'})
+        const row = i + 5
+        const st  = i % 2 === 0 ? S.td : S.td2
+        const cenR = { ...st, alignment:{horizontal:'center',vertical:'middle'} }
+        const numR = { ...st, alignment:{horizontal:'right',vertical:'middle'} }
+
+        let ds = l.date || '—', hs = l.heure || '—'
+        try {
+          const d = new Date(l.timestamp || '')
+          if (!isNaN(d)) {
+            ds = d.toLocaleDateString('fr-FR')
+            hs = d.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit',second:'2-digit'})
+          }
+        } catch {}
+
+        const ut = String(l.userType || '')
+        const who = l.benevoleNom || l.specNom || '—'
+
+        ap(ws.getCell(row,1),  cenR, i+1)
+        ap(ws.getCell(row,2),  st,   ds)
+        ap(ws.getCell(row,3),  cenR, hs)
+        ap(ws.getCell(row,4),  st,   String(l.action || '—'))
+
+        // Type utilisateur — coloré par rôle
+        const utCell = ws.getCell(row, 5)
+        utCell.value = ut ? `${USER_ICON[ut]||'📝'} ${ut}` : '—'
+        utCell.font  = { ...st.font, bold:true, color:{argb: USER_FONT_COLOR[ut]||'FF64748B'} }
+        utCell.fill  = { type:'pattern', pattern:'solid', ...(USER_FILL[ut] || {fgColor:{argb:GBG},bgColor:{argb:'FF000000'}}) }
+        utCell.alignment = { horizontal:'center', vertical:'middle' }
+        utCell.border = bord
+
+        ap(ws.getCell(row,6),  st,   String(l.label||'—').slice(0,100))
+        ap(ws.getCell(row,7),  st,   String(l.specNom||'—').slice(0,30))
+        ap(ws.getCell(row,8),  st,   String(l.benevoleNom||'—').slice(0,30))
+        ap(ws.getCell(row,9),  st,   String(l.staff||l.byStaff||'—').slice(0,20))
+        ap(ws.getCell(row,10), cenR, String(l.resaCode||'—'))
+
+        const mt = l.montant
+        if (mt != null) {
+          ap(ws.getCell(row,11), numR, num(mt)/100, EUR)
+        } else {
+          ap(ws.getCell(row,11), st, '—')
         }
-      } catch {}
 
-      const ut = l.userType || ''
-      const who = l.benevoleNom || l.specNom || '—'
-
-      ap(ws.getCell(row,1),  cenR, i+1)
-      ap(ws.getCell(row,2),  st,   ds)
-      ap(ws.getCell(row,3),  cenR, hs)
-      ap(ws.getCell(row,4),  st,   l.action || '—')
-
-      // Type utilisateur — coloré par rôle
-      const utCell = ws.getCell(row, 5)
-      utCell.value = ut ? `${USER_ICON[ut]||'📝'} ${ut}` : '—'
-      utCell.font  = { ...st.font, bold:true, color:{argb: USER_FONT_COLOR[ut]||'FF64748B'} }
-      utCell.fill  = { type:'pattern', pattern:'solid', ...(USER_FILL[ut] || {fgColor:{argb:GBG},bgColor:{argb:'FF000000'}}) }
-      utCell.alignment = { horizontal:'center', vertical:'middle' }
-      utCell.border = bord
-
-      ap(ws.getCell(row,6),  st,   (l.label||'—').slice(0,100))
-      ap(ws.getCell(row,7),  st,   (l.specNom||'—').slice(0,30))
-      ap(ws.getCell(row,8),  st,   (l.benevoleNom||'—').slice(0,30))
-      ap(ws.getCell(row,9),  st,   (l.staff||l.byStaff||'—').slice(0,20))
-      ap(ws.getCell(row,10), cenR, l.resaCode||'—')
-
-      const mt = l.montant
-      if (mt != null) {
-        ap(ws.getCell(row,11), numR, mt/100, EUR)
-      } else {
-        ap(ws.getCell(row,11), st, '—')
+        ap(ws.getCell(row,12), { ...st, font:{...st.font,size:9} }, nom)
+        ws.getRow(row).height = 18
+      } catch (err) {
+        writeErrors++
+        console.error(`[audit] Write error row ${i}:`, err && err.message)
       }
-
-      ap(ws.getCell(row,12), { ...st, font:{...st.font,size:9} }, nom)
-      ws.getRow(row).height = 18
     })
+    if (writeErrors > 0) console.warn(`[audit] ${writeErrors} ligne(s) ignorée(s) sur ${sorted.length}`)
 
     // Ligne total
     const totRow = sorted.length + 5
@@ -189,6 +203,16 @@ module.exports = async (req, res) => {
 
   } catch(e) {
     console.error('Audit XLSX error:', e)
-    res.status(500).send('ERREUR: ' + e.message + '\n\n' + (e.stack||''))
+    try {
+      res.status(500).setHeader('Content-Type', 'application/json')
+      res.send(JSON.stringify({
+        error: 'ExportFailed',
+        message: e.message || String(e),
+        type: e.name || 'Error',
+        stack: (e.stack || '').split('\n').slice(0, 8).join('\n'),
+      }))
+    } catch {
+      res.status(500).send('ERREUR: ' + (e.message || 'unknown'))
+    }
   }
 }

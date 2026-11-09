@@ -3,12 +3,14 @@ import React, { useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
 import { toast } from '../../ui'
+import ArticleInfoModal from '../../components/ArticleInfoModal'
 
 export default function Carte({ onNavigate }) {
   const { spectateurs, menu, reservations, currentSpecId, creerReservation } = useAppStore()
   const s = spectateurs.find(x => x.id === currentSpecId) || spectateurs[0]
   const [qtys, setQtys] = useState({})
   const [done, setDone] = useState(null)
+  const [selectedInfoItem, setSelectedInfoItem] = useState(null) // modale composition
 
   const cats = [...new Set(menu.map(m => m.cat))]
   const change = (id, d) => setQtys(q => { const v = Math.max(0, (q[id] || 0) + d); return { ...q, [id]: v } })
@@ -52,7 +54,10 @@ export default function Carte({ onNavigate }) {
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--text)' }}>{cat}</div>
           {menu.filter(m => m.cat === cat).map(m => (
             <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '0.5px solid var(--border)' }}>
-              <div>
+              <div
+                onClick={() => setSelectedInfoItem(m)}
+                style={{ cursor: 'pointer' }}
+                title="Voir la composition">
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{m.nom}</div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>{m.stock} dispo</div>
               </div>
@@ -80,6 +85,16 @@ export default function Carte({ onNavigate }) {
             Confirmer la réservation
           </button>
         </div>
+      )}
+
+      {/* Modale composition / allergènes au clic sur un article */}
+      {selectedInfoItem && (
+        <ArticleInfoModal
+          item={selectedInfoItem}
+          qty={qtys[selectedInfoItem.id] || 0}
+          onAdd={() => change(selectedInfoItem.id, +1)}
+          onClose={() => setSelectedInfoItem(null)}
+        />
       )}
     </div>
   )

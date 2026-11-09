@@ -18,6 +18,8 @@ import { friendlyError } from '../../utils/errors'
 import { Plus, Trash2, Pencil, X, Save, PackagePlus } from 'lucide-react'
 import { Button, Card, Badge, Tabs, Empty, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './menu/menu.module.css'
+import MenuItemPhoto from '../../components/MenuItemPhoto'
+import { ALLERGENES_UE } from '../../utils/allergenes'
 
 // ── Icônes ──────────────────────────────────────────────────────────
 import {
@@ -160,13 +162,23 @@ export default function Menu() {
 
   // ── CRUD Articles ─────────────────────────────────────────────────
   const startNewItem = () => {
-    setItemForm({ nom:'', prix:0, stock:100, cat: categories[0]?.nom || '', typeConsommation:'' })
+    setItemForm({
+      nom:'', prix:0, stock:100, cat: categories[0]?.nom || '', typeConsommation:'',
+      description: '', allergenes: [], allergenesCustom: [],
+    })
     setItemTried(false)
     setEditingItem('new')
   }
 
   const startEditItem = (m) => {
-    setItemForm({ nom:m.nom, prix:(m.prix||0)/100, stock:m.stock||0, cat:m.cat, seuilAlerte:m.seuilAlerte??10, typeConsommation:m.typeConsommation||'' })
+    // Affiche en euros (avec 2 décimales possibles). Pas de Math.round qui perdrait les centimes.
+    setItemForm({
+      nom:m.nom, prix:((m.prix||0)/100), stock:m.stock||0, cat:m.cat,
+      seuilAlerte:m.seuilAlerte??10, typeConsommation:m.typeConsommation||'',
+      description: m.description || '',
+      allergenes: Array.isArray(m.allergenes) ? m.allergenes : [],
+      allergenesCustom: Array.isArray(m.allergenesCustom) ? m.allergenesCustom : [],
+    })
     setItemTried(false)
     setEditingItem(m.id)
   }
@@ -175,7 +187,21 @@ export default function Menu() {
     if (!itemForm.nom.trim()) { setItemTried(true); focusFirstInvalid(itemFormRef.current); return }
     setSavingItem(true)
     try {
-      const data = { nom:itemForm.nom.trim(), prix:Math.round(itemForm.prix*100), stock:itemForm.stock, cat:itemForm.cat, seuilAlerte:itemForm.seuilAlerte??10, typeConsommation:itemForm.typeConsommation||'' }
+      // Re-convertit en centimes : on multiplie par 100 et on arrondit pour éviter les flottants
+      const prixCentimes = Math.round((parseFloat(itemForm.prix) || 0) * 100)
+      const data = {
+        nom: itemForm.nom.trim(),
+        prix: prixCentimes,
+        stock: itemForm.stock,
+        cat: itemForm.cat,
+        seuilAlerte: itemForm.seuilAlerte ?? 10,
+        typeConsommation: itemForm.typeConsommation || '',
+        description: (itemForm.description || '').trim(),
+        allergenes: Array.isArray(itemForm.allergenes) ? itemForm.allergenes : [],
+        allergenesCustom: Array.isArray(itemForm.allergenesCustom)
+          ? itemForm.allergenesCustom.filter(v => v && v.trim()).map(v => v.trim())
+          : [],
+      }
       if (editingItem === 'new') await addMenuItem(data)
       else await updateMenuItem(editingItem, data)
       setEditingItem(null)
@@ -206,6 +232,17 @@ export default function Menu() {
   // Ligne d'article (catégories et articles sans catégorie)
   const itemRow = (m) => (
     <div key={m.id} className={s.item}>
+      {/* Mini-vignette photo (ou placeholder) */}
+      <div className={clsx(s.thumb, m.photoUrl && s.thumbPhoto)}>
+        {m.photoUrl ? (
+          <>
+            <div className={s.thumbBlur} style={{ backgroundImage: `url(${m.photoUrl})` }}/>
+            <img src={m.photoUrl} alt="" className={s.thumbImg}/>
+          </>
+        ) : (
+          <span className={s.thumbEmpty}>—</span>
+        )}
+      </div>
       <div className={s.itemInfo}>
         <div className={s.itemName}>{m.nom}</div>
         <div className={s.itemMeta}>
@@ -349,6 +386,16 @@ export default function Menu() {
           {editingItem !== null && (
             <Card className={s.formCard} title={editingItem === 'new' ? 'Nouvel article' : "Modifier l'article"}>
               <div ref={itemFormRef} className={s.form}>
+                <div className={s.itemTop}>
+                {/* Colonne photo */}
+                <div className={s.field}>
+                  <span className={s.label}>Photo</span>
+                  <MenuItemPhoto
+                    item={editingItem === 'new' ? null : menu.find(m => m.id === editingItem)}
+                    eventId={currentEventId}
+                  />
+                </div>
+                {/* Colonne champs */}
                 <div className={s.grid}>
                   <Field label={<span className={s.label}>Nom</span>}
                     error={itemForm.nom.trim() ? null : 'Indique un nom pour cet article'} valid={!!itemForm.nom.trim()} showError={itemTried}>
@@ -362,7 +409,7 @@ export default function Menu() {
                   </label>
                   <label className={s.field}>
                     <span className={s.label}>Prix (€)</span>
-                    <input type="number" step="0.01" min="0" inputMode="decimal" className={s.input} value={itemForm.prix} onChange={e => setItemForm(f=>({...f,prix:parseFloat(e.target.value)||0}))}/>
+                    <input type="number" step="0.01" min="0" inputMode="decimal" placeholder="0.00" className={s.input} value={itemForm.prix === 0 ? '' : itemForm.prix} onChange={e => setItemForm(f=>({...f,prix:parseFloat(e.target.value)||0}))}/>
                   </label>
                   <label className={s.field}>
                     <span className={s.label}>Stock</span>
@@ -382,6 +429,62 @@ export default function Menu() {
                     </select>
                   </label>
                 </div>
+                </div>
+
+                {/* Description / composition */}
+                <label className={s.field}>
+                  <span className={s.label}>Composition (visible par les clients)</span>
+                  <textarea
+                    className={clsx(s.input, s.textarea)}
+                    value={itemForm.description || ''}
+                    onChange={e => setItemForm(f => ({...f, description: e.target.value}))}
+                    placeholder="ex : Riz sénégalais, poulet mariné aux oignons, citron et moutarde."
+                    rows={2}
+                  />
+                </label>
+
+                {/* Allergènes UE — cases à cocher en grille */}
+                <div className={s.field}>
+                  <span className={s.label}>Allergènes (norme UE INCO)</span>
+                  <div className={s.allergenes}>
+                    {ALLERGENES_UE.map(a => {
+                      const isChecked = (itemForm.allergenes || []).includes(a.code)
+                      return (
+                        <label key={a.code} className={clsx(s.allergene, isChecked && s.allergeneOn)}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => {
+                              const current = itemForm.allergenes || []
+                              const next = e.target.checked
+                                ? [...current, a.code]
+                                : current.filter(c => c !== a.code)
+                              setItemForm(f => ({...f, allergenes: next}))
+                            }}
+                          />
+                          <span aria-hidden="true">{a.emoji}</span>
+                          <span>{a.label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Allergènes custom — liste éditable */}
+                <label className={s.field}>
+                  <span className={s.label}>Autres allergènes spécifiques (un par ligne)</span>
+                  <textarea
+                    className={clsx(s.input, s.textarea)}
+                    value={(itemForm.allergenesCustom || []).join('\n')}
+                    onChange={e => setItemForm(f => ({
+                      ...f,
+                      allergenesCustom: e.target.value.split('\n'),
+                    }))}
+                    placeholder="ex : Piment fort&#10;Huile d'arachide raffinée"
+                    rows={2}
+                  />
+                </label>
+
                 <div className={s.formActions}>
                   <Button icon={Save} onClick={saveItem} loading={savingItem}>
                     {savingItem ? 'Sauvegarde…' : editingItem === 'new' ? 'Ajouter' : 'Enregistrer'}

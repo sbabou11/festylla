@@ -5,7 +5,7 @@
 import { create } from 'zustand'
 import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '../firebase/config'
-import { hashPassword, verifyPassword } from '../utils/kpis'
+import { verifyPassword } from '../utils/kpis'
 import { persist } from 'zustand/middleware'
 
 
@@ -85,17 +85,17 @@ async function passwordMatches(data, password) {
 }
 
 export const ROLE_PAGES = {
-  super_admin:  ['evenements','dashboard','analytics','cloture','alertes','qr-entree','benevoles','reservations-admin','spectateurs','transactions','menu','staff','settings','mon-profil','nouveau','credit','retrait','debit','planning'],
-  admin:        ['dashboard','analytics','cloture','alertes','qr-entree','benevoles','reservations-admin','spectateurs','transactions','menu','staff','settings','mon-profil','nouveau','credit','retrait','debit','planning'],
-  billetterie:  ['credit','nouveau','cloture','transactions','mon-profil'],
-  stand:        ['retrait','debit','reservations-admin','transactions','mon-profil'],
-  consultation: ['transactions','reservations-admin','analytics','mon-profil'],
-  directeur_artistique: ['planning', 'mon-profil'],
+  super_admin:  ['evenements','accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','retrait','debit','prendre-commande','retrait-commande','cuisine','remboursement','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree'],
+  admin:        ['accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','retrait','debit','prendre-commande','retrait-commande','cuisine','remboursement','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree'],
+  billetterie:  ['accueil','operations','credit','nouveau','cloture','remboursement','transactions','spectateurs','qr-entree','mon-profil'],
+  stand:        ['accueil','operations','retrait','debit','prendre-commande','retrait-commande','cuisine','reservations-admin','transactions','mon-profil'],
+  consultation: ['accueil','transactions','reservations-admin','analytics','comptabilite','mon-profil'],
+  directeur_artistique: ['accueil','gestion-artistes','planning','cachets','mon-profil'],
   benevole:     ['mon-profil'],
 }
 
 export const ROLE_HOME = {
-  super_admin:'evenements', admin:'dashboard', billetterie:'credit', stand:'retrait', consultation:'transactions', directeur_artistique:'planning', benevole:'mon-profil',
+  super_admin:'evenements', admin:'dashboard', billetterie:'accueil', stand:'accueil', consultation:'accueil', directeur_artistique:'accueil', benevole:'mon-profil',
 }
 
 const useAuthStore = create(

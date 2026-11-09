@@ -10,11 +10,13 @@ import useAuthStore from '../../store/useAuthStore'
 import { fmt }      from '../../utils/helpers'
 import { compressImage } from '../../utils/imageUtils'
 import { friendlyError } from '../../utils/errors'
+import { APP_VERSION_LABEL, APP_BUILD_DATE_LABEL } from '../../utils/buildInfo'
 import Avatar from '../../components/Avatar'
 import { KeyRound, Save, Camera, Check, AlertCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { Button, Card, Field, Skeleton, PasswordStrength, toast, focusFirstInvalid } from '../../ui'
 import st from './MonProfil.module.css'
+import CheckUpdateButton from '../../components/CheckUpdateButton'
 
 export default function MonProfil({ view }) {
   const { spectateurs, staff, reservations, currentSpecId,
@@ -203,6 +205,22 @@ export default function MonProfil({ view }) {
           </div>
         </div>
       )}
+
+      {/* Info de build — visible à tous, utile pour comparer entre devices et savoir
+          si l'app tourne sur la dernière version déployée */}
+      <div className={st.build}>
+        <div>
+          <div className={st.buildLabel}>Version installée</div>
+          <div className={st.buildVersion}>YllaCash {APP_VERSION_LABEL}</div>
+          {APP_BUILD_DATE_LABEL && <div className={st.buildDate}>Build du {APP_BUILD_DATE_LABEL}</div>}
+        </div>
+        <div className={st.buildHint}>
+          Si une mise à jour est disponible, une bannière s'affichera automatiquement en bas.
+        </div>
+      </div>
+
+      {/* Bouton de vérification manuelle des mises à jour */}
+      <CheckUpdateButton variant="card"/>
     </div>
   )
 }

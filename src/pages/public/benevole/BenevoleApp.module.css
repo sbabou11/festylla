@@ -263,3 +263,33 @@
 .invalid { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg2); color: var(--muted); font-family: var(--font); text-align: center; }
 .invalid b { font-size: var(--fs-15); color: var(--text); }
 .invalid p { margin: 4px 0 0; font-size: var(--fs-13); }
+
+/* Transition entre onglets : garde l'espacement de la colonne (will-change retiré : il piègerait la fenêtre position fixe du planning) */
+.wrap > :global(.page-transition) { display: grid; gap: var(--space-4); min-width: 0; will-change: auto; }
+
+/* Identifiant, build, liens */
+.helloId { display: block; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-11); color: var(--muted); }
+.build { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .7; }
+.footer > button { justify-self: center; }
+.textLink {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 2px;
+  min-height: 32px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--brand-dark);
+  font-family: var(--font);
+  font-size: var(--fs-12);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Dernières commandes */
+.resaList { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.resaRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 10px 12px; border-radius: var(--radius); background: var(--bg2); }
+.resaText { min-width: 0; display: grid; gap: 1px; }
+.resaText b { font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resaText span { font-size: var(--fs-11); color: var(--muted); }

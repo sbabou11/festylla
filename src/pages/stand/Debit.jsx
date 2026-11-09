@@ -18,6 +18,7 @@ import { holdSale, cancelSale, dismissSale, retrySale, subscribe, subscribeCommi
 import { Tabs, toast, ConnectionBar } from '../../ui'
 import useSunMode    from '../../store/useSunMode'
 import { friendlyError } from '../../utils/errors'
+import ArticleInfoModal from '../../components/ArticleInfoModal'
 import ArtistServeMode from './ArtistServeMode'
 import ProductGrid     from './pos/ProductGrid'
 import Ticket          from './pos/Ticket'
@@ -59,6 +60,7 @@ export default function Debit() {
   const [scanError, setScanError] = useState('')
   const [qtys, setQtys]         = useState({})
   const [cat, setCat]           = useState(null)
+  const [selectedInfoItem, setSelectedInfoItem] = useState(null) // modale composition
   const [feedback, setFeedback] = useState(null)
   const [pending, setPending]   = useState([])
   const [accepted, setAccepted] = useState([]) // ventes écrites à l'instant
@@ -286,7 +288,7 @@ export default function Debit() {
               </div>
             )}
             {prefs.rush && <p className={s.rushNote}><Zap size={14} /> Les 8 articles les plus vendus aujourd'hui</p>}
-            <ProductGrid items={gridItems} qtys={qtys} onAdd={addItem} big={prefs.rush} />
+            <ProductGrid items={gridItems} qtys={qtys} onAdd={addItem} onInfo={setSelectedInfoItem} big={prefs.rush} />
           </section>
 
           <aside className={s.side}>
@@ -314,6 +316,16 @@ export default function Debit() {
         onUndo={() => feedback && undo(feedback.saleId)}
         onClose={() => setFeedback(null)}
       />
+
+      {/* Modale composition / allergènes au clic sur un article */}
+      {selectedInfoItem && (
+        <ArticleInfoModal
+          item={selectedInfoItem}
+          qty={qtys[selectedInfoItem.id] || 0}
+          onAdd={() => changeQty(selectedInfoItem.id, +1)}
+          onClose={() => setSelectedInfoItem(null)}
+        />
+      )}
     </div>
   )
 }

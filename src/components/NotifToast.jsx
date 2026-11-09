@@ -52,7 +52,7 @@ export default function NotifToast({ notifications }) {
           const cfg = NOTIF_TYPES[toast.type] || { icon: '🔔', color: '#1a6b7a' }
           return (
             <div key={toast.toastId} style={{
-              background: '#fff',
+              background: 'var(--bg)',
               border: `1.5px solid ${cfg.color}`,
               borderLeft: `4px solid ${cfg.color}`,
               borderRadius: 12,
@@ -66,10 +66,10 @@ export default function NotifToast({ notifications }) {
             >
               <span style={{ fontSize: 22, flexShrink: 0 }}>{cfg.icon}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 2, lineHeight: 1.3 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2, lineHeight: 1.3 }}>
                   {toast.titre}
                 </div>
-                <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
+                <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.4 }}>
                   {toast.message}
                 </div>
               </div>

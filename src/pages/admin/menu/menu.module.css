@@ -26,6 +26,15 @@
 .inputShort { max-width: 120px; }
 .formActions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
+/* Article : colonne photo + champs, composition, allergènes */
+.itemTop { display: grid; grid-template-columns: minmax(180px, 220px) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+@media (max-width: 640px) { .itemTop { grid-template-columns: minmax(0, 1fr); } }
+.textarea { min-height: 54px; padding: 10px 12px; resize: vertical; font: 500 var(--fs-13) var(--font); line-height: 1.4; }
+.allergenes { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg); }
+.allergene { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: var(--radius); font-size: var(--fs-12); color: var(--text); cursor: pointer; }
+.allergene input { flex-shrink: 0; accent-color: var(--brand); }
+.allergeneOn { background: var(--amber-light); color: var(--amber); }
+
 /* Pastilles de couleur (la couleur est une donnée : --c) */
 .swatches { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .swatch {
@@ -131,6 +140,11 @@
   padding: var(--space-2) 0;
   border-top: 1px solid var(--border);
 }
+.thumb { position: relative; width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg2); }
+.thumbPhoto { background: #1a1a1a; } /* fond sombre derrière la photo, comme les aperçus clients */
+.thumbBlur { position: absolute; inset: 0; background-size: cover; background-position: center; filter: blur(8px) brightness(.65); transform: scale(1.15); }
+.thumbImg { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
+.thumbEmpty { font-size: 9px; color: var(--muted); opacity: .6; }
 .itemInfo { flex: 1; min-width: 140px; }
 .itemName { font-size: var(--fs-13); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
 .itemMeta { display: flex; align-items: center; gap: var(--space-2); margin-top: 2px; font-size: var(--fs-12); color: var(--muted); }

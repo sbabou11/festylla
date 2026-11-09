@@ -9,10 +9,11 @@ import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import { getSettings, creerReservationArtiste, annulerReservationArtiste, watchArtistReservations, linkArtistToSpec, unlinkArtistFromSpec } from '../../firebase/service'
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore'
-import { Clock, MapPin, Gift, History, CalendarDays, Bookmark, ShoppingCart, AlertCircle, Link2, Wallet, Mic, Maximize2, Ban } from 'lucide-react'
+import { Clock, MapPin, Gift, History, CalendarDays, Bookmark, ShoppingCart, AlertCircle, Link2, Wallet, Mic, Mic2, Maximize2, Ban, Bell, BellOff } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import ThemeToggle from '../../components/ThemeToggle'
 import NotifBell from '../../components/NotifBell'
+import ArtistReminderPopup from '../../components/ArtistReminderPopup'
 import { useTheme } from '../../hooks/useTheme'
 import { useNotifications } from '../../hooks/useNotifications'
 import { friendlyError } from '../../utils/errors'
@@ -20,6 +21,11 @@ import { Button, Dialog, Sheet, Empty, Field, Skeleton, toast, focusFirstInvalid
 import { TYPES, fmtHour, fmtDate } from './artiste/artisteUtils'
 import { DroitsTab, ConsosTab, ReserverTab, ResasTab, ProgrammeTab } from './artiste/ArtisteSections'
 import s from './artiste/EspaceArtiste.module.css'
+import useArtistReminders from '../../hooks/useArtistReminders'
+import useArtistFCM from '../../hooks/useArtistFCM'
+import { APP_FULL_LABEL } from '../../utils/buildInfo'
+import CheckUpdateButton from '../../components/CheckUpdateButton'
+import PageTransition from '../../components/PageTransition'
 
 const BRAND = '#1a6b7a'
 
@@ -139,6 +145,38 @@ export default function EspaceArtiste() {
     })
     return unsub
   }, [eventId])
+
+  // Système de rappels JS (balance et prestation) pour l'artiste in-app
+  // Ne se déclenche que quand l'app est ouverte. Pour les push système quand
+  // l'app est fermée, voir /api/process-reminders.js + cron GitHub Actions.
+  const { activeReminder, acknowledge } = useArtistReminders(creneau ? { ...creneau, id: creneauId } : null)
+
+  // Enregistrement FCM artiste : permet au cron serveur d'envoyer des push
+  // même quand l'app est fermée. Token stocké sur le créneau planning.
+  const { status: fcmStatus, enable: enableFCM } = useArtistFCM({ eventId, creneauId })
+
+  // Tick toutes les minutes : force un re-render pour que les éléments
+  // dépendant du temps (bandeau balance qui disparaît après la fin, etc.)
+  // se mettent à jour automatiquement sans nécessiter de rechargement.
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setTick(n => n + 1), 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  // Calcule si la balance est terminée (heure de fin dépassée).
+  // Si pas d'heure de fin renseignée, on garde le bandeau (l'admin peut
+  // n'avoir mis qu'un début sans fin).
+  // Recalculé à chaque render → le tick toutes les minutes le rend
+  // automatiquement réactif au temps qui passe.
+  const balanceFinished = (() => {
+    if (!creneau?.balanceFin) return false
+    const finMs = creneau.balanceFin?.toDate
+      ? creneau.balanceFin.toDate().getTime()
+      : new Date(creneau.balanceFin).getTime()
+    if (isNaN(finMs)) return false
+    return Date.now() > finMs
+  })()
 
   if (loading) {
     return (
@@ -377,6 +415,50 @@ export default function EspaceArtiste() {
           </div>
         </section>
 
+        {/* Balance : affichée seulement si l'admin l'a renseignée et qu'elle n'est pas terminée */}
+        {creneau.balanceDebut && !balanceFinished && (
+          <section className={s.balance}>
+            <span className={s.bannerIcon}><Mic2 size={20} aria-hidden="true"/></span>
+            <div className={s.bannerText}>
+              <h2 className={s.overline}>Balance technique</h2>
+              <div className={s.balanceTime}>
+                <b>{fmtHour(creneau.balanceDebut)}{creneau.balanceFin && ` → ${fmtHour(creneau.balanceFin)}`}</b>
+                {(creneau.balanceScene || creneau.scene) && (
+                  <span><MapPin size={11} aria-hidden="true"/>{creneau.balanceScene || creneau.scene}</span>
+                )}
+              </div>
+              <p>Vous serez prévenu(e) 15 et 5 min avant.</p>
+            </div>
+          </section>
+        )}
+
+        {/* Activation des notifications : indispensable pour les rappels balance et prestation */}
+        {fcmStatus.state === 'default' && (
+          <section className={s.notifAsk}>
+            <span className={clsx(s.bannerIcon, s.bannerCoral)}><Bell size={20} aria-hidden="true"/></span>
+            <div className={s.bannerText}>
+              <b>Activez les notifications</b>
+              <p>Pour recevoir vos rappels de balance et prestation, même app fermée.</p>
+            </div>
+            <Button variant="coral" size="sm" onClick={enableFCM}>Activer</Button>
+          </section>
+        )}
+
+        {/* Bloqué (iOS hors PWA ou permission refusée) : on explique pourquoi */}
+        {(fcmStatus.state === 'unsupported' || fcmStatus.state === 'denied') && (
+          <div className={s.error} role="status">
+            <BellOff size={16} aria-hidden="true"/>
+            <span><b>Notifications indisponibles</b><br/>{fcmStatus.error}</span>
+          </div>
+        )}
+
+        {fcmStatus.state === 'enrolled' && (
+          <div className={s.notifOn} role="status">
+            <Bell size={13} aria-hidden="true"/>
+            <span><strong>Notifications activées</strong> · Vous recevrez vos rappels.</span>
+          </div>
+        )}
+
         {/* QR code (plein écran au toucher) */}
         <section className={clsx(s.card, s.qrCard)}>
           <h2 className={s.overline}>Présentez ce code au stand</h2>
@@ -387,6 +469,8 @@ export default function EspaceArtiste() {
           <span className={s.qrHint}><Maximize2 size={12} aria-hidden="true"/>Touchez le code pour l'agrandir</span>
         </section>
 
+        {/* Contenu : animation entre les onglets */}
+        <PageTransition pageKey={tab}>
         {tab === 'droits' && (
           <DroitsTab av={av}
             used={{ drink: consDrinks, meal: consMeals, eau: consEaux }}
@@ -401,10 +485,12 @@ export default function EspaceArtiste() {
         )}
         {tab === 'resas' && <ResasTab reservations={reservations} onCancel={setCancelAsk} onReserve={() => setTab('reserver')}/>}
         {tab === 'programme' && <ProgrammeTab planning={planning} creneauId={creneauId}/>}
+        </PageTransition>
 
         <footer className={s.footer}>
-          <b>YllaCash v1.0 · 05/2026</b>
+          <b>{APP_FULL_LABEL}</b>
           <span>Développée par Maison Ylla</span>
+          <CheckUpdateButton variant="compact"/>
         </footer>
       </main>
 
@@ -479,6 +565,9 @@ export default function EspaceArtiste() {
           <span>Touchez l'écran pour fermer</span>
         </button>
       )}
+
+      {/* Popup de rappel actif (balance/prestation), par-dessus tout */}
+      <ArtistReminderPopup reminder={activeReminder} onAcknowledge={acknowledge}/>
     </div>
   )
 }

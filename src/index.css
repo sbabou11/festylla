@@ -546,3 +546,138 @@ input, select { min-height: var(--touch); }
 @media (pointer: coarse) {
   .nav-btn { min-height: var(--touch); }
 }
+
+/* Modale centrée — animation d'apparition (scale + fade) */
+@keyframes ycScaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Overlay de modale — fade-in du fond sombre */
+@keyframes ycFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Pulsation légère pour signaler une commande en retard (> 10 min) en cuisine.
+   Effet subtil : la bordure rouge ne disparaît pas, on module juste l'opacité de fond. */
+@keyframes ycPulseUrgent {
+  0%, 100% { background-color: var(--bg); }
+  50%      { background-color: var(--red-light); }
+}
+
+/* Pulsation rapide pour le niveau panique (> 15 min) — utilisé sur fond déjà rouge intense.
+   Module l'opacité pour effet "alerte". */
+@keyframes ycPulseUrgentFast {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
+}
+
+/* ─── Settings : ligne d'édition de thématique d'exposition ─────────
+   Sur les écrans étroits (mobile), on bascule la grille en 2 lignes :
+   label en haut, tarif + bouton supprimer en bas. Évite la troncature. */
+@media (max-width: 520px) {
+  .yc-thematique-row {
+    grid-template-columns: 1fr 36px !important;
+    grid-template-areas: "label trash" "tarif trash" !important;
+  }
+  .yc-thematique-row > input[type="text"]:first-child {
+    grid-area: label;
+  }
+  .yc-thematique-row > div {
+    grid-area: tarif;
+  }
+  .yc-thematique-row > button {
+    grid-area: trash;
+    align-self: start;
+    height: auto !important;
+    min-height: 36px;
+  }
+}
+
+/* ─── Settings : disposition multi-colonnes sur grand écran ──────────
+   Les cartes simples se répartissent en 2 colonnes (masonry CSS columns,
+   hauteurs indépendantes). Les sections larges (.yc-settings-wide)
+   occupent toute la largeur. Sur écran étroit → 1 colonne (responsive). */
+.yc-settings-grid {
+  column-count: 1;
+  column-gap: 16px;
+}
+.yc-settings-grid > * {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+}
+.yc-settings-grid > .yc-settings-wide {
+  column-span: all;
+  -webkit-column-span: all;
+}
+@media (min-width: 900px) {
+  .yc-settings-grid {
+    column-count: 2;
+  }
+}
+   Sur mobile, on masque l'en-tête colonne et on bascule les inputs sur 2 lignes :
+   description sur sa propre ligne, puis qté + PU + total + delete sur ligne suivante. */
+@media (max-width: 520px) {
+  .yc-lignes-header {
+    display: none !important;
+  }
+  .yc-ligne-row {
+    grid-template-columns: 1fr 32px !important;
+    grid-template-areas: "desc del" "qty del" "pu del" "tot del" !important;
+    gap: 4px !important;
+    padding: 8px;
+    background: var(--bg);
+    border-radius: 6px;
+    margin-bottom: 8px !important;
+  }
+  .yc-ligne-row > input:nth-child(1) { grid-area: desc; }
+  .yc-ligne-row > input:nth-child(2) { grid-area: qty; }
+  .yc-ligne-row > input:nth-child(3) { grid-area: pu; }
+  .yc-ligne-row > div:nth-child(4)   { grid-area: tot; text-align: left !important; }
+  .yc-ligne-row > button             { grid-area: del; align-self: start; }
+}
+
+/* Spin (utilisé par RefreshCw pendant la mise à jour) */
+@keyframes ycSpin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: ycSpin 1s linear infinite;
+}
+
+/* Animation de changement de page (fade + slide vertical léger)
+   Utilisée par le composant <PageTransition> partout dans l'app */
+@keyframes ycPageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-transition {
+  animation: ycPageEnter 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* will-change pour optimiser le rendu GPU et éviter le clignotement */
+  will-change: opacity, transform;
+}
+
+/* Respect des préférences d'accessibilité : pas d'animation pour les utilisateurs
+   qui demandent à réduire le mouvement (vestibulaires, photosensibles…) */
+@media (prefers-reduced-motion: reduce) {
+  .page-transition {
+    animation: none;
+  }
+}
+
+/* Spinner utilisé dans la modale de génération de décharge signée */
+@keyframes ycSpin {
+  to { transform: rotate(360deg); }
+}
+.yc-spin {
+  animation: ycSpin 0.8s linear infinite;
+}

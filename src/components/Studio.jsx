@@ -10,7 +10,7 @@ import { Wand2, RefreshCw, Upload, Trash2 } from 'lucide-react'
 import { toast } from '../ui'
 import s from './Studio.module.css'
 import { useTheme } from '../hooks/useTheme'
-import { fileToBase64, PRESETS } from '../utils/helpers'
+import { PRESETS } from '../utils/helpers'
 import { compressImage } from '../utils/imageUtils'
 import QrCode from './QrCode'
 

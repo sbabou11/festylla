@@ -297,3 +297,22 @@
 @media (min-width: 768px) {
   .nav { left: 50%; right: auto; width: 520px; transform: translateX(-50%); border: 1px solid var(--border); border-bottom: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
 }
+
+/* Transition entre onglets : garde l'espacement de la colonne (will-change retiré : il piègerait les éléments en position fixe) */
+.wrap > :global(.page-transition) { display: grid; gap: var(--space-4); min-width: 0; will-change: auto; }
+.footer > button { justify-self: center; }
+
+/* Balance et notifications */
+.balance, .notifAsk { display: flex; align-items: center; gap: var(--space-3); padding: 12px 14px; border-radius: var(--radius-lg); min-width: 0; }
+.balance { border: 1px solid var(--brand); background: var(--brand-light); }
+.notifAsk { border: 1.5px solid var(--coral); background: var(--coral-light); }
+.bannerIcon { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: 10px; background: var(--brand); color: var(--on-brand); }
+.bannerCoral { background: var(--coral); color: var(--on-coral); }
+.bannerText { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.bannerText b { font-size: var(--fs-13); color: var(--text); }
+.bannerText p { margin: 0; font-size: var(--fs-11); line-height: 1.35; color: var(--muted); }
+.balance .overline { color: var(--brand-dark); }
+.balanceTime { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.balanceTime span { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-11); color: var(--muted); }
+.notifOn { display: flex; align-items: center; gap: var(--space-2); padding: 8px 12px; border: 1px solid var(--green); border-radius: var(--radius); background: var(--green-light); color: var(--green-dark); font-size: var(--fs-11); }
+.notifOn svg { flex-shrink: 0; }

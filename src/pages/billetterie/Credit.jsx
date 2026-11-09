@@ -33,7 +33,7 @@ export default function Credit() {
   const { currentEventId, events } = useEventStore()
   const { user } = useAuthStore()
   const [spec, setSpec]     = useState(null)
-  const [montant, setMontant] = useState(20)
+  const [montant, setMontant] = useState(0)
   const [moyen, setMoyen]   = useState('Espèces')
   const [done, setDone]     = useState(null)
   const [loading, setLoading] = useState(false)
@@ -88,7 +88,9 @@ export default function Credit() {
     try {
       await crediter(spec.id, montant, user?.nom || 'Billetterie', spec._eventId || currentEventId,
         { moyen: moyen === 'Espèces' ? 'especes' : 'cb' })
-      setDone({ nom: spec.nom, montant, newSolde: spec.solde + montant * 100 })
+      // Math.round évite les artefacts flottants (ex : 12.10 * 100 = 1209.9999…)
+      const pts = Math.round((parseFloat(montant) || 0) * 100)
+      setDone({ nom: spec.nom, montant, pts, newSolde: spec.solde + pts })
       setSpec(null); setMontant(20)
     } catch (e) { setErr(friendlyError(e, "La recharge n'est pas passée.")) }
     finally { setLoading(false) }
@@ -105,7 +107,7 @@ export default function Credit() {
         <p className={s.doneName}>{done.nom}</p>
         <div className={s.doneBalance}>
           <Wallet size={18} aria-hidden="true" />
-          <RollingBalance from={done.newSolde - done.montant * 100} to={done.newSolde} />
+          <RollingBalance from={done.newSolde - done.pts} to={done.newSolde} />
         </div>
         <Button block size="lg" icon={RefreshCw} onClick={reset} autoFocus>Nouveau client</Button>
       </Card>
@@ -154,8 +156,9 @@ export default function Credit() {
                 </div>
                 {/* Montant personnalisé */}
                 <Field label="Autre montant (€)" error={montantErr} valid={!montantErr} showError={tried} className={s.custom}>
-                  <input type="number" value={montant} min={1} max={500} inputMode="numeric"
-                    onChange={e => setMontant(parseInt(e.target.value)||0)} className={s.customInput}/>
+                  <input type="number" value={montant === 0 ? '' : montant} placeholder="0"
+                    min={1} max={500} step="0.01" inputMode="decimal"
+                    onChange={e => setMontant(parseFloat(e.target.value)||0)} className={s.customInput}/>
                 </Field>
               </div>
 

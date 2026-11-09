@@ -1,17 +1,30 @@
 #!/bin/bash
 # YllaCash - Deploy (Bash)
 # Usage : bash deploy.sh
+# Compatible Linux, macOS et Termux (Android)
 
 LOGFILE="deploy-log.txt"
 REPO="https://github.com/sbabou11/festylla.git"
 BRANCH="main"
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
+# Détection Termux : pas de "read" interactif final (Termux ferme la fenêtre directement)
+IS_TERMUX=0
+[ -n "$PREFIX" ] && [ -d "$PREFIX/lib" ] && [ -d "/data/data/com.termux" ] && IS_TERMUX=1
+
 ok()   { echo -e "${GREEN}  OK${NC}"; echo "  OK" >> "$LOGFILE"; }
-fail() { echo -e "${RED}  ERREUR : $1${NC}"; echo "ERREUR : $1" >> "$LOGFILE"; echo ""; cat "$LOGFILE"; read -p "Entree..."; exit 1; }
+fail() {
+  echo -e "${RED}  ERREUR : $1${NC}"
+  echo "ERREUR : $1" >> "$LOGFILE"
+  echo ""
+  cat "$LOGFILE"
+  [ "$IS_TERMUX" -eq 0 ] && read -p "Entree..."
+  exit 1
+}
 
 echo "YllaCash - Deploiement" > "$LOGFILE"
 echo "Date : $(date '+%d/%m/%Y %H:%M:%S')" >> "$LOGFILE"
+[ "$IS_TERMUX" -eq 1 ] && echo "Environnement : Termux (Android)" >> "$LOGFILE"
 echo "" >> "$LOGFILE"
 
 echo -e "\n${BLUE}  YllaCash - Script de deploiement${NC}\n"
@@ -20,9 +33,41 @@ echo -e "\n${BLUE}  YllaCash - Script de deploiement${NC}\n"
 case "$PWD" in
   *"'"*) fail "le chemin du dossier contient une apostrophe ($PWD). Renommez-le, par exemple \"YllaCash 2.0\"." ;;
 esac
+[ "$IS_TERMUX" -eq 1 ] && echo -e "  ${BLUE}[Mode Termux/Android detecte]${NC}\n"
+
+# 0. Nettoyage des anciens api/*.cjs obsoletes
+# Les endpoints sont retournes en .js (avec api/package.json type:commonjs).
+# Si des .cjs trainent encore, ils peuvent confondre le routage Vercel.
+echo -e "${YELLOW}[0/5] Nettoyage anciens api/*.cjs obsoletes...${NC}"
+echo "[0/5] Cleanup api/*.cjs obsoletes" >> "$LOGFILE"
+OBSOLETE_API_FILES=(
+  "api/audit.cjs"
+  "api/cachets.cjs"
+  "api/comptabilite.cjs"
+  "api/process-reminders.cjs"
+  "api/rapport.cjs"
+  "api/send-push.cjs"
+  "api/transactions.cjs"
+)
+REMOVED=0
+for f in "${OBSOLETE_API_FILES[@]}"; do
+  if [ -f "$f" ]; then
+    rm -f "$f"
+    echo "  Supprime: $f" >> "$LOGFILE"
+    REMOVED=$((REMOVED + 1))
+  fi
+done
+if [ $REMOVED -gt 0 ]; then
+  echo -e "  ${GREEN}$REMOVED fichier(s) obsolete(s) supprime(s)${NC}"
+  echo "  Total supprime: $REMOVED" >> "$LOGFILE"
+else
+  echo "  Aucun fichier obsolete trouve (deja propre)"
+  echo "  Rien a nettoyer" >> "$LOGFILE"
+fi
+ok
 
 # 1. .env.local
-echo -e "${YELLOW}[1/5] Creation .env.local...${NC}"
+echo -e "\n${YELLOW}[1/5] Creation .env.local...${NC}"
 echo "[1/5] .env.local" >> "$LOGFILE"
 cat > .env.local << 'ENV'
 VITE_FIREBASE_API_KEY=AIzaSyDqQnyzjXYmTWZrvXHkGbhPrCrIuG_lu-A
@@ -99,4 +144,4 @@ ok
 echo "DEPLOIEMENT REUSSI" >> "$LOGFILE"
 echo -e "\n${GREEN}  Deploiement reussi !${NC}"
 echo -e "  GitHub mis a jour (historique conserve) | Vercel redeploie dans 2 min\n"
-read -p "  Entree pour fermer..."
+[ "$IS_TERMUX" -eq 0 ] && read -p "  Entree pour fermer..."

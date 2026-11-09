@@ -339,3 +339,42 @@
 @keyframes slideIn { from { transform: translateX(14px); opacity: .3; } }
 @keyframes popIn   { from { transform: scale(.6); } }
 @keyframes flashIn { from { opacity: 0; } }
+
+/* Tuile + bouton « i » voisin (deux boutons ne peuvent pas s'imbriquer) */
+.tileWrap { position: relative; display: grid; min-width: 0; }
+.tileInfo {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tileInfo:hover { color: var(--brand-dark); }
+.tileInfo:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+
+/* Photo d'article */
+.picPhoto { position: relative; height: 88px; overflow: hidden; background: #1a1a1a; }
+.gridBig .picPhoto { height: 112px; }
+.picBlur {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(16px) brightness(.65);
+  transform: scale(1.15);
+}
+.picImg {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}

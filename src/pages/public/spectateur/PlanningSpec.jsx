@@ -229,6 +229,18 @@ function PlanningSpec({ planning, eventId, specId, themeColor }) {
     catch { return new Set() }
   })
 
+  // Mode d'affichage : list (défaut) | compact | grid
+  const [viewMode, setViewMode]     = React.useState(() => {
+    try {
+      const saved = localStorage.getItem('yllacash-planningspec-view')
+      if (['list','compact','grid'].includes(saved)) return saved
+    } catch {}
+    return 'list'
+  })
+  React.useEffect(() => {
+    try { localStorage.setItem('yllacash-planningspec-view', viewMode) } catch {}
+  }, [viewMode])
+
   React.useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
@@ -287,6 +299,32 @@ function PlanningSpec({ planning, eventId, specId, themeColor }) {
         )}
       </div>
 
+      {/* Sélecteur de mode d'affichage */}
+      <div style={{ display:'flex', gap:6, marginBottom:10, padding:4, background:'var(--bg2)', borderRadius:10, border:'1px solid var(--border)' }}>
+        {[
+          { v:'list',    l:'Liste',   icon:'☰' },
+          { v:'compact', l:'Compact', icon:'≡' },
+          { v:'grid',    l:'Grille',  icon:'▦' },
+        ].map(m => {
+          const active = viewMode === m.v
+          return (
+            <button key={m.v} onClick={() => setViewMode(m.v)} aria-pressed={active}
+              style={{
+                flex:1, padding:'8px 4px', minHeight:36,
+                background: active ? 'var(--brand)' : 'transparent',
+                color: active ? 'var(--on-brand)' : 'var(--muted)',
+                border:'none', borderRadius:8,
+                fontSize:12, fontWeight:700,
+                cursor:'pointer', fontFamily:'inherit',
+                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                WebkitTapHighlightColor:'transparent',
+              }}>
+              <span style={{ fontSize:14 }}>{m.icon}</span> {m.l}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Barre de recherche */}
       <div style={{ position:'relative', marginBottom:10 }}>
         <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:16, pointerEvents:'none' }}>🔍</span>
@@ -332,12 +370,97 @@ function PlanningSpec({ planning, eventId, specId, themeColor }) {
           {filterType === 'favoris' ? 'Aucun favori pour le moment. Appuyez sur ❤️ pour en ajouter.' : 'Aucun résultat pour cette recherche.'}
         </div>
       ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        <div style={
+          viewMode === 'grid'
+            ? { display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(150px, 1fr))', gap:10 }
+            : { display:'flex', flexDirection:'column', gap: viewMode === 'compact' ? 4 : 8 }
+        }>
           {filtered.map(cr => {
             const ti  = TYPES_SPEC[cr.type] || TYPES_SPEC.autre
             const st  = autoStatutSpec(cr)
             const dim = st === 'termine' || cr.statut === 'annule'
             const fav = favs.has(cr.id)
+
+            // ─── MODE COMPACT : ligne épurée ────────────────────────────
+            if (viewMode === 'compact') {
+              return (
+                <div key={cr.id}
+                  ref={!currentRef.current && (st==='en-cours' || st==='a-venir') ? currentRef : null}
+                  onClick={() => setCarteOpen(cr)}
+                  style={{
+                    display:'flex', alignItems:'center', gap:10,
+                    padding:'10px 12px',
+                    background:'var(--bg)',
+                    border:`1px solid ${st==='en-cours' ? ti.color+'88' : 'var(--border)'}`,
+                    borderRadius:10, cursor:'pointer', opacity:dim?.55:1,
+                    boxShadow: st==='en-cours' ? '0 2px 8px '+ti.color+'33' : 'none',
+                  }}>
+                  <div style={{ width:32, height:32, borderRadius:8, background:ti.color+'22', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                    {ti.icon}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {cr.artiste}
+                    </div>
+                    <div style={{ fontSize:11, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      🕐 {fmt2Spec(cr.debut)}{cr.fin ? '–'+fmt2Spec(cr.fin) : ''}{cr.scene ? ' · '+cr.scene : ''}
+                    </div>
+                  </div>
+                  {st === 'en-cours' && (
+                    <span style={{ fontSize:9, fontWeight:800, padding:'2px 6px', borderRadius:8, background:'#d1fae5', color:'#065f46', whiteSpace:'nowrap' }}>▶ EN COURS</span>
+                  )}
+                  <button onClick={e=>{e.stopPropagation();toggleFav(cr.id)}}
+                    style={{ background:'none', border:'none', cursor:'pointer', fontSize:16, padding:2, lineHeight:1 }}>
+                    {fav ? '❤️' : '🤍'}
+                  </button>
+                </div>
+              )
+            }
+
+            // ─── MODE GRID : carte verticale compacte ────────────────────
+            if (viewMode === 'grid') {
+              return (
+                <div key={cr.id}
+                  ref={!currentRef.current && (st==='en-cours' || st==='a-venir') ? currentRef : null}
+                  onClick={() => setCarteOpen(cr)}
+                  style={{
+                    background:'var(--bg)',
+                    border:`1.5px solid ${st==='en-cours' ? ti.color+'88' : 'var(--border)'}`,
+                    borderRadius:12, cursor:'pointer', opacity:dim?.55:1,
+                    overflow:'hidden',
+                    boxShadow: st==='en-cours' ? '0 4px 12px '+ti.color+'33' : 'none',
+                    display:'flex', flexDirection:'column',
+                  }}>
+                  <div style={{ aspectRatio:'1/1', width:'100%', background:ti.color+'22', position:'relative', display:'flex', alignItems:'center', justifyContent:'center', fontSize:32 }}>
+                    {cr.photo
+                      ? <img loading="lazy" src={cr.photo} alt={cr.artiste} style={{ width:'100%', height:'100%', objectFit:'cover', objectPosition: cr.photoPosition || 'center center' }}/>
+                      : <span>{ti.icon}</span>}
+                    {st === 'en-cours' && (
+                      <span style={{ position:'absolute', top:6, left:6, fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:8, background:'#d1fae5', color:'#065f46' }}>▶ EN COURS</span>
+                    )}
+                    <button onClick={e=>{e.stopPropagation();toggleFav(cr.id)}}
+                      style={{ position:'absolute', top:4, right:4, background:'rgba(255,255,255,0.85)', border:'none', cursor:'pointer', fontSize:14, padding:'4px 6px', borderRadius:6, lineHeight:1 }}>
+                      {fav ? '❤️' : '🤍'}
+                    </button>
+                  </div>
+                  <div style={{ padding:'8px 10px' }}>
+                    <div style={{ fontSize:12, fontWeight:800, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {cr.artiste}
+                    </div>
+                    <div style={{ fontSize:10, color:'var(--muted)', marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      🕐 {fmt2Spec(cr.debut)}
+                    </div>
+                    {cr.scene && (
+                      <div style={{ fontSize:10, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        📍 {cr.scene}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            }
+
+            // ─── MODE LIST (par défaut) ──────────────────────────────────
             return (
               <div key={cr.id}
                 ref={!currentRef.current && (st==='en-cours' || st==='a-venir') ? currentRef : null}

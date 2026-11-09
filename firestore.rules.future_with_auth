@@ -1,0 +1,136 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+    function isAuth() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isAuth() && request.auth.token.role in ['admin', 'super_admin'];
+    }
+    function isSuperAdmin() {
+      return isAuth() && request.auth.token.role == 'super_admin';
+    }
+    function isStaff() {
+      return isAuth() && request.auth.token.role in ['admin', 'super_admin', 'billetterie', 'stand', 'consultation'];
+    }
+    function hasEventAccess(eventId) {
+      return isStaff() && (
+        isSuperAdmin() ||
+        request.auth.token.eventIds.hasAny([eventId])
+      );
+    }
+
+    // ── Événements ───────────────────────────────────────────────────────────
+    match /events/{eventId} {
+      allow read:  if hasEventAccess(eventId);
+      allow write: if isSuperAdmin();
+
+      // Spectateurs — lecture staff, écriture billetterie+
+      match /spectateurs/{specId} {
+        allow read:   if hasEventAccess(eventId);
+        allow create: if hasEventAccess(eventId) &&
+                         request.auth.token.role in ['admin', 'super_admin', 'billetterie'];
+        allow update: if hasEventAccess(eventId) &&
+                         request.auth.token.role in ['admin', 'super_admin', 'billetterie', 'stand'];
+        allow delete: if isAdmin();
+      }
+
+      // Transactions — lecture staff, écriture stand+billetterie
+      match /transactions/{txId} {
+        allow read:   if hasEventAccess(eventId);
+        allow create: if hasEventAccess(eventId) &&
+                         request.auth.token.role in ['admin', 'super_admin', 'billetterie', 'stand'];
+        allow delete: if isAdmin();
+        allow update: if false; // Transactions immuables
+      }
+
+      // Réservations — lecture staff, écriture stand+bénévoles publics
+      match /reservations/{resaId} {
+        allow read:   if hasEventAccess(eventId);
+        allow create: if hasEventAccess(eventId) || true; // Spectateurs peuvent créer via URL publique
+        allow update: if hasEventAccess(eventId);
+        allow delete: if isAdmin();
+      }
+
+      // Menu — lecture staff, écriture admin
+      match /menu/{itemId} {
+        allow read:   if hasEventAccess(eventId);
+        allow write:  if isAdmin();
+      }
+
+      // Staff de l'événement — admin uniquement
+      match /staff/{staffId} {
+        allow read:   if hasEventAccess(eventId);
+        allow write:  if isAdmin();
+      }
+
+      // Bénévoles — lecture staff, écriture admin
+      match /benevoles/{benevoleId} {
+        allow read:   if hasEventAccess(eventId);
+        allow write:  if isAdmin();
+        // Auto-update pour changement de mot de passe (depuis l'espace public)
+        allow update: if resource.data.id == benevoleId &&
+                         request.resource.data.diff(resource.data).affectedKeys()
+                           .hasOnly(['password', 'passwordHash']);
+      }
+
+      // Notifications — lecture/écriture staff et app publique
+      match /notifications/{notifId} {
+        allow read, write: if hasEventAccess(eventId) || true;
+      }
+
+      // Audit — lecture admin, écriture system (via service.js côté client auth)
+      match /audit/{logId} {
+        allow read:   if isAdmin();
+        allow create: if isStaff() || true; // App publique peut logguer
+        allow update, delete: if false; // Logs immuables
+      }
+
+      // Settings — lecture staff, écriture admin
+      match /settings/{doc} {
+        allow read:   if hasEventAccess(eventId);
+        allow write:  if isAdmin();
+      }
+
+      // Catégories dans event
+      match /categories/{catId} {
+        allow read:   if hasEventAccess(eventId);
+        allow write:  if isAdmin();
+      }
+    }
+
+    // ── Rôles ────────────────────────────────────────────────────────────────
+    match /roles/{roleId} {
+      allow read:  if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // ── Catégories globales ──────────────────────────────────────────────────
+    match /categories/{catId} {
+      allow read:  if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // ── Staff global ─────────────────────────────────────────────────────────
+    match /staff/{staffId} {
+      allow read:   if isStaff();
+      allow create: if isAdmin();
+      allow update: if isAdmin() ||
+                       (isStaff() && request.auth.uid == staffId &&
+                        request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['password', 'fcmTokens']));
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── Spectateurs ne peuvent PAS lire les données des autres ───────────────
+    // (ils passent par l'URL publique /solde?id=XXX qui lit via service account)
+
+    // Refus par défaut de tout le reste
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

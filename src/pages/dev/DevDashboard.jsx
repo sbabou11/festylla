@@ -3,6 +3,7 @@
  * Développement uniquement (route /ui/dashboard, ?page=<id de la page>, toutes les pages du menu admin).
  * Sous 641 px : barre du bas et menu « Plus », comme l'app staff.
  * Compte de démo et actions des stores simulés (recharge, encaissement, retrait, réservations, profil).
+ * Les pages restaurées (Exposants, Finances, Cuisine…) lisent et écrivent directement : elles s'ouvrent, à vide, sur l'événement « demo ».
  * Les écrans qui lisent Firestore directement (Bénévoles, Retrait…) restent vides sur l'événement « demo ».
  */
 import React, { useEffect, useState } from 'react'
@@ -33,6 +34,19 @@ import Nouveau from '../billetterie/Nouveau'
 import Credit from '../billetterie/Credit'
 import Retrait from '../stand/Retrait'
 import Debit from '../stand/Debit'
+import Accueil from '../admin/Accueil'
+import Comptabilite from '../admin/Comptabilite'
+import Operations from '../admin/Operations'
+import EquipeHub from '../admin/EquipeHub'
+import SpectateursHub from '../admin/SpectateursHub'
+import Cachets from '../admin/Cachets'
+import GestionArtistes from '../admin/GestionArtistes'
+import Exposants from '../admin/Exposants'
+import Finances from '../admin/Finances'
+import Remboursement from '../billetterie/Remboursement'
+import PrendreCommande from '../stand/PrendreCommande'
+import RetraitCommande from '../stand/RetraitCommande'
+import Cuisine from '../stand/Cuisine'
 import shell from '../../App.module.css'
 
 const H = 3600 * 1000
@@ -42,10 +56,16 @@ const STAFF = ['Bar Scène A', 'Stand Crêpes', 'Bar Scène B']
 const CAISSES = ['Caisse Awa', 'Caisse Karim']
 const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, staff: Staff, menu: Menu, settings: Settings, transactions: Transactions, alertes: Alertes,
   'qr-entree': QrEntree, benevoles: Benevoles, 'reservations-admin': Reservations, spectateurs: Spectateurs, 'mon-profil': MonProfil,
-  nouveau: Nouveau, credit: Credit, retrait: Retrait, debit: Debit }
+  nouveau: Nouveau, credit: Credit, retrait: Retrait, debit: Debit,
+  accueil: Accueil, comptabilite: Comptabilite, operations: Operations, 'equipe-hub': EquipeHub, 'spectateurs-hub': SpectateursHub,
+  cachets: Cachets, 'gestion-artistes': GestionArtistes, exposants: Exposants, finances: Finances, remboursement: Remboursement,
+  'prendre-commande': PrendreCommande, 'retrait-commande': RetraitCommande, cuisine: Cuisine }
 const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres', transactions: 'Transactions', alertes: 'Alertes financières',
   'qr-entree': 'QR code entrée', benevoles: 'Bénévoles', 'reservations-admin': 'Réservations', spectateurs: 'Spectateurs', 'mon-profil': 'Mon profil',
-  nouveau: 'Nouveau QR', credit: 'Créditer', retrait: 'Retrait réservation', debit: 'Encaisser' }
+  nouveau: 'Nouveau QR', credit: 'Créditer', retrait: 'Retrait réservation', debit: 'Encaisser',
+  accueil: 'Accueil', comptabilite: 'Comptabilité', operations: 'Opérations', 'equipe-hub': 'Équipe & Bénévoles', 'spectateurs-hub': 'Spectateurs & Accès',
+  cachets: 'Cachets artistes', 'gestion-artistes': 'Gestion des artistes', exposants: 'Exposants', finances: 'Finances', remboursement: 'Remboursement',
+  'prendre-commande': 'Prendre commande', 'retrait-commande': 'Retrait commande', cuisine: 'Cuisine' }
 
 function sampleData(now) {
   const spectateurs = NAMES.map((nom, i) => ({ id: `YT-${(4100 + i * 37).toString(16).toUpperCase()}`, nom, solde: i === 6 ? -150 : 500 + i * 650 }))

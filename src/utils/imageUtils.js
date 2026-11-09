@@ -89,3 +89,47 @@ function render(img, maxSize, quality) {
   ctx.drawImage(img, 0, 0, w, h)
   return canvas.toDataURL('image/jpeg', quality)
 }
+
+/**
+ * Redimensionne et compresse une image pour Firebase Storage (sortie Blob JPEG).
+ * Pour les photos d'articles affichées dans la borne/staff : 1200px côté long
+ * en qualité 0.85 produit des photos d'environ 150–300 Ko, idéales pour le
+ * web sans perte visible. Bien plus léger que les 5–10 Mo d'une photo pro.
+ *
+ * @param {File|Blob} file        L'image source
+ * @param {number}    maxSize     Côté le plus long en px, défaut 1200
+ * @param {number}    quality     Qualité JPEG (0..1), défaut 0.85
+ * @returns {Promise<Blob>}       Blob JPEG redimensionné
+ */
+export const resizeImageToBlob = (file, maxSize = 1200, quality = 0.85) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Lecture du fichier impossible.'))
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onerror = () => reject(new Error("Format d'image non reconnu."))
+      img.onload = () => {
+        try {
+          let w = img.width, h = img.height
+          if (w > h) {
+            if (w > maxSize) { h = Math.round(h * maxSize / w); w = maxSize }
+          } else {
+            if (h > maxSize) { w = Math.round(w * maxSize / h); h = maxSize }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = w; canvas.height = h
+          const ctx = canvas.getContext('2d')
+          ctx.fillStyle = '#FFFFFF'
+          ctx.fillRect(0, 0, w, h)
+          ctx.drawImage(img, 0, 0, w, h)
+          canvas.toBlob(
+            (blob) => blob ? resolve(blob) : reject(new Error('Encodage JPEG impossible.')),
+            'image/jpeg', quality
+          )
+        } catch (err) { reject(err) }
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}

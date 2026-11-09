@@ -129,7 +129,16 @@ const useEventStore = create(
     }),
     {
       name: 'yllacash-event',
-      partialize: (s) => ({ currentEventId: s.currentEventId }),
+      // Persiste l'ID actif + un cache léger des events de base (id, nom, dates,
+      // logo, couleur) pour permettre un affichage immédiat au reload, en
+      // attendant que Firestore livre la version fraîche du cache offline.
+      partialize: (s) => ({
+        currentEventId: s.currentEventId,
+        events: (s.events || []).map(e => ({
+          id: e.id, nom: e.nom, date: e.date, dateFin: e.dateFin,
+          logoSrc: e.logoSrc, couleur: e.couleur, actif: e.actif,
+        })),
+      }),
     }
   )
 )

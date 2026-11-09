@@ -26,7 +26,7 @@ import {
 } from '../firebase/service'
 import {
   Plus, Trash2, Pencil, X, Save, Grid3x3, List, MapPin,
-  Calendar, CheckCircle2, AlertTriangle, Zap, Users, QrCode, Printer,
+  Calendar, CheckCircle2, AlertTriangle, Zap, Users, QrCode, Printer, Copy,
 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { Dialog, Button, Empty, Field, focusFirstInvalid, toast } from '../ui'
@@ -134,15 +134,6 @@ function GrilleView({ posts, shifts, benevoles, onTab }) {
     return m
   }, [benevoles])
 
-  // Calcule la liste des bénévoles non encore affectés sur un shift donné
-  const getAvailables = (shift) => {
-    if (!shift) return []
-    const assigned = new Set()
-    Object.values(shift.postes || {}).forEach(p => (p.assignments || []).forEach(id => assigned.add(id)))
-    ;(shift.libres || []).forEach(id => assigned.add(id))
-    return benevoles.filter(b => !assigned.has(b.id))
-  }
-
   if (shifts.length === 0) {
     return (
       <Empty icon={Calendar} title="Aucun créneau défini"
@@ -193,78 +184,12 @@ function GrilleView({ posts, shifts, benevoles, onTab }) {
         )}
       </div>
 
-      {/* Tableau */}
-      <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', background:'var(--bg)' }}>
-        <table style={{ width:'100%', minWidth: 540, borderCollapse:'separate', borderSpacing:4, padding:6, fontSize:12 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign:'left', padding:'8px 10px', position:'sticky', left:0, background:'var(--bg)', fontSize:11, color:'var(--muted)', minWidth:110, zIndex:2 }}>Poste</th>
-              {shifts.map(s => (
-                <th key={s.id} style={{ padding:'8px 4px', textAlign:'center', fontSize:10, color:'var(--muted)', fontWeight:700, minWidth:78 }}>
-                  <div>{fmtDate(s.date)}</div>
-                  <div style={{ marginTop:2, color:'var(--text)' }}>{s.label || (s.debut + '–' + s.fin)}</div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {posts.map(post => (
-              <tr key={post.id}>
-                <td style={{ padding:'8px 10px', background:'var(--bg2)', borderRadius:8, fontWeight:700, color:'var(--text)', position:'sticky', left:0, zIndex:1, boxShadow:'2px 0 4px rgba(0,48,72,0.05)' }}>
-                  <span style={{ marginRight:6 }}>{post.emoji}</span>{post.nom}
-                </td>
-                {shifts.map(s => {
-                  const slot = s.postes?.[post.id] || { target: 0, assignments: [] }
-                  const target = slot.target ?? 0
-                  const assigned = slot.assignments || []
-                  const n = assigned.length
-                  let bg, color, status
-                  if (target === 0)     { bg = 'var(--bg2)';        color = 'var(--muted)';     status = '—' }
-                  else if (n >= target) { bg = 'var(--green-light)';color = 'var(--green-dark)'; status = 'OK' }
-                  else if (n === 0)     { bg = 'var(--red-light)';  color = 'var(--red-dark)';   status = 'Vide' }
-                  else                  { bg = 'var(--gold-light)'; color = 'var(--gold-dark)';  status = 'Manque ' + (target - n) }
-                  return (
-                    <td key={s.id} onClick={() => setAssigning({ shift: s, post })}
-                      title={status}
-                      style={{
-                        background: bg, color, borderRadius: 8, padding: '8px 4px',
-                        textAlign:'center', cursor:'pointer',
-                        transition:'transform .12s',
-                      }}>
-                      <div style={{ fontSize:13, fontWeight:800 }}>{n} / {target}</div>
-                      {assigned.some(id => s.presences?.[id]) && (
-                        <div style={{ fontSize:9, marginTop:1, fontWeight:700 }} title="Bénévoles ayant pointé leur arrivée">
-                          ✓ {assigned.filter(id => s.presences?.[id]).length} présent{assigned.filter(id => s.presences?.[id]).length > 1 ? 's' : ''}
-                        </div>
-                      )}
-                      {target > 0 && n < target && (
-                        <div style={{ fontSize:9, marginTop:1, opacity:0.9 }}>
-                          {n === 0 ? '⚡' : '⚠'} {status}
-                        </div>
-                      )}
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-            {/* Ligne polyvalents */}
-            <tr>
-              <td style={{ padding:'8px 10px', background:'var(--bg2)', borderRadius:8, fontWeight:700, color:'var(--gold-dark)', position:'sticky', left:0, zIndex:1, boxShadow:'2px 0 4px rgba(0,48,72,0.05)' }}>
-                <Users size={13} style={{ verticalAlign:-2, marginRight:4 }}/>Libres
-              </td>
-              {shifts.map(s => {
-                const n = (s.libres || []).length
-                return (
-                  <td key={s.id} onClick={() => setAssigning({ shift: s, post: { id:'__free__', nom:'Polyvalents', emoji:'🆓' } })}
-                    style={{ background: n > 0 ? 'var(--brand-light)' : 'var(--bg2)', color: n > 0 ? 'var(--brand-dark)' : 'var(--muted)', borderRadius:8, padding:'8px 4px', textAlign:'center', cursor:'pointer' }}>
-                    <div style={{ fontSize:13, fontWeight:800 }}>{n}</div>
-                  </td>
-                )
-              })}
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {/* Tableaux groupés par jour */}
+      <DayGrids
+        shifts={shifts}
+        posts={posts}
+        onCellClick={(shiftId, postId, postOverride) => setAssigning({ shiftId, postId, postOverride })}
+      />
 
       <div style={{ fontSize:11, color:'var(--muted)', marginTop:10, lineHeight:1.5 }}>
         💡 <strong>Cliquez sur une cellule</strong> pour affecter des bénévoles. Un bénévole ne peut être que sur un seul poste par créneau.
@@ -273,12 +198,13 @@ function GrilleView({ posts, shifts, benevoles, onTab }) {
       {/* Modale affectation */}
       {assigning && (
         <AssignModal
-          shift={assigning.shift}
-          post={assigning.post}
+          shifts={shifts}
+          shiftId={assigning.shiftId}
+          postId={assigning.postId}
+          postOverride={assigning.postOverride}  /* pour __free__ */
           posts={posts}
           benevoles={benevoles}
           benevsById={benevsById}
-          availables={getAvailables(assigning.shift)}
           onClose={() => setAssigning(null)}
         />
       )}
@@ -287,15 +213,194 @@ function GrilleView({ posts, shifts, benevoles, onTab }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   GRILLES PAR JOUR — une carte repliable par journée
+   ═══════════════════════════════════════════════════════════════ */
+function DayGrids({ shifts, posts, onCellClick }) {
+  // Regroupement par jour
+  const byDay = useMemo(() => {
+    const m = {}
+    shifts.forEach(s => {
+      const k = s.date || 'sans-date'
+      if (!m[k]) m[k] = []
+      m[k].push(s)
+    })
+    Object.values(m).forEach(arr => arr.sort((a,b) => (a.debut || '').localeCompare(b.debut || '')))
+    return m
+  }, [shifts])
+
+  const days = Object.keys(byDay).sort()
+
+  // État replié/déplié par jour (par défaut tous dépliés)
+  const [collapsed, setCollapsed] = useState({})
+  const toggle = (day) => setCollapsed(c => ({ ...c, [day]: !c[day] }))
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      {days.map(day => {
+        const dayShifts = byDay[day]
+        const isCollapsed = !!collapsed[day]
+        // Stats du jour
+        let dOk = 0, dSub = 0, dEmpty = 0
+        dayShifts.forEach(s => {
+          posts.forEach(p => {
+            const slot = s.postes?.[p.id] || { target: 0, assignments: [] }
+            const t = slot.target ?? 0
+            const a = (slot.assignments || []).length
+            if (t === 0) return
+            if (a >= t) dOk++
+            else if (a === 0) dEmpty++
+            else dSub++
+          })
+        })
+
+        return (
+          <div key={day} style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:'var(--radius-lg)', overflow:'hidden' }}>
+            {/* Header jour — cliquable pour replier */}
+            <button onClick={() => toggle(day)} style={{
+              width:'100%', display:'flex', alignItems:'center', gap:10,
+              padding:'12px 16px', background:'var(--bg2)', border:'none',
+              borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
+              cursor:'pointer', fontFamily:'var(--font)', textAlign:'left',
+              minHeight:'auto', WebkitTapHighlightColor:'transparent',
+            }}>
+              <span style={{ fontSize:14, color:'var(--muted)', transition:'transform .15s', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)' }}>▾</span>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'.03em' }}>
+                  {fmtDate(day)}
+                </div>
+                <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>
+                  {dayShifts.length} créneau{dayShifts.length>1?'x':''}
+                </div>
+              </div>
+              {/* Mini badges stats */}
+              <div style={{ display:'flex', gap:4, alignItems:'center', flexShrink:0 }}>
+                {dOk > 0 && (
+                  <span style={{ background:'var(--green-light)', color:'var(--green-dark)', fontSize:10, fontWeight:800, padding:'2px 7px', borderRadius:5 }}>✓ {dOk}</span>
+                )}
+                {dSub > 0 && (
+                  <span style={{ background:'var(--gold-light)', color:'var(--gold-dark)', fontSize:10, fontWeight:800, padding:'2px 7px', borderRadius:5 }}>⚠ {dSub}</span>
+                )}
+                {dEmpty > 0 && (
+                  <span style={{ background:'var(--red-light)', color:'var(--red-dark)', fontSize:10, fontWeight:800, padding:'2px 7px', borderRadius:5 }}>⚡ {dEmpty}</span>
+                )}
+              </div>
+            </button>
+
+            {/* Tableau du jour (caché si replié) */}
+            {!isCollapsed && (
+              <DayGrid shifts={dayShifts} posts={posts} onCellClick={onCellClick}/>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DayGrid({ shifts, posts, onCellClick }) {
+  // Largeur de colonne adaptée selon nombre de créneaux : moins de créneaux → colonnes plus larges
+  const colWidth = Math.max(72, Math.min(110, Math.floor(540 / Math.max(2, shifts.length))))
+
+  return (
+    <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch', padding:'2px' }}>
+      <table style={{ width:'100%', borderCollapse:'separate', borderSpacing:4, padding:4, fontSize:12 }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign:'left', padding:'8px 10px', position:'sticky', left:0, background:'var(--bg)', fontSize:10, color:'var(--muted)', minWidth:110, zIndex:2, fontWeight:700, textTransform:'uppercase', letterSpacing:'.05em' }}>
+              Poste
+            </th>
+            {shifts.map(s => (
+              <th key={s.id} style={{ padding:'8px 4px', textAlign:'center', fontSize:11, color:'var(--text)', fontWeight:700, minWidth:colWidth }}>
+                <div>{s.label || ''}</div>
+                <div style={{ fontSize:10, marginTop:2, color:'var(--muted)', fontVariantNumeric:'tabular-nums', fontWeight:500 }}>
+                  {s.debut}–{s.fin}
+                </div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {posts.map(post => (
+            <tr key={post.id}>
+              <td style={{ padding:'8px 10px', background:'var(--bg2)', borderRadius:8, fontWeight:700, color:'var(--text)', position:'sticky', left:0, zIndex:1, boxShadow:'2px 0 4px rgba(0,48,72,0.05)', fontSize:12 }}>
+                <span style={{ marginRight:6 }}>{post.emoji}</span>{post.nom}
+              </td>
+              {shifts.map(s => {
+                const slot = s.postes?.[post.id] || { target: 0, assignments: [] }
+                const target = slot.target ?? 0
+                const assigned = slot.assignments || []
+                const n = assigned.length
+                let bg, color, status
+                if (target === 0)     { bg = 'var(--bg2)';        color = 'var(--muted)';     status = '—' }
+                else if (n >= target) { bg = 'var(--green-light)';color = 'var(--green-dark)'; status = 'OK' }
+                else if (n === 0)     { bg = 'var(--red-light)';  color = 'var(--red-dark)';   status = 'Vide' }
+                else                  { bg = 'var(--gold-light)'; color = 'var(--gold-dark)';  status = 'Manque ' + (target - n) }
+                return (
+                  <td key={s.id} onClick={() => onCellClick(s.id, post.id)}
+                    title={status}
+                    style={{
+                      background: bg, color, borderRadius: 8, padding: '8px 4px',
+                      textAlign:'center', cursor:'pointer',
+                      transition:'transform .12s',
+                    }}>
+                    <div style={{ fontSize:13, fontWeight:800 }}>{n} / {target}</div>
+                    {assigned.some(id => s.presences?.[id]) && (
+                      <div style={{ fontSize:9, marginTop:1, fontWeight:700 }} title="Bénévoles ayant pointé leur arrivée">
+                        ✓ {assigned.filter(id => s.presences?.[id]).length} présent{assigned.filter(id => s.presences?.[id]).length > 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {target > 0 && n < target && (
+                      <div style={{ fontSize:9, marginTop:1, opacity:0.9 }}>
+                        {n === 0 ? '⚡' : '⚠'}
+                      </div>
+                    )}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+          {/* Ligne polyvalents */}
+          <tr>
+            <td style={{ padding:'8px 10px', background:'var(--bg2)', borderRadius:8, fontWeight:700, color:'var(--gold-dark)', position:'sticky', left:0, zIndex:1, boxShadow:'2px 0 4px rgba(0,48,72,0.05)', fontSize:12 }}>
+              <Users size={13} style={{ verticalAlign:-2, marginRight:4 }}/>Libres
+            </td>
+            {shifts.map(s => {
+              const n = (s.libres || []).length
+              return (
+                <td key={s.id} onClick={() => onCellClick(s.id, '__free__', { id:'__free__', nom:'Polyvalents', emoji:'🆓' })}
+                  style={{ background: n > 0 ? 'var(--brand-light)' : 'var(--bg2)', color: n > 0 ? 'var(--brand-dark)' : 'var(--muted)', borderRadius:8, padding:'8px 4px', textAlign:'center', cursor:'pointer' }}>
+                  <div style={{ fontSize:13, fontWeight:800 }}>{n}</div>
+                </td>
+              )
+            })}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════
    MODALE AFFECTATION
    ═══════════════════════════════════════════════════════════════ */
-function AssignModal({ shift, post, posts, benevoles, benevsById, availables, onClose }) {
+function AssignModal({ shifts, shiftId, postId, postOverride, posts, benevoles, benevsById, onClose }) {
   const { currentEventId } = useEventStore()
   const [busy, setBusy] = useState(null)
+
+  // Recalcule le shift à JOUR à chaque render (pas une copie figée à l'ouverture)
+  const shift = shifts.find(s => s.id === shiftId)
+  const post = postOverride || posts.find(p => p.id === postId)
+  if (!shift || !post) return null
 
   const currentlyAssigned = post.id === '__free__'
     ? (shift.libres || [])
     : (shift.postes?.[post.id]?.assignments || [])
+
+  // Calcule les dispos en direct depuis le shift à jour
+  const assignedSet = new Set()
+  Object.values(shift.postes || {}).forEach(p => (p.assignments || []).forEach(id => assignedSet.add(id)))
+  ;(shift.libres || []).forEach(id => assignedSet.add(id))
+  const availables = benevoles.filter(b => !assignedSet.has(b.id))
 
   const target = post.id === '__free__' ? null : (shift.postes?.[post.id]?.target ?? 0)
 
@@ -538,12 +643,22 @@ function ShiftsView({ shifts, currentEvent }) {
   }, [currentEventId])
   const [editing, setEditing] = useState(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  const [duplicating, setDuplicating] = useState(null) // shift à dupliquer (objet)
+  const [dupDates, setDupDates]   = useState([])        // dates cibles sélectionnées
+  const [dupKeepTargets, setDupKeepTargets] = useState(true) // recopier les effectifs cibles ?
   const [tried, setTried] = useState(false)
   const formRef = useRef(null)
 
   const eventDates = useMemo(() => {
     return datesBetween(currentEvent?.date, currentEvent?.dateFin)
   }, [currentEvent?.date, currentEvent?.dateFin])
+
+  // Dates dispo pour duplication : exclut le créneau source ET les jours hors événement si dispo
+  const availableDupDates = useMemo(() => {
+    if (eventDates.length > 0) return eventDates
+    // Fallback : dates des autres shifts uniques
+    return [...new Set(shifts.map(s => s.date).filter(Boolean))].sort()
+  }, [eventDates, shifts])
 
   const openNew = () => {
     setTried(false)
@@ -574,6 +689,37 @@ function ShiftsView({ shifts, currentEvent }) {
   const handleDelete = async (id) => {
     if (!(await ask({ title: 'Supprimer ce créneau ?', message: 'Toutes ses affectations seront perdues.', label: 'Supprimer' }))) return
     await deleteVolunteerShift(id, currentEventId)
+  }
+
+  // Ouvre la modale de duplication
+  const openDuplicate = (shift) => {
+    setDuplicating(shift)
+    setDupDates([])  // aucune date pré-sélectionnée (l'utilisateur choisit explicitement)
+    setDupKeepTargets(true)
+  }
+
+  // Effectue la duplication sur toutes les dates sélectionnées
+  const handleDuplicate = async () => {
+    if (!duplicating || dupDates.length === 0) return
+    // Crée un nouveau shift par date cible, sans les affectations (juste structure + targets si demandé)
+    const postesInit = {}
+    posts.forEach(p => {
+      const sourceTarget = duplicating.postes?.[p.id]?.target ?? 0
+      postesInit[p.id] = { target: dupKeepTargets ? sourceTarget : 0, assignments: [] }
+    })
+    for (const d of dupDates) {
+      await addVolunteerShift({
+        date: d,
+        label: duplicating.label || '',
+        debut: duplicating.debut,
+        fin: duplicating.fin,
+        postes: postesInit,
+        libres: [],
+        pending: [],
+      }, currentEventId)
+    }
+    setDuplicating(null)
+    setDupDates([])
   }
 
   // Génération en masse : "Midi+Soir" pour chaque date de l'événement
@@ -626,7 +772,7 @@ function ShiftsView({ shifts, currentEvent }) {
 
       <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
         {shifts.map(s => (
-          <div key={s.id} style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:'10px 12px', display:'flex', alignItems:'center', gap:10, minHeight:60 }}>
+          <div key={s.id} style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:'var(--radius)', padding:'10px 12px', display:'flex', alignItems:'center', gap:8, minHeight:60 }}>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                 {fmtDate(s.date)} {s.label && <span style={{ color:'var(--brand)', marginLeft:6 }}>· {s.label}</span>}
@@ -635,11 +781,108 @@ function ShiftsView({ shifts, currentEvent }) {
                 {s.debut} → {s.fin}
               </div>
             </div>
-            <button onClick={() => { setTried(false); setEditing(s) }} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
-            <button onClick={() => handleDelete(s.id)} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', color:'var(--red-dark)', flexShrink:0 }}><Trash2 size={14}/></button>
+            <button onClick={() => openDuplicate(s)} title="Dupliquer ce créneau sur d'autres jours" className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Copy size={14}/></button>
+            <button onClick={() => { setTried(false); setEditing(s) }} title="Modifier" className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
+            <button onClick={() => handleDelete(s.id)} title="Supprimer" className="btn-icon" style={{ width:40, height:40, minHeight:'auto', color:'var(--red-dark)', flexShrink:0 }}><Trash2 size={14}/></button>
           </div>
         ))}
       </div>
+
+      {/* Modale duplication */}
+      {duplicating && (
+        <div onClick={() => setDuplicating(null)} style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background:'var(--bg)', borderRadius:'var(--radius-xl) var(--radius-xl) 0 0',
+            padding:'10px 20px max(env(safe-area-inset-bottom), 20px)',
+            width:'100%', maxWidth:460, maxHeight:'92vh', overflowY:'auto',
+            border:'1px solid var(--border)', borderBottom:'none',
+            boxShadow:'0 -8px 32px rgba(0,0,0,0.20)',
+            animation:'ycSlideUp .22s cubic-bezier(.2,.8,.2,1)',
+          }}>
+            <div style={{ width:36, height:4, borderRadius:2, background:'var(--border2)', margin:'0 auto 14px' }}/>
+
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+              <Copy size={18} style={{ color:'var(--brand)' }}/>
+              <div style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>Dupliquer le créneau</div>
+            </div>
+            <div style={{ fontSize:12, color:'var(--muted)', marginBottom:14, lineHeight:1.5 }}>
+              Recopie <strong style={{ color:'var(--text)' }}>{duplicating.label || 'ce créneau'}</strong> ({duplicating.debut} → {duplicating.fin}) sur les jours sélectionnés.
+              Les affectations bénévoles ne sont <strong>pas copiées</strong> (les nouveaux créneaux démarrent vides).
+            </div>
+
+            <label style={{ fontSize:11, fontWeight:600, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', display:'block', marginBottom:8 }}>
+              Choisir les jours de destination
+            </label>
+            {availableDupDates.length === 0 ? (
+              <div className="alert alert-warning" style={{ marginBottom:14 }}>
+                Aucune date disponible. Définissez les dates de l'événement dans Événements.
+              </div>
+            ) : (
+              <>
+                <div style={{ display:'flex', gap:6, marginBottom:8, flexWrap:'wrap' }}>
+                  <button type="button" onClick={() => setDupDates(availableDupDates.filter(d => d !== duplicating.date))}
+                    style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:11, color:'var(--brand)', fontWeight:600, cursor:'pointer', minHeight:'auto', fontFamily:'var(--font)' }}>
+                    Tout sélectionner
+                  </button>
+                  <button type="button" onClick={() => setDupDates([])}
+                    style={{ background:'var(--bg2)', border:'1px solid var(--border)', borderRadius:6, padding:'4px 10px', fontSize:11, color:'var(--muted)', fontWeight:600, cursor:'pointer', minHeight:'auto', fontFamily:'var(--font)' }}>
+                    Désélectionner
+                  </button>
+                </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:14 }}>
+                  {availableDupDates.map(d => {
+                    const isSource = d === duplicating.date
+                    const checked = dupDates.includes(d)
+                    return (
+                      <button key={d} type="button" disabled={isSource}
+                        onClick={() => {
+                          setDupDates(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d])
+                        }}
+                        style={{
+                          display:'flex', alignItems:'center', gap:10,
+                          padding:'10px 12px', borderRadius:8,
+                          border:'1px solid ' + (checked ? 'var(--brand)' : 'var(--border)'),
+                          background: isSource ? 'var(--bg3)' : (checked ? 'var(--brand-light)' : 'var(--bg2)'),
+                          color: isSource ? 'var(--muted)' : 'var(--text)',
+                          cursor: isSource ? 'not-allowed' : 'pointer',
+                          fontFamily:'var(--font)', textAlign:'left', minHeight:44, fontSize:13, fontWeight:600,
+                          WebkitTapHighlightColor:'transparent', opacity: isSource ? 0.6 : 1,
+                        }}>
+                        <div style={{
+                          width:20, height:20, borderRadius:4, flexShrink:0,
+                          border:'2px solid ' + (checked ? 'var(--brand)' : 'var(--border2)'),
+                          background: checked ? 'var(--brand)' : 'var(--bg)',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}>
+                          {checked && <CheckCircle2 size={14} style={{ color:'#fff' }}/>}
+                        </div>
+                        <span style={{ flex:1 }}>{fmtDate(d)}</span>
+                        {isSource && <span style={{ fontSize:10, color:'var(--muted)', fontWeight:600 }}>(source)</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <label style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 12px', background:'var(--bg2)', borderRadius:8, marginBottom:18, cursor:'pointer' }}>
+                  <input type="checkbox" checked={dupKeepTargets} onChange={e => setDupKeepTargets(e.target.checked)}
+                    style={{ marginTop:2, flexShrink:0, width:16, height:16, accentColor:'var(--brand)' }}/>
+                  <span style={{ fontSize:12, color:'var(--text)', lineHeight:1.4 }}>
+                    Recopier les effectifs cibles par poste<br/>
+                    <span style={{ fontSize:10, color:'var(--muted)' }}>Ex : si Bar = 3 sur le source, ce sera aussi 3 sur les copies.</span>
+                  </span>
+                </label>
+              </>
+            )}
+
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => setDuplicating(null)} className="btn-secondary" style={{ flex:1, minHeight:44 }}>Annuler</button>
+              <button onClick={handleDuplicate} disabled={dupDates.length === 0} className="btn-primary" style={{ flex:1, minHeight:44 }}>
+                <Copy size={14}/> Dupliquer {dupDates.length > 0 ? `(${dupDates.length})` : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div onClick={() => setEditing(null)} style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>

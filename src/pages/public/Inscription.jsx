@@ -11,9 +11,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { db } from '../../firebase/config'
 import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
-import { nowStr } from '../../utils/helpers'
 import QRCode from 'qrcode'
 import ThemeToggle from '../../components/ThemeToggle'
+import { APP_FULL_LABEL } from '../../utils/buildInfo'
 import { useTheme } from '../../hooks/useTheme'
 import { AlertCircle, ArrowRight, Wallet, Download, CreditCard, ShoppingBag, ClipboardList } from 'lucide-react'
 import clsx from 'clsx'
@@ -328,7 +328,7 @@ export default function Inscription() {
 
       {/* Pied de page À propos */}
       <footer className={s.footer}>
-        <b>YllaCash v1.0 · 05/2026</b>
+        <b>{APP_FULL_LABEL}</b>
         <span>Développée par <strong>Maison Ylla</strong></span>
         <i>"Toute la gestion financière de votre événement en un seul endroit, et bien plus encore"</i>
       </footer>
