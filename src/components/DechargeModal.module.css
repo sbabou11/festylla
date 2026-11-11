@@ -1,0 +1,66 @@
+/* components/DechargeModal — décharge de paiement d'un cachet artiste
+   Les couleurs du festival arrivent en variables : --ev, --ev-dark, --ev-light, --ev-on */
+.panel.panel { max-width: 560px; }
+.doc { display: grid; gap: var(--space-4); min-width: 0; }
+.grow { flex: 1; }
+
+/* Bandeau festival */
+.band {
+  flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--ev) 0%, var(--ev-dark) 100%);
+  color: var(--ev-on);
+  min-width: 0;
+}
+.logo {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: #fff;
+  color: #003048;
+  font: 800 var(--fs-18) var(--font-display);
+}
+.logo img { width: 100%; height: 100%; object-fit: cover; }
+.bandText { flex: 1 1 150px; min-width: 0; }
+.bandTitle { font: 800 var(--fs-15) var(--font-display); }
+.bandSub { margin-top: 2px; font-size: var(--fs-12); opacity: .85; overflow-wrap: anywhere; }
+.numero { padding: 4px 10px; border-radius: 6px; font-size: var(--fs-12); font-weight: 700; white-space: nowrap; }
+.bandDark .numero { background: rgba(255,255,255,0.18); }
+.bandLight .numero { background: rgba(0,0,0,0.10); }
+
+/* Texte */
+.body { font-size: var(--fs-15); line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
+.nom { color: var(--marine); }
+.amount { margin: var(--space-4) 0; padding: var(--space-3) var(--space-4); border-left: 4px solid var(--ev); border-radius: 0 var(--radius) var(--radius) 0; background: var(--ev-light); }
+.amountValue { font: 800 var(--fs-24) var(--font-display); color: var(--ev-dark); font-variant-numeric: tabular-nums; }
+.amountWords { margin-top: 2px; font-size: var(--fs-12); font-style: italic; color: #4A6580; }
+.mode { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: 700; color: var(--ev-dark); vertical-align: -2px; }
+.lieu { margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius); background: var(--bg2); font-size: var(--fs-13); color: var(--muted); }
+
+/* Signature */
+.sigBox { display: grid; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); }
+.sigBoxOpen { border: 2px dashed var(--border2); background: var(--bg2); }
+.sigBoxDone { border: 1px solid var(--border); background: var(--bg); }
+.sigBoxInvalid { border-color: var(--red); }
+.sigHead { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-12); font-weight: 700; color: var(--marine); }
+.sigDate { margin-left: auto; font-size: var(--fs-12); font-weight: 600; color: var(--green); }
+.ok { color: var(--green); }
+.sigZone { outline: none; border-radius: var(--radius); }
+.sigZone:focus-visible { box-shadow: 0 0 0 3px var(--brand-light); }
+.sigActions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.error { display: flex; align-items: center; gap: 5px; margin: 0; font-size: var(--fs-12); font-weight: 600; color: var(--red-dark); }
+
+.success { padding: var(--space-3) var(--space-4); border-left: 4px solid var(--green); border-radius: 0 var(--radius) var(--radius) 0; background: var(--green-light); }
+.successTitle { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-15); font-weight: 700; color: var(--green-dark); }
+.successText { margin-top: var(--space-1); font-size: var(--fs-12); color: var(--muted); }
+
+.foot { padding-top: var(--space-3); border-top: 1px solid var(--border); font-size: var(--fs-11); color: var(--muted); text-align: center; }
+

@@ -84,3 +84,6 @@
 .enter { color: var(--brand-dark); flex-shrink: 0; }
 .empty { padding: var(--space-6); text-align: center; color: var(--muted); font-size: var(--fs-13); }
 @keyframes drop { from { transform: translateY(-8px); opacity: 0; } }
+
+/* Lettres trouvées par la recherche approximative */
+.title mark { background: none; color: var(--brand-dark); font-weight: 800; }

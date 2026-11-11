@@ -1,0 +1,20 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: var(--fs-12);
+  font-weight: 700;
+  white-space: nowrap;
+  animation: in var(--dur-base) var(--ease);
+}
+.dirty   { background: var(--bg3); color: var(--muted); }
+.saving  { background: var(--brand-light); color: var(--brand-dark); }
+.saved   { background: var(--green-light); color: var(--green-dark); }
+.offline { background: var(--gold-light); color: var(--gold-dark); }
+.error   { background: var(--red-light); color: var(--red-dark); }
+.spin { width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+.retry { min-height: 0; margin-left: 4px; padding: 1px 7px; border: 1px solid currentColor; border-radius: 5px; background: transparent; color: inherit; font: 700 var(--fs-11) var(--font); cursor: pointer; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes in { from { opacity: 0; transform: translateY(-3px); } }

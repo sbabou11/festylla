@@ -2,11 +2,13 @@
  * pages/admin/settings/RapportConfigPanel.jsx
  * Configuration du rapport de clôture : sections activées, filtres par section,
  * modale de génération avec réglages temporaires.
+ * Le panneau ne fait aucune écriture : RapportCloture enregistre automatiquement
+ * `sections` (useAutosave) et passe l'état d'enregistrement via `saveStatus`.
  */
 import React, { useState } from 'react'
 import { FileText } from 'lucide-react'
-import { Button, Dialog } from '../../../ui'
-import { saveSettings } from '../../../firebase/service'
+import clsx from 'clsx'
+import { Button, Dialog, ProgressButton } from '../../../ui'
 import TransferList from '../../../components/TransferList'
 import s from './settings.module.css'
 
@@ -24,15 +26,16 @@ import s from './settings.module.css'
 //   - staffList       : liste du staff pour les filtres
 //   - currentEventId  : ID événement courant
 //   - onCancel        : callback fermeture sans action
-//   - onGenerate      : callback (sectionsOverride) -> Promise
+//   - onGenerate      : callback (sectionsOverride) -> Promise, lève en cas d'échec
+//   - onDone          : callback après une génération réussie (fermeture)
 //
-// Le panneau de config interne est réutilisé avec `temporary=true` et
-// `modalMode=true` pour qu'aucune sauvegarde Firestore ne se déclenche.
+// Le panneau de config interne est réutilisé avec `modalMode=true` : il ne
+// fait jamais d'écriture lui-même.
 export function GenerateRapportModal({
   initialSections, sectionsKeys, buildDefault, staffList, menuList,
   categoriesList, spectateursList, reservationsList,
   currentEventId,
-  onCancel, onGenerate,
+  onCancel, onGenerate, onDone,
 }) {
   // État local indépendant de Firestore — clone profond pour ne pas muter
   // la config sauvegardée si on annule.
@@ -44,10 +47,13 @@ export function GenerateRapportModal({
 
   const enabledCount = Object.values(sections).filter(s => s?.enabled).length
 
-  const handleGenerate = async () => {
+  // Le hook de génération signale ses étapes : le bouton affiche l'avancement.
+  // Après succès, le bouton affiche « Rapport téléchargé » un instant puis la modale se ferme.
+  const handleGenerate = async (report) => {
     setGenerating(true)
     try {
-      await onGenerate(sections)
+      await onGenerate(sections, report)
+      setTimeout(() => onDone?.(), 1200)
     } finally {
       setGenerating(false)
     }
@@ -61,9 +67,9 @@ export function GenerateRapportModal({
       className={s.rapportDialog}
       footer={<>
         <Button variant="secondary" onClick={onCancel} disabled={generating}>Annuler</Button>
-        <Button icon={FileText} onClick={handleGenerate} loading={generating}>
-          {generating ? 'Génération en cours…' : 'Générer avec ces réglages'}
-        </Button>
+        <ProgressButton icon={FileText} onRun={handleGenerate} runningLabel="Génération en cours…" doneLabel="Rapport téléchargé">
+          Générer avec ces réglages
+        </ProgressButton>
       </>}
     >
       <div className={s.stack}>
@@ -93,7 +99,6 @@ export function GenerateRapportModal({
           categoriesList={categoriesList}
           spectateursList={spectateursList}
           reservationsList={reservationsList}
-          temporary={true}
           modalMode={true}
         />
       </div>
@@ -107,7 +112,7 @@ export function GenerateRapportModal({
 // Lot 2 — Filtres par section. Permet au super_admin de :
 //   - Activer/désactiver chaque section (toggle on/off)
 //   - Déplier une section pour configurer ses filtres spécifiques
-//   - Sauvegarder dans Firestore au moindre changement
+//   - Enregistrement automatique géré par le parent (RapportCloture)
 //
 // Filtres supportés par section (cf. RAPPORT_SECTIONS_KEYS.filters) :
 //   - period       : 2 champs date YYYY-MM-DD
@@ -126,56 +131,35 @@ export default function RapportConfigPanel({
   sections, setSections, sectionsKeys,
   configOpen, setConfigOpen,
   expandedSection, setExpandedSection,
-  buildDefault, currentEventId, staffList,
+  buildDefault, staffList,
   // Liste du menu pour le filtre de sélection d'articles (Lot Custom A)
   menuList = [],
   // Listes pour Lot Custom A2 — sélections précises supplémentaires
   categoriesList = [],
   spectateursList = [],
   reservationsList = [],
-  // Si `temporary` est true, les modifications NE sont PAS sauvegardées dans
-  // Firestore (mode modale au clic Générer — Lot 2b). Seulement le state
-  // React local est mis à jour. Utile pour des overrides éphémères.
-  temporary = false,
   // Mode modale : on cache le bouton de dépliage du panneau (toujours ouvert)
   // et on désactive le toggle global.
   modalMode = false,
+  // Pastille d'état d'enregistrement (SaveStatus) affichée dans l'en-tête
+  saveStatus = null,
 }) {
-  // Helper : update partiel d'une section + sauvegarde Firestore immédiate.
-  // Patch peut contenir { enabled, periodFrom, ... } — merge avec la section.
-  const updateSection = async (key, patch) => {
-    const next = {
-      ...sections,
-      [key]: { ...sections[key], ...patch },
-    }
-    setSections(next)
-    if (temporary) return  // mode modale : pas de persistance
-    try {
-      await saveSettings({ rapportSections: next }, currentEventId)
-    } catch (e) { console.error('saveRapportSections:', e) }
+  // Helper : update partiel d'une section. Patch peut contenir { enabled, periodFrom, ... }.
+  const updateSection = (key, patch) => {
+    setSections(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
   }
 
   // Helper "toutes activées" / "toutes désactivées" (conserve les filtres)
-  const setAllEnabled = async (val) => {
-    const next = Object.fromEntries(
-      Object.entries(sections).map(([k, v]) => [k, { ...v, enabled: val }])
-    )
-    setSections(next)
-    if (temporary) return
-    try {
-      await saveSettings({ rapportSections: next }, currentEventId)
-    } catch (e) {}
+  const setAllEnabled = (val) => {
+    setSections(prev => Object.fromEntries(
+      Object.entries(prev).map(([k, v]) => [k, { ...v, enabled: val }])
+    ))
   }
   // Reset complet (par défaut)
   const [confirmReset, setConfirmReset] = useState(false)
-  const resetAll = async () => {
+  const resetAll = () => {
     setConfirmReset(false)
-    const def = buildDefault()
-    setSections(def)
-    if (temporary) return
-    try {
-      await saveSettings({ rapportSections: def }, currentEventId)
-    } catch (e) {}
+    setSections(buildDefault())
   }
 
   const enabledCount = Object.values(sections).filter(s => s?.enabled).length
@@ -184,52 +168,31 @@ export default function RapportConfigPanel({
   const showContent = modalMode ? true : configOpen
 
   return (
-    <div style={{
-      background: modalMode ? 'transparent' : 'var(--bg)',
-      borderRadius: 8,
-      border: modalMode ? 'none' : '0.5px solid var(--border)',
-      marginBottom: modalMode ? 0 : 14,
-      overflow: 'hidden',
-    }}>
+    <div className={clsx(s.rcPanel, modalMode && s.rcPanelModal)}>
       {/* En-tête : titre + compteur + toggle dépliage (caché en mode modale) */}
       {!modalMode && (
-        <button
-          type="button"
-          onClick={() => setConfigOpen(o => !o)}
-          style={{
-            width: '100%', display: 'flex',
-            alignItems: 'center', justifyContent: 'space-between',
-            padding: '10px 14px',
-            background: 'transparent', border: 'none',
-            cursor: 'pointer', fontFamily: 'var(--font)',
-            color: 'var(--text)', fontSize: 13, fontWeight: 600,
-          }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            Sections et filtres du rapport
-            <span style={{
-              fontSize: 11, fontWeight: 500, color: 'var(--muted)',
-            }}>
-              ({enabledCount + 1}/{sectionsKeys.length + 1})
+        <div className={s.rcHeadRow}>
+          <button type="button" className={s.rcHead} onClick={() => setConfigOpen(o => !o)} aria-expanded={configOpen}>
+            <span className={s.rcHeadTitle}>
+              Sections et filtres du rapport
+              <span className={s.rcHeadCount}>
+                ({enabledCount + 1}/{sectionsKeys.length + 1})
+              </span>
             </span>
-          </span>
-          <span style={{ color: 'var(--muted)', fontSize: 16 }}>
-            {configOpen ? '▾' : '▸'}
-          </span>
-        </button>
+            <span className={s.rcChevron}>
+              {configOpen ? '▾' : '▸'}
+            </span>
+          </button>
+          {saveStatus}
+        </div>
       )}
 
       {showContent && (
-        <div style={{
-          borderTop: modalMode ? 'none' : '0.5px solid var(--border)',
-          padding: modalMode ? 0 : '10px 14px 14px',
-        }}>
+        <div className={s.rcBody}>
           {!modalMode && (
-            <div style={{
-              fontSize: 11, color: 'var(--muted)',
-              marginBottom: 10, lineHeight: 1.5,
-            }}>
+            <div className={s.rcIntro}>
               Cliquez sur une section pour configurer ses filtres. La couverture est toujours incluse.
-              Les modifications sont sauvegardées automatiquement.
+              Les modifications sont enregistrées automatiquement.
             </div>
           )}
 
@@ -238,55 +201,27 @@ export default function RapportConfigPanel({
             const sec = sections[key] || { enabled: true }
             const isExpanded = expandedSection === key
             return (
-              <div key={key} style={{
-                marginBottom: 6, border: '0.5px solid var(--border)',
-                borderRadius: 6, background: sec.enabled ? 'var(--bg)' : 'var(--bg2)',
-                overflow: 'hidden',
-              }}>
+              <div key={key} className={clsx(s.rcSection, !sec.enabled && s.rcSectionOff)}>
                 {/* Ligne d'en-tête de la section */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 10px',
-                }}>
+                <div className={s.rcSectionRow}>
                   <input
                     type="checkbox"
+                    className={s.rcSectionCheck}
                     checked={!!sec.enabled}
                     onChange={(e) => updateSection(key, { enabled: e.target.checked })}
-                    style={{
-                      width: 16, height: 16,
-                      accentColor: 'var(--brand)',
-                      cursor: 'pointer', flexShrink: 0,
-                    }}
+                    aria-label={label}
                   />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 600,
-                      color: sec.enabled ? 'var(--text)' : 'var(--muted)',
-                    }}>
-                      {label}
-                    </div>
-                    <div style={{
-                      fontSize: 10, color: 'var(--muted)',
-                      marginTop: 1, lineHeight: 1.3,
-                    }}>
-                      {desc}
-                    </div>
+                  <div className={s.rcGrow}>
+                    <div className={s.rcSectionLabel}>{label}</div>
+                    <div className={s.rcSectionDesc}>{desc}</div>
                   </div>
                   {/* Bouton dépliage filtres (visible si la section a des filtres et est activée) */}
                   {filters && filters.length > 0 && sec.enabled && (
                     <button
                       type="button"
                       onClick={() => setExpandedSection(isExpanded ? null : key)}
-                      style={{
-                        padding: '4px 8px',
-                        background: isExpanded ? 'var(--brand)' : 'var(--bg2)',
-                        color: isExpanded ? '#fff' : 'var(--muted)',
-                        border: '0.5px solid var(--border)',
-                        borderRadius: 4,
-                        fontSize: 10, fontWeight: 600,
-                        cursor: 'pointer', fontFamily: 'var(--font)',
-                        whiteSpace: 'nowrap', flexShrink: 0,
-                      }}>
+                      className={clsx(s.rcFiltersBtn, isExpanded && s.rcFiltersBtnOn)}
+                      aria-expanded={isExpanded}>
                       {isExpanded ? '▾ Filtres' : '▸ Filtres'}
                     </button>
                   )}
@@ -294,12 +229,7 @@ export default function RapportConfigPanel({
 
                 {/* Panneau filtres déplié — affiche les filtres spécifiques à cette section */}
                 {isExpanded && filters && filters.length > 0 && sec.enabled && (
-                  <div style={{
-                    padding: '10px 12px 12px',
-                    borderTop: '0.5px solid var(--border)',
-                    background: 'var(--bg2)',
-                    display: 'flex', flexDirection: 'column', gap: 10,
-                  }}>
+                  <div className={s.rcFilters}>
                     {filters.includes('period') && (
                       <FilterPeriod sec={sec} onChange={(p) => updateSection(key, p)}/>
                     )}
@@ -369,17 +299,14 @@ export default function RapportConfigPanel({
           })}
 
           {/* Boutons rapides */}
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => setAllEnabled(true)}
-              style={QUICK_BTN_STYLE}>
+          <div className={s.rcQuickRow}>
+            <button type="button" className={s.rcQuick} onClick={() => setAllEnabled(true)}>
               Tout activer
             </button>
-            <button type="button" onClick={() => setAllEnabled(false)}
-              style={QUICK_BTN_STYLE}>
+            <button type="button" className={s.rcQuick} onClick={() => setAllEnabled(false)}>
               Tout désactiver
             </button>
-            <button type="button" onClick={() => setConfirmReset(true)}
-              style={{ ...QUICK_BTN_STYLE, color: 'var(--red-dark)' }}>
+            <button type="button" className={clsx(s.rcQuick, s.rcQuickDanger)} onClick={() => setConfirmReset(true)}>
               Réinitialiser filtres
             </button>
           </div>
@@ -397,22 +324,17 @@ export default function RapportConfigPanel({
   )
 }
 
-// ─── Styles communs aux composants de filtre ───────────────────────────
-const QUICK_BTN_STYLE = {
-  padding: '6px 12px', background: 'var(--bg2)',
-  border: '0.5px solid var(--border)', borderRadius: 6,
-  fontSize: 11, fontWeight: 600, color: 'var(--text)',
-  cursor: 'pointer', fontFamily: 'var(--font)',
-}
-const FILTER_LABEL_STYLE = {
-  fontSize: 11, fontWeight: 600, color: 'var(--muted)',
-  textTransform: 'uppercase', letterSpacing: '0.04em',
-  marginBottom: 4, display: 'block',
-}
-const FILTER_INPUT_STYLE = {
-  padding: '6px 8px', fontSize: 12,
-  border: '0.5px solid var(--border)', borderRadius: 4,
-  fontFamily: 'var(--font)', background: 'var(--bg)',
+// Libellé « (n sélectionné(s)) » ajouté à droite d'un libellé de filtre
+const Count = ({ children }) => <span className={s.rcLabelCount}>{children}</span>
+
+// Case à cocher compacte des filtres
+function Check({ checked, onChange, children, className, danger = false }) {
+  return (
+    <label className={clsx(s.rcCheck, className)}>
+      <input type="checkbox" checked={checked} onChange={onChange} className={danger ? s.rcCheckDanger : undefined}/>
+      {children}
+    </label>
+  )
 }
 
 // ─── Composants de filtre — un par type ────────────────────────────────
@@ -420,15 +342,15 @@ const FILTER_INPUT_STYLE = {
 function FilterPeriod({ sec, onChange }) {
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>Période (laissez vide pour tout inclure)</label>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <label className={s.rcLabel}>Période (laissez vide pour tout inclure)</label>
+      <div className={s.rcRange}>
         <input type="date" value={sec.periodFrom || ''}
           onChange={e => onChange({ periodFrom: e.target.value })}
-          style={{ ...FILTER_INPUT_STYLE, flex: 1 }}/>
-        <span style={{ color: 'var(--muted)', fontSize: 12 }}>→</span>
+          className={clsx(s.rcInput, s.rcGrow)}/>
+        <span className={s.rcArrow}>→</span>
         <input type="date" value={sec.periodTo || ''}
           onChange={e => onChange({ periodTo: e.target.value })}
-          style={{ ...FILTER_INPUT_STYLE, flex: 1 }}/>
+          className={clsx(s.rcInput, s.rcGrow)}/>
       </div>
     </div>
   )
@@ -438,11 +360,11 @@ function FilterPeriod({ sec, onChange }) {
 function FilterTopN({ sec, onChange }) {
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>Nombre maximum d'articles affichés</label>
+      <label className={s.rcLabel}>Nombre maximum d'articles affichés</label>
       <input type="number" min={1} max={100}
         value={sec.topN ?? 20}
         onChange={e => onChange({ topN: Math.max(1, parseInt(e.target.value) || 20) })}
-        style={{ ...FILTER_INPUT_STYLE, width: 100 }}/>
+        className={clsx(s.rcInput, s.rcInputNarrow)}/>
     </div>
   )
 }
@@ -459,31 +381,23 @@ function FilterStaffExclude({ sec, onChange, staffList }) {
   }
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>
+      <label className={s.rcLabel}>
         Staff à exclure ({excluded.length} exclu{excluded.length > 1 ? 's' : ''})
       </label>
       {list.length === 0 ? (
-        <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+        <div className={s.rcEmpty}>
           Aucun staff dans cet événement.
         </div>
       ) : (
-        <div style={{ maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {list.map(s => {
-            const email = s.email || s.id
+        <div className={s.rcScrollList}>
+          {list.map(st => {
+            const email = st.email || st.id
             const isExcl = excluded.includes(email)
             return (
-              <label key={email} style={{
-                fontSize: 11, display: 'flex', alignItems: 'center', gap: 6,
-                cursor: 'pointer',
-                color: isExcl ? 'var(--red-dark)' : 'var(--text)',
-              }}>
-                <input type="checkbox" checked={isExcl}
-                  onChange={() => toggle(email)}
-                  style={{ accentColor: 'var(--red)' }}/>
-                <span style={{ textDecoration: isExcl ? 'line-through' : 'none' }}>
-                  {email}{s.nom ? ` (${s.nom})` : ''}
-                </span>
-              </label>
+              <Check key={email} checked={isExcl} onChange={() => toggle(email)} danger
+                className={clsx(s.rcCheckTight, isExcl && s.rcExcluded)}>
+                <span>{email}{st.nom ? ` (${st.nom})` : ''}</span>
+              </Check>
             )
           })}
         </div>
@@ -515,20 +429,14 @@ function FilterTxTypes({ sec, onChange }) {
   }
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>
+      <label className={s.rcLabel}>
         Types de transactions {selected.length === 0 ? '(tous)' : `(${selected.length} sélectionné${selected.length > 1 ? 's' : ''})`}
       </label>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 4 }}>
+      <div className={s.rcChecksGrid}>
         {allTypes.map(t => (
-          <label key={t.key} style={{
-            fontSize: 11, display: 'flex', alignItems: 'center', gap: 5,
-            cursor: 'pointer',
-          }}>
-            <input type="checkbox" checked={selected.includes(t.key)}
-              onChange={() => toggle(t.key)}
-              style={{ accentColor: 'var(--brand)' }}/>
+          <Check key={t.key} checked={selected.includes(t.key)} onChange={() => toggle(t.key)}>
             {t.label}
-          </label>
+          </Check>
         ))}
       </div>
     </div>
@@ -539,19 +447,19 @@ function FilterTxTypes({ sec, onChange }) {
 function FilterAmountRange({ sec, onChange }) {
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>Montant (€) — laissez vide pour ne pas filtrer</label>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <label className={s.rcLabel}>Montant (€) — laissez vide pour ne pas filtrer</label>
+      <div className={s.rcRange}>
         <input type="number" min={0} step="0.01"
           placeholder="Min"
           value={sec.minEur ?? ''}
           onChange={e => onChange({ minEur: e.target.value })}
-          style={{ ...FILTER_INPUT_STYLE, flex: 1 }}/>
-        <span style={{ color: 'var(--muted)', fontSize: 12 }}>→</span>
+          className={clsx(s.rcInput, s.rcGrow)}/>
+        <span className={s.rcArrow}>→</span>
         <input type="number" min={0} step="0.01"
           placeholder="Max"
           value={sec.maxEur ?? ''}
           onChange={e => onChange({ maxEur: e.target.value })}
-          style={{ ...FILTER_INPUT_STYLE, flex: 1 }}/>
+          className={clsx(s.rcInput, s.rcGrow)}/>
       </div>
     </div>
   )
@@ -561,19 +469,19 @@ function FilterAmountRange({ sec, onChange }) {
 function FilterSoldeRange({ sec, onChange }) {
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>Solde restant (€) — laissez vide pour ne pas filtrer</label>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <label className={s.rcLabel}>Solde restant (€) — laissez vide pour ne pas filtrer</label>
+      <div className={s.rcRange}>
         <input type="number" min={0} step="0.01"
           placeholder="Min"
           value={sec.soldeMinEur ?? ''}
           onChange={e => onChange({ soldeMinEur: e.target.value })}
-          style={{ ...FILTER_INPUT_STYLE, flex: 1 }}/>
-        <span style={{ color: 'var(--muted)', fontSize: 12 }}>→</span>
+          className={clsx(s.rcInput, s.rcGrow)}/>
+        <span className={s.rcArrow}>→</span>
         <input type="number" min={0} step="0.01"
           placeholder="Max"
           value={sec.soldeMaxEur ?? ''}
           onChange={e => onChange({ soldeMaxEur: e.target.value })}
-          style={{ ...FILTER_INPUT_STYLE, flex: 1 }}/>
+          className={clsx(s.rcInput, s.rcGrow)}/>
       </div>
     </div>
   )
@@ -583,10 +491,10 @@ function FilterSoldeRange({ sec, onChange }) {
 function FilterSortBy({ sec, onChange }) {
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>Trier par</label>
+      <label className={s.rcLabel}>Trier par</label>
       <select value={sec.sortBy || 'solde'}
         onChange={e => onChange({ sortBy: e.target.value })}
-        style={{ ...FILTER_INPUT_STYLE, width: '100%' }}>
+        className={clsx(s.rcInput, s.rcInputFull)}>
         <option value="solde">Solde restant (décroissant)</option>
         <option value="nom">Nom (alphabétique)</option>
         <option value="tx">Nombre de transactions</option>
@@ -613,20 +521,14 @@ function FilterResaStatuses({ sec, onChange }) {
   }
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>
+      <label className={s.rcLabel}>
         Statuts {selected.length === 0 ? '(tous)' : `(${selected.length} sélectionné${selected.length > 1 ? 's' : ''})`}
       </label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {allStatuses.map(s => (
-          <label key={s.key} style={{
-            fontSize: 11, display: 'flex', alignItems: 'center', gap: 5,
-            cursor: 'pointer',
-          }}>
-            <input type="checkbox" checked={selected.includes(s.key)}
-              onChange={() => toggle(s.key)}
-              style={{ accentColor: 'var(--brand)' }}/>
-            {s.label}
-          </label>
+      <div className={s.rcChecksWrap}>
+        {allStatuses.map(st => (
+          <Check key={st.key} checked={selected.includes(st.key)} onChange={() => toggle(st.key)}>
+            {st.label}
+          </Check>
         ))}
       </div>
     </div>
@@ -637,10 +539,10 @@ function FilterResaStatuses({ sec, onChange }) {
 function FilterResaType({ sec, onChange }) {
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>Type de réservation</label>
+      <label className={s.rcLabel}>Type de réservation</label>
       <select value={sec.resaType || 'all'}
         onChange={e => onChange({ resaType: e.target.value })}
-        style={{ ...FILTER_INPUT_STYLE, width: '100%' }}>
+        className={clsx(s.rcInput, s.rcInputFull)}>
         <option value="all">Tous</option>
         <option value="spec">Spectateurs uniquement</option>
         <option value="benev">Bénévoles uniquement</option>
@@ -654,16 +556,16 @@ function FilterAuditActions({ sec, onChange }) {
   const value = (sec.auditActions || []).join(', ')
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>Actions à inclure (vide = toutes)</label>
+      <label className={s.rcLabel}>Actions à inclure (vide = toutes)</label>
       <input type="text"
         placeholder="ex: CREDIT, RETRAIT, ANNULATION_RESA"
         value={value}
         onChange={e => {
-          const arr = e.target.value.split(',').map(s => s.trim()).filter(Boolean)
+          const arr = e.target.value.split(',').map(x => x.trim()).filter(Boolean)
           onChange({ auditActions: arr })
         }}
-        style={{ ...FILTER_INPUT_STYLE, width: '100%' }}/>
-      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 3 }}>
+        className={clsx(s.rcInput, s.rcInputFull)}/>
+      <div className={s.rcHelp}>
         Séparez par des virgules. Sensible à la casse.
       </div>
     </div>
@@ -688,20 +590,14 @@ function FilterAuditUserTypes({ sec, onChange }) {
   }
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>
+      <label className={s.rcLabel}>
         Types d'utilisateur {selected.length === 0 ? '(tous)' : `(${selected.length} sélectionné${selected.length > 1 ? 's' : ''})`}
       </label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className={s.rcChecksWrap}>
         {allTypes.map(t => (
-          <label key={t.key} style={{
-            fontSize: 11, display: 'flex', alignItems: 'center', gap: 5,
-            cursor: 'pointer',
-          }}>
-            <input type="checkbox" checked={selected.includes(t.key)}
-              onChange={() => toggle(t.key)}
-              style={{ accentColor: 'var(--brand)' }}/>
+          <Check key={t.key} checked={selected.includes(t.key)} onChange={() => toggle(t.key)}>
             {t.label}
-          </label>
+          </Check>
         ))}
       </div>
     </div>
@@ -748,55 +644,28 @@ function FilterFields({ sec, onChange, availableFields }) {
 
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>
+      <label className={s.rcLabel}>
         Champs affichés ({currentSet.size}/{availableFields.length})
         {isAllByDefault && (
-          <span style={{ marginLeft: 6, fontStyle: 'italic', textTransform: 'none', letterSpacing: 0 }}>
+          <span className={s.rcLabelNote}>
             (toutes par défaut)
           </span>
         )}
       </label>
-      <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 4,
-        marginBottom: 6,
-      }}>
+      <div className={clsx(s.rcChecksGrid, s.rcMb6)}>
         {availableFields.map(f => (
-          <label key={f.key} style={{
-            fontSize: 11, display: 'flex', alignItems: 'center', gap: 5,
-            cursor: 'pointer',
-            color: currentSet.has(f.key) ? 'var(--text)' : 'var(--muted)',
-          }}>
-            <input type="checkbox" checked={currentSet.has(f.key)}
-              onChange={() => toggle(f.key)}
-              style={{ accentColor: 'var(--brand)' }}/>
+          <Check key={f.key} checked={currentSet.has(f.key)} onChange={() => toggle(f.key)}
+            className={!currentSet.has(f.key) ? s.rcMuted : undefined}>
             {f.label}
-          </label>
+          </Check>
         ))}
       </div>
       {/* Actions rapides */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => setAll(true)} disabled={allChecked && !isAllByDefault}
-          style={{
-            padding: '3px 8px', background: 'var(--bg)', border: '0.5px solid var(--border)',
-            borderRadius: 4, fontSize: 10, color: 'var(--text)',
-            cursor: (allChecked && !isAllByDefault) ? 'not-allowed' : 'pointer',
-            fontFamily: 'var(--font)',
-            opacity: (allChecked && !isAllByDefault) ? 0.5 : 1,
-          }}>Tout</button>
-        <button type="button" onClick={() => setAll(false)} disabled={noneChecked}
-          style={{
-            padding: '3px 8px', background: 'var(--bg)', border: '0.5px solid var(--border)',
-            borderRadius: 4, fontSize: 10, color: 'var(--text)',
-            cursor: noneChecked ? 'not-allowed' : 'pointer',
-            fontFamily: 'var(--font)', opacity: noneChecked ? 0.5 : 1,
-          }}>Rien</button>
+      <div className={s.rcMiniRow}>
+        <button type="button" className={s.rcMini} onClick={() => setAll(true)} disabled={allChecked && !isAllByDefault}>Tout</button>
+        <button type="button" className={s.rcMini} onClick={() => setAll(false)} disabled={noneChecked}>Rien</button>
         {!isAllByDefault && (
-          <button type="button" onClick={resetToDefault}
-            style={{
-              padding: '3px 8px', background: 'var(--bg)', border: '0.5px solid var(--border)',
-              borderRadius: 4, fontSize: 10, color: 'var(--brand-dark)',
-              cursor: 'pointer', fontFamily: 'var(--font)',
-            }}>↺ Défaut</button>
+          <button type="button" className={clsx(s.rcMini, s.rcMiniBrand)} onClick={resetToDefault}>↺ Défaut</button>
         )}
       </div>
     </div>
@@ -814,65 +683,26 @@ function FilterArticleSelection({ sec, onChange, menuList }) {
     label: m.nom || 'Sans nom',
     meta: (m.prix !== undefined) ? `${(m.prix / 100).toFixed(2)} €` : null,
   }))
-  // Si null = pas de filtre. Pour l'UI, on présente une case "Activer le filtre"
-  // qui bascule entre null et [] (ou vice versa) pour éviter de matérialiser
-  // une liste vide par accident.
-  const filterActive = sec.articleSelection !== null && sec.articleSelection !== undefined
-  const selectedIds = filterActive ? (sec.articleSelection || []) : []
+  const selectedIds = (sec.articleSelection !== null && sec.articleSelection !== undefined)
+    ? (sec.articleSelection || []) : []
 
   return (
-    <div>
-      <label style={FILTER_LABEL_STYLE}>
-        Sélection précise des articles
-        {filterActive && (
-          <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--brand-dark)', textTransform: 'none', letterSpacing: 0 }}>
-            ({selectedIds.length} sélectionné{selectedIds.length > 1 ? 's' : ''} sur {list.length})
-          </span>
-        )}
-      </label>
-      {!filterActive ? (
-        <div style={{
-          background: 'var(--bg)', borderRadius: 4,
-          border: '0.5px dashed var(--border)',
-          padding: '12px', textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8, lineHeight: 1.5 }}>
-            Aucun filtre actif. Tous les articles seront inclus dans la section.
-          </div>
-          <button type="button" onClick={() => onChange({ articleSelection: [] })}
-            style={{
-              padding: '5px 12px', background: 'var(--brand)', color: '#fff',
-              border: 'none', borderRadius: 4,
-              fontSize: 11, fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'var(--font)',
-            }}>
-            Activer le filtre
-          </button>
-        </div>
-      ) : (
-        <>
-          <TransferList
-            items={list}
-            selectedIds={selectedIds}
-            onChange={(newIds) => onChange({ articleSelection: newIds })}
-            placeholder="Rechercher un article…"
-            emptyAvailableMessage="Aucun article dans le menu."
-            emptySelectedMessage="Aucune sélection. La table sera vide."
-          />
-          <div style={{ marginTop: 6, textAlign: 'right' }}>
-            <button type="button" onClick={() => onChange({ articleSelection: null })}
-              style={{
-                background: 'transparent', border: 'none',
-                color: 'var(--muted)', fontSize: 10,
-                cursor: 'pointer', fontFamily: 'inherit',
-                textDecoration: 'underline',
-              }}>
-              désactiver le filtre (inclure tous)
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+    <FilterPreciseSelectionWrapper
+      label="Sélection précise des articles"
+      emptyText="Aucun filtre actif. Tous les articles seront inclus dans la section."
+      sec={sec} fieldKey="articleSelection"
+      totalCount={list.length} selectedCount={selectedIds.length}
+      onActivate={() => onChange({ articleSelection: [] })}
+      onDeactivate={() => onChange({ articleSelection: null })}>
+      <TransferList
+        items={list}
+        selectedIds={selectedIds}
+        onChange={(newIds) => onChange({ articleSelection: newIds })}
+        placeholder="Rechercher un article…"
+        emptyAvailableMessage="Aucun article dans le menu."
+        emptySelectedMessage="Aucune sélection. La table sera vide."
+      />
+    </FilterPreciseSelectionWrapper>
   )
 }
 
@@ -915,84 +745,56 @@ function FilterTotalRow({ sec, onChange, availableFields, sectionKey }) {
 
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>
+      <label className={s.rcLabel}>
         Ligne de total
         {total.enabled && (
-          <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--brand-dark)', textTransform: 'none', letterSpacing: 0 }}>
+          <Count>
             ({(total.columns || []).length} colonne{(total.columns || []).length > 1 ? 's' : ''} sommée{(total.columns || []).length > 1 ? 's' : ''}
             {total.groupBy ? ` + sous-totaux ${total.groupBy}` : ''})
-          </span>
+          </Count>
         )}
       </label>
-      <div style={{
-        background: 'var(--bg)', borderRadius: 4,
-        border: '0.5px solid var(--border)', padding: 10,
-      }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
-          <input type="checkbox" checked={!!total.enabled}
-            onChange={e => update({ enabled: e.target.checked })}
-            style={{ accentColor: 'var(--brand)' }}/>
+      <div className={s.rcBox}>
+        <Check checked={!!total.enabled} onChange={e => update({ enabled: e.target.checked })} className={s.rcCheckLg}>
           Afficher une ligne de total
-        </label>
+        </Check>
 
         {total.enabled && (
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
+          <div className={s.rcDivided}>
             {/* Label */}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginBottom: 3, textTransform: 'uppercase' }}>
-                Libellé
-              </div>
+            <div className={s.rcMb8}>
+              <div className={s.rcSubLabel}>Libellé</div>
               <input type="text"
                 value={total.label || ''}
                 onChange={e => update({ label: e.target.value })}
                 placeholder="ex: Total"
-                style={{
-                  width: '100%', padding: '5px 8px', fontSize: 11,
-                  border: '0.5px solid var(--border)', borderRadius: 4,
-                  fontFamily: 'inherit', background: 'var(--bg)',
-                  boxSizing: 'border-box',
-                }}/>
+                className={s.rcInputSm}/>
             </div>
 
             {/* Position */}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginBottom: 3, textTransform: 'uppercase' }}>
-                Position
-              </div>
+            <div className={s.rcMb8}>
+              <div className={s.rcSubLabel}>Position</div>
               <select value={total.position || 'bottom'}
                 onChange={e => update({ position: e.target.value })}
-                style={{
-                  width: '100%', padding: '5px 8px', fontSize: 11,
-                  border: '0.5px solid var(--border)', borderRadius: 4,
-                  fontFamily: 'inherit', background: 'var(--bg)',
-                }}>
+                className={s.rcInputSm}>
                 <option value="bottom">En bas du tableau</option>
                 <option value="top">En haut du tableau</option>
               </select>
             </div>
 
             {/* Colonnes à sommer */}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginBottom: 3, textTransform: 'uppercase' }}>
-                Colonnes à sommer
-              </div>
+            <div className={s.rcMb8}>
+              <div className={s.rcSubLabel}>Colonnes à sommer</div>
               {summable.length === 0 ? (
-                <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+                <div className={s.rcEmpty}>
                   Aucune colonne sommable détectée.
                 </div>
               ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 4 }}>
+                <div className={s.rcChecksGrid}>
                   {summable.map(f => (
-                    <label key={f.key} style={{
-                      fontSize: 11, display: 'flex', alignItems: 'center', gap: 5,
-                      cursor: 'pointer',
-                    }}>
-                      <input type="checkbox"
-                        checked={(total.columns || []).includes(f.key)}
-                        onChange={() => toggleColumn(f.key)}
-                        style={{ accentColor: 'var(--brand)' }}/>
+                    <Check key={f.key} checked={(total.columns || []).includes(f.key)} onChange={() => toggleColumn(f.key)}>
                       {f.label.replace(/^Colonne\s*:\s*/i, '')}
-                    </label>
+                    </Check>
                   ))}
                 </div>
               )}
@@ -1000,17 +802,11 @@ function FilterTotalRow({ sec, onChange, availableFields, sectionKey }) {
 
             {/* Lot Custom A2 — Sous-totaux par groupe */}
             {groupByOptions.length > 0 && (
-              <div style={{ paddingTop: 8, borderTop: '0.5px solid var(--border)' }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginBottom: 3, textTransform: 'uppercase' }}>
-                  Sous-totaux par groupe
-                </div>
+              <div className={s.rcDividedTop}>
+                <div className={s.rcSubLabel}>Sous-totaux par groupe</div>
                 <select value={total.groupBy || ''}
                   onChange={e => update({ groupBy: e.target.value || null })}
-                  style={{
-                    width: '100%', padding: '5px 8px', fontSize: 11,
-                    border: '0.5px solid var(--border)', borderRadius: 4,
-                    fontFamily: 'inherit', background: 'var(--bg)', marginBottom: 6,
-                  }}>
+                  className={clsx(s.rcInputSm, s.rcMb6)}>
                   <option value="">Aucun (juste le total final)</option>
                   {groupByOptions.map(opt => (
                     <option key={opt.key} value={opt.key}>{opt.label}</option>
@@ -1018,20 +814,13 @@ function FilterTotalRow({ sec, onChange, availableFields, sectionKey }) {
                 </select>
                 {total.groupBy && (
                   <div>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginBottom: 3, textTransform: 'uppercase' }}>
-                      Libellé des sous-totaux
-                    </div>
+                    <div className={s.rcSubLabel}>Libellé des sous-totaux</div>
                     <input type="text"
                       value={total.subtotalLabel || 'Sous-total'}
                       onChange={e => update({ subtotalLabel: e.target.value })}
                       placeholder="ex: Sous-total"
-                      style={{
-                        width: '100%', padding: '5px 8px', fontSize: 11,
-                        border: '0.5px solid var(--border)', borderRadius: 4,
-                        fontFamily: 'inherit', background: 'var(--bg)',
-                        boxSizing: 'border-box',
-                      }}/>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+                      className={s.rcInputSm}/>
+                    <div className={s.rcHelpItalic}>
                       Le libellé est suivi du nom du groupe (ex: "Sous-total Boissons")
                     </div>
                   </div>
@@ -1053,48 +842,31 @@ function FilterTotalRow({ sec, onChange, availableFields, sectionKey }) {
 // Centralise le toggle d'activation (null → []) et le rendu du wrapper.
 function FilterPreciseSelectionWrapper({
   label, sec, fieldKey, totalCount, selectedCount, onActivate, onDeactivate, children,
+  emptyText = 'Aucun filtre actif. Tous les éléments seront inclus.',
 }) {
   const filterActive = sec[fieldKey] !== null && sec[fieldKey] !== undefined
   return (
     <div>
-      <label style={FILTER_LABEL_STYLE}>
+      <label className={s.rcLabel}>
         {label}
         {filterActive && (
-          <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--brand-dark)', textTransform: 'none', letterSpacing: 0 }}>
+          <Count>
             ({selectedCount} sélectionné{selectedCount > 1 ? 's' : ''} sur {totalCount})
-          </span>
+          </Count>
         )}
       </label>
       {!filterActive ? (
-        <div style={{
-          background: 'var(--bg)', borderRadius: 4,
-          border: '0.5px dashed var(--border)',
-          padding: '12px', textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8, lineHeight: 1.5 }}>
-            Aucun filtre actif. Tous les éléments seront inclus.
-          </div>
-          <button type="button" onClick={onActivate}
-            style={{
-              padding: '5px 12px', background: 'var(--brand)', color: '#fff',
-              border: 'none', borderRadius: 4,
-              fontSize: 11, fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'var(--font)',
-            }}>
+        <div className={s.rcInactive}>
+          <div className={s.rcInactiveText}>{emptyText}</div>
+          <button type="button" className={s.rcActivate} onClick={onActivate}>
             Activer le filtre
           </button>
         </div>
       ) : (
         <>
           {children}
-          <div style={{ marginTop: 6, textAlign: 'right' }}>
-            <button type="button" onClick={onDeactivate}
-              style={{
-                background: 'transparent', border: 'none',
-                color: 'var(--muted)', fontSize: 10,
-                cursor: 'pointer', fontFamily: 'inherit',
-                textDecoration: 'underline',
-              }}>
+          <div className={s.rcDeactivateRow}>
+            <button type="button" className={s.rcLink} onClick={onDeactivate}>
               désactiver le filtre (inclure tous)
             </button>
           </div>
@@ -1140,10 +912,10 @@ function FilterCategorieSelection({ sec, onChange, categoriesList, menuList }) {
 
 // Sélection par spectateur (utilise l'ID FY-XXXX comme clé)
 function FilterSpectateurSelection({ sec, onChange, spectateursList }) {
-  const list = (spectateursList || []).map(s => ({
-    id: s.id,
-    label: s.nom || s.id || 'Sans nom',
-    meta: s.id ? s.id : null,
+  const list = (spectateursList || []).map(sp => ({
+    id: sp.id,
+    label: sp.nom || sp.id || 'Sans nom',
+    meta: sp.id ? sp.id : null,
   }))
   const filterActive = sec.spectateurSelection !== null && sec.spectateurSelection !== undefined
   const selectedIds = filterActive ? (sec.spectateurSelection || []) : []
@@ -1208,10 +980,10 @@ function FilterBenevoleSelection({ sec, onChange, reservationsList }) {
 // priorité ; sinon staffExclude continue de fonctionner. Cela évite la confusion
 // de deux filtres opposés actifs simultanément.
 function FilterStaffSelection({ sec, onChange, staffList }) {
-  const list = (staffList || []).map(s => ({
-    id: s.email || s.id || s.username || '—',
-    label: s.email || s.username || s.id || 'Sans nom',
-    meta: s.nom || s.role || null,
+  const list = (staffList || []).map(st => ({
+    id: st.email || st.id || st.username || '—',
+    label: st.email || st.username || st.id || 'Sans nom',
+    meta: st.nom || st.role || null,
   }))
   const filterActive = sec.staffSelection !== null && sec.staffSelection !== undefined
   const selectedIds = filterActive ? (sec.staffSelection || []) : []
@@ -1233,11 +1005,7 @@ function FilterStaffSelection({ sec, onChange, staffList }) {
         emptySelectedMessage="Aucun staff sélectionné. La table sera vide."
       />
       {hasExclude && (
-        <div style={{
-          marginTop: 6, padding: '6px 8px',
-          background: 'var(--amber-light)', borderRadius: 4,
-          fontSize: 10, color: 'var(--amber-dark)', lineHeight: 1.4,
-        }}>
+        <div className={s.rcWarn}>
           ⚠ Vous avez aussi {(sec.staffExclude || []).length} staff exclu(s) configuré(s).
           La sélection précise <strong>remplace</strong> ce filtre quand elle est active.
         </div>

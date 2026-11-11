@@ -11,15 +11,22 @@
  *
  * À la fin, l'utilisateur récupère le PDF téléchargé localement ET l'historique
  * de l'exposant contient une entrée avec preuve (URL Storage + hash + signatures).
+ *
+ * « Suivant » reste cliquable : s'il manque quelque chose, les erreurs s'affichent
+ * et le premier champ fautif prend le focus.
  */
 
 import React, { useState, useRef, useEffect } from 'react'
-import { X, ArrowLeft, ArrowRight, FileText, Edit3, Check, AlertCircle } from 'lucide-react'
+import clsx from 'clsx'
+import { ArrowLeft, ArrowRight, FileText, PenLine, Check, AlertCircle, Eraser } from 'lucide-react'
 import SignatureCanvas from '../SignatureCanvas'
 import { generateDechargePDFSigned } from '../../utils/expoPDF'
 import { saveSignedDecharge } from '../../firebase/service'
 import { computeExpoPaye, computeExpoRestant, expoDisplayName } from '../../utils/expositions'
 import useAuthStore from '../../store/useAuthStore'
+import { Button, Dialog, Field, ProgressButton, focusFirstInvalid, toast } from '../../ui'
+import { friendlyError } from '../../utils/errors'
+import s from './expo.module.css'
 
 export default function DechargeModal({
   expo, organisateur, templates = [], logoDataUrl = '', brandColor = '#1a6b7a',
@@ -36,11 +43,12 @@ export default function DechargeModal({
   const [orgHasSig, setOrgHasSig]           = useState(false)
   const [expHasSig, setExpHasSig]           = useState(false)
   const [loading, setLoading]               = useState(false)
-  const [err, setErr]                       = useState('')
   const [progress, setProgress]             = useState('')
+  const [tried, setTried]                   = useState({ 1: false, 2: false })
 
   const orgCanvasRef = useRef(null)
   const expCanvasRef = useRef(null)
+  const bodyRef = useRef(null)
 
   // Synchroniser le texte avec le template sélectionné quand on change de choix
   useEffect(() => {
@@ -80,18 +88,18 @@ pour un montant total facturé de {{montantTotal}}.`,
   }
 
   // Étape 3 : génère le PDF signé, upload, sauvegarde
+  // Lève en cas d'échec : le bouton de progression revient au repos.
   const handleGenerate = async () => {
-    if (!orgCanvasRef.current || !expCanvasRef.current) {
-      setErr('Erreur interne : canvas signatures'); return
-    }
+    const fail = (msg) => { toast.error(msg); throw new Error(msg) }
+    if (!orgCanvasRef.current || !expCanvasRef.current) fail('Erreur interne : canvas signatures')
     const orgSig = orgCanvasRef.current.toDataURL()
     const expSig = expCanvasRef.current.toDataURL()
-    if (!orgSig) { setErr('Signature de l\'organisateur requise'); return }
-    if (!expSig) { setErr('Signature de l\'exposant requise'); return }
-    if (!signedByOrg.trim()) { setErr('Nom du signataire organisateur requis'); return }
-    if (!signedByExp.trim()) { setErr('Nom du signataire exposant requis'); return }
+    if (!orgSig) fail('Signature de l\'organisateur requise')
+    if (!expSig) fail('Signature de l\'exposant requise')
+    if (!signedByOrg.trim()) fail('Nom du signataire organisateur requis')
+    if (!signedByExp.trim()) fail('Nom du signataire exposant requis')
 
-    setLoading(true); setErr('')
+    setLoading(true)
 
     try {
       // Snapshot des paiements au moment de la signature (preuve)
@@ -141,323 +149,172 @@ pour un montant total facturé de {{montantTotal}}.`,
       URL.revokeObjectURL(url)
 
       setProgress('')
+      toast.success('Décharge signée enregistrée')
       onSaved && onSaved(saved)
       onClose()
     } catch (e) {
-      console.error(e)
-      setErr(e.message || 'Erreur lors de la génération')
+      setProgress('')
       setLoading(false)
+      toast.error(friendlyError(e, "La décharge n'a pas été générée."))
+      throw e
     }
   }
 
-  // Validation pour passer à l'étape suivante
-  const canGoStep2 = !!customText.intro.trim()
-  const canGenerate = orgHasSig && expHasSig && signedByOrg.trim() && signedByExp.trim()
+  // Validation pour passer à l'étape suivante (mêmes règles qu'avant)
+  const introErr  = customText.intro.trim() ? null : "Indique le texte d'introduction"
+  const orgNomErr = signedByOrg.trim() ? null : 'Indique le nom du signataire organisateur'
+  const expNomErr = signedByExp.trim() ? null : 'Indique le nom du signataire exposant'
+  const canGoStep2 = !introErr
+  const canGenerate = orgHasSig && expHasSig && !orgNomErr && !expNomErr
+
+  const next = () => {
+    if ((step === 1 && !canGoStep2) || (step === 2 && !canGenerate)) {
+      setTried(t => ({ ...t, [step]: true }))
+      focusFirstInvalid(bodyRef.current)
+      return
+    }
+    setStep(step + 1)
+  }
+
+  const footer = (
+    <div className={s.dialogActions}>
+      {step > 1 && (
+        <Button variant="secondary" icon={ArrowLeft} disabled={loading} onClick={() => {
+          // Retour à l'étape 1 : les canvas sont démontés, les signatures repartent de zéro
+          if (step === 2) { setOrgHasSig(false); setExpHasSig(false) }
+          setStep(step - 1)
+        }}>
+          Précédent
+        </Button>
+      )}
+      <span className={s.grow}/>
+      {step < 3 && (
+        <Button onClick={next} disabled={loading}>
+          Suivant <ArrowRight size={16} aria-hidden="true"/>
+        </Button>
+      )}
+      {step === 3 && (
+        <ProgressButton icon={FileText} onRun={handleGenerate}
+          runningLabel={progress || 'Génération…'} doneLabel="Décharge prête">
+          Générer la décharge
+        </ProgressButton>
+      )}
+    </div>
+  )
+
+  const sigBlock = (label, nameValue, setName, nameErr, nameLabel, canvasRef, hasSig, setHasSig) => {
+    const sigMissing = tried[2] && !hasSig
+    return (
+      <section className={s.sigSection}>
+        <h3 className={s.sectionH}>{label}</h3>
+        <Field label={nameLabel} error={nameErr} valid={!nameErr} showError={tried[2]}>
+          <input type="text" value={nameValue} onChange={e => setName(e.target.value)} autoComplete="off"/>
+        </Field>
+        <div className={clsx(s.sigPad, sigMissing && s.sigPadInvalid)}
+          tabIndex={-1} aria-invalid={sigMissing || undefined} aria-label={`Zone de signature : ${label}`}>
+          <SignatureCanvas ref={canvasRef} onChange={setHasSig}/>
+        </div>
+        <div className={s.sigFoot}>
+          {sigMissing
+            ? <p className={s.fieldError}><AlertCircle size={13} aria-hidden="true"/> Signature requise</p>
+            : <span/>}
+          <Button variant="ghost" size="sm" icon={Eraser} onClick={() => canvasRef.current?.clear()}>Effacer</Button>
+        </div>
+      </section>
+    )
+  }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 12, zIndex: 9999, backdropFilter: 'blur(2px)',
-    }} onClick={loading ? null : onClose}>
-      <div style={{
-        background: 'var(--bg)', borderRadius: 16, width: '100%',
-        maxWidth: 720, maxHeight: '92vh', overflow: 'auto',
-        boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
-      }} onClick={e => e.stopPropagation()}>
+    <Dialog open title="Décharge signée" onClose={() => { if (!loading) onClose() }}
+      footer={footer} className={s.dialogXL}>
+      <div ref={bodyRef} className={s.stack}>
+        <p className={s.muted}>Étape {step} sur 3 — {expoDisplayName(expo)}</p>
 
-        {/* En-tête modale */}
-        <div style={{
-          padding: '14px 18px', borderBottom: '0.5px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 2,
-        }}>
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-              Décharge signée
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-              Étape {step} sur 3 — {expoDisplayName(expo)}
-            </div>
-          </div>
-          <button onClick={onClose} disabled={loading}
-            style={{
-              width: 32, height: 32, padding: 0,
-              background: 'transparent', color: 'var(--muted)',
-              border: 'none', borderRadius: 6,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-            <X size={18}/>
-          </button>
+        {/* Progression des étapes */}
+        <div className={s.steps} aria-hidden="true">
+          {[1, 2, 3].map(n => <span key={n} className={clsx(s.stepBar, step >= n && s.stepOn)}/>)}
         </div>
 
-        {/* Progress bar étapes */}
-        <div style={{
-          display: 'flex', padding: '10px 18px', gap: 4,
-          background: 'var(--bg2)',
-        }}>
-          {[1, 2, 3].map(n => (
-            <div key={n} style={{
-              flex: 1, height: 4, borderRadius: 2,
-              background: step >= n ? 'var(--brand)' : 'var(--border)',
-              transition: 'background .2s',
-            }}/>
-          ))}
-        </div>
-
-        {/* Corps : étape 1 — choix template + perso */}
+        {/* Étape 1 — choix template + perso */}
         {step === 1 && (
-          <div style={{ padding: 18 }}>
-            <SectionH>Choisir un modèle</SectionH>
-            <select value={selectedTplId} onChange={e => setSelectedTplId(e.target.value)}
-              disabled={loading}
-              style={{
-                width: '100%', padding: '10px 12px', fontSize: 13,
-                background: 'var(--bg2)', color: 'var(--text)',
-                border: '0.5px solid var(--border)', borderRadius: 8,
-                outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-                marginBottom: 14,
-              }}>
-              <option value="default">Texte par défaut (sans template)</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>{t.nom}</option>
-              ))}
-            </select>
+          <>
+            <Field label="Modèle">
+              <select value={selectedTplId} onChange={e => setSelectedTplId(e.target.value)} disabled={loading}>
+                <option value="default">Texte par défaut (sans template)</option>
+                {templates.map(t => (
+                  <option key={t.id} value={t.id}>{t.nom}</option>
+                ))}
+              </select>
+            </Field>
 
-            <SectionH>Texte d'introduction</SectionH>
-            <textarea value={customText.intro}
-              onChange={e => setCustomText(c => ({ ...c, intro: e.target.value }))}
-              rows={8}
-              style={{
-                width: '100%', padding: '10px 12px', fontSize: 13,
-                background: 'var(--bg2)', color: 'var(--text)',
-                border: '0.5px solid var(--border)', borderRadius: 8,
-                outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-                resize: 'vertical', minHeight: 130, lineHeight: 1.5, marginBottom: 14,
-              }}/>
-            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: -8, marginBottom: 14, fontStyle: 'italic' }}>
-              Variables remplacées automatiquement : <code>{'{{exposant}}'}</code>, <code>{'{{montant}}'}</code>, <code>{'{{montantLettres}}'}</code>, <code>{'{{montantTotal}}'}</code>
-            </div>
+            <Field label="Texte d'introduction" error={introErr} showError={tried[1]}
+              hint={<>Variables remplacées automatiquement : <code>{'{{exposant}}'}</code>, <code>{'{{montant}}'}</code>, <code>{'{{montantLettres}}'}</code>, <code>{'{{montantTotal}}'}</code></>}>
+              <textarea value={customText.intro} rows={8} className={s.tallText}
+                onChange={e => setCustomText(c => ({ ...c, intro: e.target.value }))}/>
+            </Field>
 
-            <SectionH>Mentions complémentaires (optionnel)</SectionH>
-            <textarea value={customText.mentions}
-              onChange={e => setCustomText(c => ({ ...c, mentions: e.target.value }))}
-              rows={3}
-              placeholder="Ex: Conformément à…"
-              style={{
-                width: '100%', padding: '10px 12px', fontSize: 13,
-                background: 'var(--bg2)', color: 'var(--text)',
-                border: '0.5px solid var(--border)', borderRadius: 8,
-                outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-                resize: 'vertical', minHeight: 70, lineHeight: 1.5, marginBottom: 14,
-              }}/>
+            <Field label="Mentions complémentaires (optionnel)">
+              <textarea value={customText.mentions} rows={3}
+                onChange={e => setCustomText(c => ({ ...c, mentions: e.target.value }))}/>
+            </Field>
 
-            <SectionH>Pied de page</SectionH>
-            <input type="text" value={customText.piedDePage}
-              onChange={e => setCustomText(c => ({ ...c, piedDePage: e.target.value }))}
-              placeholder="Document généré électroniquement et signé."
-              style={{
-                width: '100%', padding: '10px 12px', fontSize: 13,
-                background: 'var(--bg2)', color: 'var(--text)',
-                border: '0.5px solid var(--border)', borderRadius: 8,
-                outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-              }}/>
-          </div>
+            <Field label="Pied de page">
+              <input type="text" value={customText.piedDePage}
+                onChange={e => setCustomText(c => ({ ...c, piedDePage: e.target.value }))}/>
+            </Field>
+          </>
         )}
 
-        {/* Corps : étape 2 — signatures */}
-        {step === 2 && (
-          <div style={{ padding: 18 }}>
-            <div style={{
-              padding: '10px 12px', marginBottom: 14,
-              background: 'var(--bg2)', borderRadius: 8, fontSize: 12, color: 'var(--text)',
-              display: 'flex', alignItems: 'flex-start', gap: 8,
-            }}>
-              <Edit3 size={14} style={{ flexShrink: 0, marginTop: 1, color: 'var(--muted)' }}/>
-              <div>
+        {/* Étape 2 — signatures. Reste montée (masquée) à l'étape 3 : les canvas doivent
+            exister au moment de générer, sinon leurs refs sont vidées au démontage. */}
+        {step >= 2 && (
+          <div className={clsx(s.stack, step !== 2 && s.hidden)}>
+            <div className={s.info}>
+              <PenLine size={16} aria-hidden="true" className={s.noticeIcon}/>
+              <span>
                 Chaque signature sera intégrée au PDF avec un horodatage précis et un hash de
                 vérification (SHA-256) pour garantir l'intégrité du document.
-              </div>
+              </span>
             </div>
-
-            <SectionH>Signature de l'organisateur</SectionH>
-            <input type="text" value={signedByOrg}
-              onChange={e => setSignedByOrg(e.target.value)}
-              placeholder="Nom et fonction"
-              style={{
-                width: '100%', padding: '9px 12px', fontSize: 13,
-                background: 'var(--bg2)', color: 'var(--text)',
-                border: '0.5px solid var(--border)', borderRadius: 6,
-                outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-                marginBottom: 8,
-              }}/>
-            <SignatureCanvas ref={orgCanvasRef} onChange={setOrgHasSig}/>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4, marginBottom: 14 }}>
-              <button onClick={() => orgCanvasRef.current?.clear()}
-                style={{
-                  padding: '6px 12px', background: 'transparent', color: 'var(--muted)',
-                  border: '0.5px solid var(--border)', borderRadius: 6, fontSize: 11,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}>
-                Effacer
-              </button>
-            </div>
-
-            <SectionH>Signature de l'exposant</SectionH>
-            <input type="text" value={signedByExp}
-              onChange={e => setSignedByExp(e.target.value)}
-              placeholder="Nom et qualité"
-              style={{
-                width: '100%', padding: '9px 12px', fontSize: 13,
-                background: 'var(--bg2)', color: 'var(--text)',
-                border: '0.5px solid var(--border)', borderRadius: 6,
-                outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
-                marginBottom: 8,
-              }}/>
-            <SignatureCanvas ref={expCanvasRef} onChange={setExpHasSig}/>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-              <button onClick={() => expCanvasRef.current?.clear()}
-                style={{
-                  padding: '6px 12px', background: 'transparent', color: 'var(--muted)',
-                  border: '0.5px solid var(--border)', borderRadius: 6, fontSize: 11,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                }}>
-                Effacer
-              </button>
-            </div>
+            {sigBlock("Signature de l'organisateur", signedByOrg, setSignedByOrg, orgNomErr,
+              'Nom et fonction du signataire', orgCanvasRef, orgHasSig, setOrgHasSig)}
+            {sigBlock("Signature de l'exposant", signedByExp, setSignedByExp, expNomErr,
+              'Nom et qualité du signataire', expCanvasRef, expHasSig, setExpHasSig)}
           </div>
         )}
 
-        {/* Corps : étape 3 — confirmation */}
+        {/* Étape 3 — confirmation */}
         {step === 3 && (
-          <div style={{ padding: 18 }}>
-            <div style={{
-              padding: 14, background: 'var(--bg2)', borderRadius: 10,
-              marginBottom: 14,
-            }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 10,
-                display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Check size={16} style={{ color: 'var(--green-dark)' }}/>
-                Prêt à générer la décharge signée
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+          <>
+            <div className={s.ready}>
+              <p className={s.readyTitle}><Check size={16} aria-hidden="true"/> Prêt à générer la décharge signée</p>
+              <p className={s.muted}>
                 Le PDF va être généré avec les deux signatures intégrées, horodaté, hashé
                 pour preuve d'intégrité, puis sauvegardé dans le dossier de l'exposant et
                 téléchargé sur votre appareil.
-              </div>
+              </p>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Field label="Exposant" value={expoDisplayName(expo)}/>
-              <Field label="Modèle" value={selectedTplId === 'default' ? 'Texte par défaut' : (templates.find(t => t.id === selectedTplId)?.nom || '—')}/>
-              <Field label="Signataire organisateur" value={signedByOrg}/>
-              <Field label="Signataire exposant" value={signedByExp}/>
-              <Field label="Montant total" value={`${((expo.montantTotal || 0) / 100).toFixed(2)} €`}/>
-              <Field label="Déjà payé" value={`${(computeExpoPaye(expo) / 100).toFixed(2)} €`}/>
-            </div>
-
-            {progress && (
-              <div style={{
-                marginTop: 14, padding: '10px 12px',
-                background: 'var(--bg2)', borderRadius: 8, fontSize: 12,
-                color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8,
-              }}>
-                <div className="yc-spin" style={{
-                  width: 14, height: 14, border: '2px solid var(--border)',
-                  borderTopColor: 'var(--brand)', borderRadius: '50%',
-                }}/>
-                {progress}
-              </div>
-            )}
-          </div>
+            <dl className={s.summary}>
+              <SummaryRow label="Exposant" value={expoDisplayName(expo)}/>
+              <SummaryRow label="Modèle" value={selectedTplId === 'default' ? 'Texte par défaut' : (templates.find(t => t.id === selectedTplId)?.nom || '—')}/>
+              <SummaryRow label="Signataire organisateur" value={signedByOrg}/>
+              <SummaryRow label="Signataire exposant" value={signedByExp}/>
+              <SummaryRow label="Montant total" value={`${((expo.montantTotal || 0) / 100).toFixed(2)} €`}/>
+              <SummaryRow label="Déjà payé" value={`${(computeExpoPaye(expo) / 100).toFixed(2)} €`}/>
+            </dl>
+          </>
         )}
-
-        {/* Erreur */}
-        {err && (
-          <div style={{
-            margin: '0 18px 14px', padding: '10px 12px',
-            background: 'var(--red-light)', color: 'var(--red-dark)',
-            borderRadius: 8, fontSize: 12,
-            display: 'flex', alignItems: 'flex-start', gap: 6,
-          }}>
-            <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }}/> {err}
-          </div>
-        )}
-
-        {/* Footer boutons */}
-        <div style={{
-          padding: '12px 18px', borderTop: '0.5px solid var(--border)',
-          display: 'flex', gap: 8, position: 'sticky', bottom: 0, background: 'var(--bg)',
-        }}>
-          {step > 1 && (
-            <button onClick={() => { setErr(''); setStep(step - 1) }} disabled={loading}
-              style={{
-                padding: '10px 14px', background: 'transparent',
-                color: 'var(--text)', border: '0.5px solid var(--border)',
-                borderRadius: 8, fontSize: 13, fontFamily: 'inherit',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-              }}>
-              <ArrowLeft size={13}/> Précédent
-            </button>
-          )}
-          <div style={{ flex: 1 }}/>
-          {step < 3 && (
-            <button
-              onClick={() => { setErr(''); setStep(step + 1) }}
-              disabled={loading || (step === 1 && !canGoStep2) || (step === 2 && !canGenerate)}
-              style={{
-                padding: '10px 16px',
-                background: (loading || (step === 1 && !canGoStep2) || (step === 2 && !canGenerate)) ? 'var(--bg2)' : 'var(--brand)',
-                color: (loading || (step === 1 && !canGoStep2) || (step === 2 && !canGenerate)) ? 'var(--muted)' : '#fff',
-                border: 'none', borderRadius: 8,
-                fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
-                cursor: (loading || (step === 1 && !canGoStep2) || (step === 2 && !canGenerate)) ? 'not-allowed' : 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-              }}>
-              Suivant <ArrowRight size={13}/>
-            </button>
-          )}
-          {step === 3 && (
-            <button onClick={handleGenerate} disabled={loading}
-              style={{
-                padding: '10px 16px',
-                background: loading ? 'var(--bg2)' : 'var(--brand)',
-                color: loading ? 'var(--muted)' : '#fff',
-                border: 'none', borderRadius: 8,
-                fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-              }}>
-              <FileText size={13}/> {loading ? 'Génération…' : 'Générer la décharge'}
-            </button>
-          )}
-        </div>
       </div>
-    </div>
+    </Dialog>
   )
 }
 
-function SectionH({ children }) {
+function SummaryRow({ label, value }) {
   return (
-    <div style={{
-      fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-      textTransform: 'uppercase', letterSpacing: '0.04em',
-      marginBottom: 6, marginTop: 4,
-    }}>{children}</div>
-  )
-}
-function Field({ label, value }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-      <span style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-        {label}
-      </span>
-      <span style={{ fontSize: 13, color: 'var(--text)', fontWeight: 600, textAlign: 'right', minWidth: 0,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {value || '—'}
-      </span>
+    <div className={s.summaryRow}>
+      <dt>{label}</dt>
+      <dd>{value || '—'}</dd>
     </div>
   )
 }

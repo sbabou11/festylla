@@ -2,18 +2,22 @@
  * pages/admin/settings/RapportCloture.jsx
  * Rapport de clôture PDF : sections et filtres, pages personnalisées, génération
  * rapide (config sauvegardée) ou avec réglages temporaires.
+ * Sections et pages personnalisées sont enregistrées automatiquement (800 ms après la saisie).
  */
 import React, { useEffect, useState } from 'react'
 import { FileText } from 'lucide-react'
-import { Button, Card, toast } from '../../../ui'
+import { Button, Card, ProgressButton, SaveStatus, toast } from '../../../ui'
 import useAppStore from '../../../store/useAppStore'
 import { useRapportCloture } from '../../../hooks/useRapportCloture'
+import { useAutosave } from '../../../hooks/useAutosave'
 import { getSettings, saveSettings } from '../../../firebase/service'
 import { friendlyError } from '../../../utils/errors'
 import CustomPagesEditor from '../../../components/CustomPagesEditor'
 import RapportConfigPanel, { GenerateRapportModal } from './RapportConfigPanel'
 import { RAPPORT_SECTIONS_KEYS, buildDefaultSections, normalizeSections } from './rapportSections'
 import s from './settings.module.css'
+
+const PENDING = ['dirty', 'saving', 'offline', 'error']
 
 export default function RapportCloture({ currentEventId }) {
   // Listes pour les filtres du rapport et l'aperçu des tableaux custom
@@ -25,7 +29,6 @@ export default function RapportCloture({ currentEventId }) {
   const logs = useAppStore(st => st.logs)
 
   const { generer: genererRapportCloture } = useRapportCloture()
-  const [generatingPdf, setGeneratingPdf] = useState(false)
   // Modale de génération avec override
   const [showGenerateModal, setShowGenerateModal] = useState(false)
 
@@ -33,12 +36,15 @@ export default function RapportCloture({ currentEventId }) {
   const [rapportSections, setRapportSections] = useState(() => buildDefaultSections())
   // Pages personnalisées : settings.rapportCustomPages = [{ id, titre, sousTitre, position, tables: [] }]
   const [rapportCustomPages, setRapportCustomPages] = useState([])
+  // Réglages lus : tant que ce n'est pas le cas, rien n'est enregistré
+  const [loaded, setLoaded] = useState(false)
   // Panneau de config replié par défaut (pour ne pas encombrer la vue)
   const [rapportConfigOpen, setRapportConfigOpen] = useState(false)
   // Quelle section est dépliée pour montrer ses filtres (null = aucune)
   const [expandedSection, setExpandedSection] = useState(null)
 
   useEffect(() => {
+    setLoaded(false)
     if (!currentEventId) return
     let cancelled = false
     getSettings(currentEventId).then(cfg => {
@@ -49,24 +55,41 @@ export default function RapportCloture({ currentEventId }) {
         setRapportSections(normalizeSections(cfg.rapportSections))
       }
       if (Array.isArray(cfg?.rapportCustomPages)) setRapportCustomPages(cfg.rapportCustomPages)
+      setLoaded(true)
     }).catch(() => {})
     return () => { cancelled = true }
   }, [currentEventId])
 
-  // Sauvegarde immédiate — les pages changent rarement
-  const saveCustomPages = async (next) => {
-    setRapportCustomPages(next)
-    try {
-      await saveSettings({ rapportCustomPages: next }, currentEventId)
-    } catch (e) { toast.error(friendlyError(e, "Les pages personnalisées n'ont pas été enregistrées.")) }
+  // Enregistrement automatique : mêmes écritures qu'avant (saveSettings), regroupées après 800 ms
+  const sectionsAuto = useAutosave(
+    rapportSections,
+    (v) => saveSettings({ rapportSections: v }, currentEventId),
+    { enabled: loaded && !!currentEventId },
+  )
+  const pagesAuto = useAutosave(
+    rapportCustomPages,
+    (v) => saveSettings({ rapportCustomPages: v }, currentEventId),
+    { enabled: loaded && !!currentEventId },
+  )
+
+  // La génération rapide relit la config en base : on y envoie d'abord la saisie en attente
+  const flushPending = async () => {
+    if (PENDING.includes(sectionsAuto.status)) await sectionsAuto.retry()
+    if (PENDING.includes(pagesAuto.status)) await pagesAuto.retry()
   }
 
-  const handlePdf = async () => {
-    setGeneratingPdf(true)
-    try { await genererRapportCloture() }
-    catch (e) { toast.error(friendlyError(e, "Le rapport de clôture n'a pas été généré."), { action: { label: 'Réessayer', onClick: () => handlePdf() } }) }
-    finally { setGeneratingPdf(false) }
+  // Le hook signale ses étapes de chargement → barre de progression
+  const handlePdf = async (report) => {
+    try {
+      await flushPending()
+      await genererRapportCloture(null, null, report)
+    } catch (e) {
+      toast.error(friendlyError(e, "Le rapport de clôture n'a pas été généré."))
+      throw e
+    }
   }
+
+  const pagesStatus = <SaveStatus status={pagesAuto.status} savedAt={pagesAuto.savedAt} onRetry={pagesAuto.retry}/>
 
   return (
     <>
@@ -77,7 +100,7 @@ export default function RapportCloture({ currentEventId }) {
           </p>
 
           {/* Panneau de configuration des sections : un bloc dépliable par section,
-              sauvegarde Firestore immédiate à chaque changement. */}
+              enregistré automatiquement. */}
           <RapportConfigPanel
             sections={rapportSections}
             setSections={setRapportSections}
@@ -93,14 +116,18 @@ export default function RapportCloture({ currentEventId }) {
             categoriesList={categories}
             spectateursList={spectateurs}
             reservationsList={reservations}
+            saveStatus={<SaveStatus status={sectionsAuto.status} savedAt={sectionsAuto.savedAt} onRetry={sectionsAuto.retry}/>}
           />
 
           {/* Pages personnalisées */}
           <div className={s.block}>
-            <span className={s.cardTitle}><FileText size={15}/>Pages personnalisées</span>
+            <div className={s.editorHead}>
+              <span className={s.cardTitle}><FileText size={15}/>Pages personnalisées</span>
+              {pagesStatus}
+            </div>
             <CustomPagesEditor
               pages={rapportCustomPages}
-              onChange={saveCustomPages}
+              onChange={setRapportCustomPages}
               menuList={menu}
               categoriesList={categories}
               spectateursList={spectateurs}
@@ -112,10 +139,10 @@ export default function RapportCloture({ currentEventId }) {
 
           {/* Deux modes : rapide (config sauvegardée) ou avec réglages (override temporaire) */}
           <div className={s.actions}>
-            <Button icon={FileText} onClick={handlePdf} loading={generatingPdf}>
-              {generatingPdf ? 'Génération en cours…' : 'Générer (config sauvegardée)'}
-            </Button>
-            <Button variant="secondary" icon={FileText} onClick={() => setShowGenerateModal(true)} disabled={generatingPdf}>
+            <ProgressButton icon={FileText} onRun={handlePdf} runningLabel="Génération en cours…" doneLabel="Rapport téléchargé">
+              Générer (config sauvegardée)
+            </ProgressButton>
+            <Button variant="secondary" icon={FileText} onClick={() => setShowGenerateModal(true)}>
               Générer avec réglages…
             </Button>
           </div>
@@ -135,14 +162,17 @@ export default function RapportCloture({ currentEventId }) {
           reservationsList={reservations}
           currentEventId={currentEventId}
           onCancel={() => setShowGenerateModal(false)}
-          onGenerate={async (overrideSections) => {
+          onGenerate={async (overrideSections, report) => {
             try {
-              await genererRapportCloture(overrideSections)
-              setShowGenerateModal(false)
+              // Les pages personnalisées sont relues en base : on y envoie la saisie en attente
+              if (PENDING.includes(pagesAuto.status)) await pagesAuto.retry()
+              await genererRapportCloture(overrideSections, null, report)
             } catch (e) {
               toast.error(friendlyError(e, "Le rapport de clôture n'a pas été généré."))
+              throw e
             }
           }}
+          onDone={() => setShowGenerateModal(false)}
         />
       )}
     </>

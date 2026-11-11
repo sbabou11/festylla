@@ -13,11 +13,14 @@
  *   - rect : rectangle vide
  *
  * Pas de rendu réel des polices ou variables : c'est une silhouette pour
- * identification rapide, pas un aperçu fidèle.
+ * identification rapide, pas un aperçu fidèle. La feuille reste blanche
+ * (elle représente le papier, y compris en thème sombre). Seules les
+ * positions et couleurs propres au template restent en style calculé.
  */
 
 import React from 'react'
 import { PAGE_A4 } from '../../utils/factureTemplate'
+import s from './expo.module.css'
 
 const DEFAULT_WIDTH = 80 // px de la miniature (largeur)
 
@@ -32,27 +35,13 @@ export default function TemplatePreview({ template, width = DEFAULT_WIDTH, isSta
   const elements = template?.elements || []
 
   return (
-    <div style={{
-      position: 'relative',
-      width, height: heightPx,
-      background: '#ffffff',
-      border: '0.5px solid var(--border2)',
-      flexShrink: 0,
-    }}>
+    <span className={s.sheet} style={{ width, height: heightPx }} aria-hidden="true">
       {elements.map((el, i) => (
         <PreviewElement key={el.id || i} el={el} scale={scale}/>
       ))}
       {/* Si template vide : indication */}
-      {elements.length === 0 && (
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#bbb', fontSize: 9, fontStyle: 'italic',
-        }}>
-          (vide)
-        </div>
-      )}
-    </div>
+      {elements.length === 0 && <span className={s.sheetEmpty}>(vide)</span>}
+    </span>
   )
 }
 
@@ -62,8 +51,7 @@ export default function TemplatePreview({ template, width = DEFAULT_WIDTH, isSta
  * position et son emprise visuelle.
  */
 function PreviewElement({ el, scale }) {
-  const style = {
-    position: 'absolute',
+  const box = {
     left:   Math.max(0, el.x) * scale,
     top:    Math.max(0, el.y) * scale,
     width:  Math.max(1, el.w) * scale,
@@ -73,54 +61,23 @@ function PreviewElement({ el, scale }) {
   switch (el.type) {
     case 'text':
     case 'field':
-    case 'paragraph': {
-      // Silhouette de texte : bandes horizontales gris foncé pour suggérer des lignes
-      const fontSize = (el.fontSize || 10) * scale * 0.5
-      return (
-        <div style={{
-          ...style,
-          background: 'rgba(80, 80, 80, 0.4)',
-          borderRadius: 0.5,
-        }}/>
-      )
-    }
+    case 'paragraph':
+      // Silhouette de texte
+      return <span className={`${s.pe} ${s.peText}`} style={box}/>
     case 'image':
       return (
-        <div style={{
-          ...style,
-          background: el.src
-            ? `url(${el.src}) center/contain no-repeat`
-            : 'repeating-linear-gradient(45deg, #e0e0e0, #e0e0e0 1px, #f5f5f5 1px, #f5f5f5 3px)',
-          border: '0.5px solid #ccc',
-        }}/>
+        <span className={`${s.pe} ${s.peImage}`}
+          style={el.src ? { ...box, background: `url(${el.src}) center/contain no-repeat` } : box}/>
       )
     case 'table':
       // Bandes horizontales pour suggérer un tableau
-      return (
-        <div style={{
-          ...style,
-          background: '#f5f5f5',
-          border: '0.5px solid #ccc',
-          backgroundImage: `repeating-linear-gradient(
-            to bottom,
-            transparent 0,
-            transparent 2px,
-            rgba(0,0,0,0.08) 2px,
-            rgba(0,0,0,0.08) 2.5px
-          )`,
-        }}/>
-      )
+      return <span className={`${s.pe} ${s.peTable}`} style={box}/>
     case 'line':
-      return (
-        <div style={{
-          ...style,
-          background: el.color || '#999',
-        }}/>
-      )
+      return <span className={s.pe} style={{ ...box, background: el.color || '#999' }}/>
     case 'rect':
       return (
-        <div style={{
-          ...style,
+        <span className={s.pe} style={{
+          ...box,
           background: el.fillColor || 'transparent',
           border: el.borderWidth > 0 ? `0.5px solid ${el.borderColor || '#ccc'}` : 'none',
         }}/>

@@ -5,8 +5,9 @@
 import React, { useState } from 'react'
 import { Users, Wallet, ShoppingCart, Bookmark, Plus, Trash2, Inbox, Moon, Sun, Undo2 } from 'lucide-react'
 import { Button, Card, Badge, Stat, Tabs, Table, Empty, Skeleton, Dialog, Sheet, toast,
-  CodeInput, HoldButton, AnimatedNumber, SuccessCheck, ConnectionBar } from '../../ui'
+  CodeInput, HoldButton, AnimatedNumber, SuccessCheck, ConnectionBar, Field, ProgressButton, SaveStatus } from '../../ui'
 import { fmt } from '../../utils/helpers'
+import { revealTheme } from '../../hooks/useTheme'
 
 const ROWS = [
   { id: 1, heure: '23:12', label: 'Bar Scène A · 2 Bière, 1 Eco-cup', type: 'debit',  montant: '−11,00 €' },
@@ -35,8 +36,15 @@ export default function UiGallery() {
   const [net, setNet]       = useState({ online: true, pending: 0 })
   const [sun, setSun]       = useState(false)
   const [tblLoading, setTblLoading] = useState(false)
+  const [sort, setSort]     = useState(null) // { key, dir } : tri par en-tête, puis retour à l'ordre d'origine
+  const onSort = (key) => setSort(cur => !cur || cur.key !== key ? { key, dir: 'asc' } : cur.dir === 'asc' ? { key, dir: 'desc' } : null)
+  const SORT_ROWS = [{ id: 1, nom: 'Awa S.', montant: 3000 }, { id: 2, nom: 'Léa M.', montant: 450 }, { id: 3, nom: 'Karim B.', montant: 1200 }]
+  const sortedRows = !sort ? SORT_ROWS : [...SORT_ROWS].sort((a, b) =>
+    (sort.key === 'montant' ? a.montant - b.montant : a.nom.localeCompare(b.nom, 'fr')) * (sort.dir === 'asc' ? 1 : -1))
+  // Génération simulée : 8 étapes de 350 ms
+  const fakeRun = async (report) => { for (let i = 1; i <= 8; i++) { await new Promise(r => setTimeout(r, 350)); report(i / 8) } }
 
-  const toggleDark = () => { document.body.classList.toggle('dark', !dark); setDark(!dark) }
+  const toggleDark = (e) => revealTheme(() => { document.body.classList.toggle('dark', !dark); setDark(!dark) }, e)
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
@@ -104,6 +112,37 @@ export default function UiGallery() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-3)' }}>
             <Card><Empty icon={Inbox} title="Aucune réservation" action={<Button size="sm" icon={Plus}>Créer une réservation</Button>}>Les commandes passées depuis l'appli spectateur apparaîtront ici.</Empty></Card>
             <Card><div style={{ display: 'grid', gap: 'var(--space-3)' }}><Skeleton height={24} width="40%" /><Skeleton lines={3} /></div></Card>
+          </div>
+        </Section>
+
+        <Section title="États des composants (sans compte, données d'exemple)">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)' }}>
+            <Card title="Défaut"><Field label="SIRET"><input defaultValue="812 345 678 00011" /></Field></Card>
+            <Card title="Focus" subtitle="Cliquez dans le champ"><Field label="SIRET" hint="14 chiffres, sans espace obligatoire"><input placeholder="" /></Field></Card>
+            <Card title="Erreur"><Field label="SIRET" error="14 chiffres attendus" showError><input defaultValue="8127" /></Field></Card>
+            <Card title="Succès"><Field label="SIRET" valid touched><input defaultValue="812 345 678 00011" /></Field></Card>
+            <Card title="Désactivé"><Field label="SIRET" hint="Facture déjà émise : SIRET verrouillé"><input defaultValue="812 345 678 00011" disabled /></Field></Card>
+            <Card title="Chargement"><Field label="SIRET" loading><input defaultValue="812 345 678 00011" /></Field></Card>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 'var(--space-3)' }}>
+            <Card title="Bouton à progression">
+              <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
+                <ProgressButton block onRun={fakeRun} doneLabel="Rapport prêt">Générer le rapport</ProgressButton>
+                <ProgressButton block variant="secondary" onRun={() => new Promise(r => setTimeout(r, 2500))} doneLabel="Export terminé">Exporter (durée inconnue)</ProgressButton>
+              </div>
+            </Card>
+            <Card title="Enregistrement automatique">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                <SaveStatus status="dirty" /><SaveStatus status="saving" /><SaveStatus status="saved" savedAt={new Date()} />
+                <SaveStatus status="offline" /><SaveStatus status="error" onRetry={() => toast.info('Nouvel essai')} />
+              </div>
+            </Card>
+            <Card title="Tri par en-tête" subtitle="Croissant, décroissant, puis ordre d'origine" flush>
+              <Table rows={sortedRows} sort={sort} onSort={onSort} columns={[
+                { key: 'nom', label: 'Nom', sortKey: 'nom' },
+                { key: 'montant', label: 'Montant', align: 'right', sortKey: 'montant', render: r => fmt(r.montant) },
+              ]} />
+            </Card>
           </div>
         </Section>
 

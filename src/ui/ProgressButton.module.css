@@ -1,0 +1,35 @@
+.btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch);
+  padding: 0 var(--space-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: 700 var(--fs-15) var(--font);
+  cursor: pointer;
+  transition: background var(--dur-base), color var(--dur-base), transform var(--dur-fast) var(--ease);
+}
+.btn:active:not(:disabled) { transform: scale(.97); }
+.block { width: 100%; }
+.label { position: relative; display: inline-flex; align-items: center; gap: var(--space-2); }
+.pct { font-variant-numeric: tabular-nums; opacity: .9; }
+
+.primary { background: var(--brand); color: var(--on-brand); }
+.secondary { background: var(--bg2); color: var(--text); border-color: var(--border2); }
+/* Pendant le travail : fond clair, la barre se remplit de la couleur du bouton */
+.primary.running   { background: var(--brand-light); color: var(--brand-dark); cursor: progress; }
+.secondary.running { background: var(--bg2); cursor: progress; }
+.fill { position: absolute; inset: 0; transform-origin: left; background: var(--brand); opacity: .28; transition: transform var(--dur-slow) var(--ease); }
+.stripes {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(-45deg, transparent 0 10px, rgba(0,144,144,.16) 10px 20px);
+  background-size: 28px 28px;
+  animation: slide .8s linear infinite;
+}
+.done { background: var(--green); color: #fff; }
+.btn:disabled { background: var(--bg3); color: var(--muted); border-color: var(--border); cursor: not-allowed; }
+@keyframes slide { to { background-position: 28px 0; } }

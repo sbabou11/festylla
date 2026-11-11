@@ -103,6 +103,13 @@ export default function Transactions({ onNavigate }) {
 
   // Change la colonne de tri (date et montant : du plus grand au plus petit par défaut)
   const changeSort = (key) => { setSortKey(key); setSortDir(key === 'date' || key === 'montant' ? 'desc' : 'asc') }
+  // En-tête cliqué : sens par défaut, puis sens inverse, puis retour au tri par date (ordre d'origine)
+  const headerSort = (key) => {
+    const first = key === 'date' || key === 'montant' ? 'desc' : 'asc'
+    if (key !== sortKey) { setSortKey(key); setSortDir(first); return }
+    if (sortDir === first) { setSortDir(first === 'asc' ? 'desc' : 'asc'); return }
+    setSortKey('date'); setSortDir('desc')
+  }
   const resetFilters = () => { setSearchDetail(''); setFilterType(''); setFilterStaff('') }
   const hasFilters = searchDetail || filterType || filterStaff
 
@@ -139,19 +146,19 @@ export default function Transactions({ onNavigate }) {
   const sign = (t) => t.type === 'credit' ? '+' : NO_SIGN.includes(t.type) ? '' : '−'
 
   const columns = [
-    { key: 'snom',  label: 'Spectateur', card: 'title', render: t => (
+    { key: 'snom',  label: 'Spectateur', card: 'title', sortKey: 'spectateur', render: t => (
       <>
         <span className={s.ellipsis}>{t.snom}</span>
         {t.specId && <span className={s.specId} title={t.specId}>{t.specId}</span>}
       </>
     ) },
-    { key: 'montant', label: 'Montant', align: 'right', render: t => (
+    { key: 'montant', label: 'Montant', align: 'right', sortKey: 'montant', render: t => (
       <span className={clsx(s.amount, s[`amt_${TYPE_TONE[t.type] || 'neutral'}`])}>{sign(t)}{fmt(t.montant || 0)}</span>
     ) },
-    { key: 'date',  label: 'Date', render: t => <span className={s.date}>{t.date}</span> },
-    { key: 'type',  label: 'Type', render: t => <Badge tone={TYPE_TONE[t.type] || 'neutral'}>{TYPE_LABEL[t.type] || t.type}</Badge> },
+    { key: 'date',  label: 'Date', sortKey: 'date', render: t => <span className={s.date}>{t.date}</span> },
+    { key: 'type',  label: 'Type', sortKey: 'type', render: t => <Badge tone={TYPE_TONE[t.type] || 'neutral'}>{TYPE_LABEL[t.type] || t.type}</Badge> },
     // Détail complet au survol, épinglé au clic (lecture au doigt sur mobile)
-    { key: 'label', label: 'Détail', render: t => (
+    { key: 'label', label: 'Détail', sortKey: 'label', render: t => (
       <button type="button" className={clsx(s.ellipsis, s.detail)} title={t.label || ''}
         onMouseEnter={e => setHoverDetail({ tx: t, x: e.clientX, y: e.clientY })}
         onMouseMove={e => setHoverDetail(h => h ? { ...h, x: e.clientX, y: e.clientY } : h)}
@@ -160,7 +167,7 @@ export default function Transactions({ onNavigate }) {
         {t.label || '—'}
       </button>
     ) },
-    { key: 'staff', label: 'Staff', render: t => <span className={s.muted}>{t.staff || '—'}</span> },
+    { key: 'staff', label: 'Staff', sortKey: 'staff', render: t => <span className={s.muted}>{t.staff || '—'}</span> },
     isAdmin && { key: 'del', label: '', align: 'right', render: t => (
       <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer la transaction ${t.label}`}
         loading={deleting === (t._docId || t.id)} disabled={!!deleting}
@@ -209,6 +216,7 @@ export default function Transactions({ onNavigate }) {
       </div>
 
       <Table columns={columns} rows={displayTx.slice(0, visible)} rowKey="_k"
+        sort={{ key: sortKey, dir: sortDir }} onSort={headerSort}
         empty={(
           <Empty icon={SearchX} title="Aucune transaction ne correspond aux filtres"
             action={<Button variant="secondary" onClick={resetFilters}>Réinitialiser les filtres</Button>}/>

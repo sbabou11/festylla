@@ -22,7 +22,9 @@ import {
   collection, getDocs, deleteDoc, doc,
   writeBatch, addDoc, serverTimestamp,
 } from 'firebase/firestore'
-import { Button, Card, Dialog, Field, focusFirstInvalid } from '../../ui'
+import { saveSettings }          from '../../firebase/service'
+import { useAutosave }           from '../../hooks/useAutosave'
+import { Button, Card, Dialog, Field, ProgressButton, SaveStatus, focusFirstInvalid, toast } from '../../ui'
 import s from './settings/settings.module.css'
 
 // ── Réinitialisation complète Firebase ──────────────────────────────────────
@@ -119,7 +121,7 @@ async function resetEventData(eventId, toDelete = []) {
 }
 
 export default function Settings({ onNavigate }) {
-  const { theme, updateTheme } = useAppStore()
+  const { theme } = useAppStore()
   const { user, verifyOwnPassword } = useAuthStore()
   const { currentEventId }     = useEventStore()
   const { exportTransactionsCsv, exportRapportExcel, exportAuditCsv } = useExport()
@@ -131,8 +133,6 @@ export default function Settings({ onNavigate }) {
   const [migrDone,      setMigrDone]      = useState(false)
 
   const [festName, setFestName]     = useState(theme?.festName || 'YllaCash')
-  const [saved, setSaved]           = useState(false)
-  const [exporting, setExporting]   = useState(null)
 
   // Reset event
   const [resetOpen, setResetOpen]   = useState(false)
@@ -145,15 +145,23 @@ export default function Settings({ onNavigate }) {
   const resetFormRef = useRef(null)
   const [confirmV2, setConfirmV2]   = useState(false)
 
-  const handleSave = () => {
-    updateTheme({ festName })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
+  // Nom du festival : enregistrement automatique. Même écriture que updateTheme
+  // (thème local + saveSettings({ theme, festName })), mais attendue : updateTheme
+  // avale l'erreur, ce qui afficherait « Enregistré » à tort.
+  const saveFestName = async (name) => {
+    const st = useAppStore.getState()
+    const next = { ...st.theme, festName: name }
+    useAppStore.setState({ theme: next })
+    st.applyThemeToDom()
+    await saveSettings({ theme: next, festName: next.festName }, currentEventId)
   }
+  const festAutosave = useAutosave(festName, saveFestName, { enabled: !!currentEventId })
 
-  const handleCsv   = () => { setExporting('csv');   try { exportTransactionsCsv() }   finally { setTimeout(() => setExporting(null), 800)  } }
-  const handleAudit = async () => { setExporting('audit'); try { await exportAuditCsv() } finally { setTimeout(() => setExporting(null), 1000) } }
-  const handleExcel = async () => { setExporting('excel'); try { await exportRapportExcel() } finally { setTimeout(() => setExporting(null), 1200) } }
+  // Exports : le hook signale ses étapes (données, serveur, fichier) → barre de progression
+  const runExport = (fn, what) => async (report) => {
+    try { await fn(report) }
+    catch (e) { toast.error(friendlyError(e, what)); throw e }
+  }
 
   const handleReset = async () => {
     if (!resetPwd.trim())   { setResetTried(true); focusFirstInvalid(resetFormRef.current); return }
@@ -208,7 +216,8 @@ export default function Settings({ onNavigate }) {
       <UpdateDiagnostic/>
 
       {/* Paramètres généraux */}
-      <Card title={title(Save, 'Paramètres généraux')}>
+      <Card title={title(Save, 'Paramètres généraux')}
+        actions={<SaveStatus status={festAutosave.status} savedAt={festAutosave.savedAt} onRetry={festAutosave.retry}/>}>
         <div className={s.stack}>
           <label className={s.field}>
             <span className={s.label}>Nom du festival</span>
@@ -224,9 +233,7 @@ export default function Settings({ onNavigate }) {
               <input type="number" className={s.input} defaultValue={10000}/>
             </label>
           </div>
-          <div className={s.actions}>
-            <Button icon={saved ? Check : Save} onClick={handleSave}>{saved ? 'Sauvegardé' : 'Sauvegarder'}</Button>
-          </div>
+          <p className={s.hint}>Le nom du festival est enregistré automatiquement.</p>
         </div>
       </Card>
 
@@ -236,15 +243,18 @@ export default function Settings({ onNavigate }) {
       {/* Exports */}
       <Card title={title(Download, 'Export des données')} subtitle="Générés côté client — aucun serveur requis.">
         <div className={s.actions}>
-          <Button variant="secondary" icon={Download} onClick={handleCsv} disabled={!!exporting} loading={exporting === 'csv'}>
-            {exporting === 'csv' ? 'Génération…' : 'Transactions (XLSX)'}
-          </Button>
-          <Button variant="secondary" icon={FileSpreadsheet} onClick={handleExcel} disabled={!!exporting} loading={exporting === 'excel'}>
-            {exporting === 'excel' ? 'Génération…' : 'Rapport Excel'}
-          </Button>
-          <Button variant="secondary" icon={Download} onClick={handleAudit} disabled={!!exporting} loading={exporting === 'audit'}>
-            {exporting === 'audit' ? 'Génération…' : "Journal d’audit (XLSX)"}
-          </Button>
+          <ProgressButton variant="secondary" icon={Download} runningLabel="Génération…" doneLabel="Export prêt"
+            onRun={runExport(exportTransactionsCsv, "L'export des transactions n'a pas abouti.")}>
+            Transactions (XLSX)
+          </ProgressButton>
+          <ProgressButton variant="secondary" icon={FileSpreadsheet} runningLabel="Génération…" doneLabel="Rapport prêt"
+            onRun={runExport(exportRapportExcel, "Le rapport Excel n'a pas été généré.")}>
+            Rapport Excel
+          </ProgressButton>
+          <ProgressButton variant="secondary" icon={Download} runningLabel="Génération…" doneLabel="Export prêt"
+            onRun={runExport(exportAuditCsv, "L'export du journal d'audit n'a pas abouti.")}>
+            Journal d’audit (XLSX)
+          </ProgressButton>
         </div>
       </Card>
 

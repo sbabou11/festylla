@@ -1,5 +1,6 @@
 /**
- * hooks/useExport.js — v3 traçabilité maximale
+ * hooks/useExport.js
+ * Chaque export accepte onProgress(0..1) et lève une erreur en cas d'échec (l'appelant l'affiche). — v3 traçabilité maximale
  * CSV et Excel avec toutes les infos de transaction
  */
 import useAppStore   from '../store/useAppStore'
@@ -102,13 +103,15 @@ export function useExport() {
   }
 
   // ── Export Transactions XLSX ─────────────────────────────────────────────
-  const exportTransactionsCsv = async () => {
-    if (!currentEvent || !currentEventId) { alert('Aucun événement sélectionné.'); return }
+  const exportTransactionsCsv = async (onProgress) => {
+    const report = typeof onProgress === 'function' ? onProgress : () => {}
+    if (!currentEvent || !currentEventId) { throw new Error('Aucun événement sélectionné.') }
 
     try {
       // Toutes les transactions de l'événement, pas seulement les 500 de la liste en direct
       const transactions = await loadAllTransactions(currentEventId, logs)
-      if (!transactions.length) { alert('Aucune transaction à exporter.'); return }
+      report(0.35)
+      if (!transactions.length) { throw new Error('Aucune transaction à exporter.') }
       const resp = await fetch('/api/transactions', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,6 +131,7 @@ export function useExport() {
         } catch {}
         throw new Error('Erreur serveur ' + resp.status + (serverMsg ? ' — ' + serverMsg : ''))
       }
+      report(0.85)
       const blob = await resp.blob()
       const url  = URL.createObjectURL(blob)
       const a    = Object.assign(document.createElement('a'), {
@@ -138,13 +142,14 @@ export function useExport() {
       document.body.removeChild(a); URL.revokeObjectURL(url)
     } catch(e) {
       console.error('Export Transactions:', e)
-      alert('Erreur export transactions: ' + e.message)
+      throw e
     }
   }
 
   // ── Export Excel ──────────────────────────────────────────────────────────
-  const exportRapportExcel = async () => {
-    if (!currentEvent || !currentEventId) { alert('Aucun événement selectionne.'); return }
+  const exportRapportExcel = async (onProgress) => {
+    const report = typeof onProgress === 'function' ? onProgress : () => {}
+    if (!currentEvent || !currentEventId) { throw new Error('Aucun événement selectionne.') }
 
     let auditData = []
     try {
@@ -152,11 +157,13 @@ export function useExport() {
       const { db } = await import('../firebase/config')
       const snap = await getDocs(qF(collection(db,'events',currentEventId,'audit'), obF('createdAt','desc'), limF(500)))
       auditData = snap.docs.map(d => d.data())
+      report(0.35)
     } catch {}
 
     try {
       // Toutes les transactions de l'événement : les totaux du rapport et le CA par article en dépendent
       const transactions = await loadAllTransactions(currentEventId, logs)
+      report(0.35)
       const kpis = computeKPIs({ spectateurs, reservations, logs: transactions, menu })
       const resp = await fetch('/api/rapport', {
         method:  'POST',
@@ -195,6 +202,7 @@ export function useExport() {
         } catch {}
         throw new Error('Erreur serveur ' + resp.status + (serverMsg ? ' — ' + serverMsg : ''))
       }
+      report(0.85)
       const blob = await resp.blob()
       const url  = URL.createObjectURL(blob)
       const a    = Object.assign(document.createElement('a'), {
@@ -204,7 +212,7 @@ export function useExport() {
       document.body.removeChild(a); URL.revokeObjectURL(url)
     } catch (e) {
       console.error('Rapport Excel:', e)
-      alert('Erreur generation rapport: ' + e.message)
+      throw e
     }
   }
 
@@ -252,8 +260,9 @@ export function useExport() {
   }
 
   // ── Export journal d'audit ───────────────────────────────────────
-  const exportAuditCsv = async () => {
-    if (!currentEvent || !currentEventId) { alert('Aucun événement sélectionné.'); return }
+  const exportAuditCsv = async (onProgress) => {
+    const report = typeof onProgress === 'function' ? onProgress : () => {}
+    if (!currentEvent || !currentEventId) { throw new Error('Aucun événement sélectionné.') }
 
     // Charger l'audit depuis Firestore
     let auditData = []
@@ -263,9 +272,9 @@ export function useExport() {
       const snap = await getDocs(qF(collection(db,'events',currentEventId,'audit'), obF('createdAt','desc'), limF(500)))
       auditData = snap.docs.map(d => d.data())
     } catch(e) {
-      alert('Erreur lecture audit : ' + e.message); return
+      throw e
     }
-    if (!auditData.length) { alert("Aucun log d'audit à exporter."); return }
+    if (!auditData.length) { throw new Error("Aucun log d'audit à exporter.") }
 
     try {
       const resp = await fetch('/api/audit', {
@@ -285,6 +294,7 @@ export function useExport() {
         } catch {}
         throw new Error('Erreur serveur ' + resp.status + (serverMsg ? ' — ' + serverMsg : ''))
       }
+      report(0.85)
       const blob = await resp.blob()
       const url  = URL.createObjectURL(blob)
       const a    = Object.assign(document.createElement('a'), {
@@ -295,7 +305,7 @@ export function useExport() {
       document.body.removeChild(a); URL.revokeObjectURL(url)
     } catch(e) {
       console.error('Export Audit:', e)
-      alert("Erreur export journal d'audit: " + e.message)
+      throw e
     }
   }
 

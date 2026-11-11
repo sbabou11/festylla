@@ -10,7 +10,7 @@ import {
   Settings, PlusCircle, QrCode, Package, ShoppingCart, Wallet, User,
   BarChart3, AlertTriangle, PanelLeftClose, PanelLeftOpen, X, LogOut,
   Sun, Moon, Palette, ClipboardList, Calculator,
-  Music2, ArrowLeftRight, Banknote, Briefcase, ChefHat, Building2,
+  Music2, ChevronDown, ArrowLeftRight, Banknote, Briefcase, ChefHat, Building2,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../store/useAppStore'
@@ -69,6 +69,18 @@ const BUILTIN_NAMES = {
 }
 
 const LS_KEY = 'yllacash-sidebar-v2' // 'true' = rail replié
+const LS_OPEN = 'yllacash-sidebar-rubriques' // rubriques dépliées
+
+// Pages rangées sous chaque rubrique : elles se déplient sur place dans le menu
+const HUB_CHILDREN = {
+  operations:         ['debit', 'credit', 'nouveau', 'retrait', 'prendre-commande', 'retrait-commande', 'cuisine', 'remboursement', 'transactions', 'reservations-admin', 'alertes'],
+  'equipe-hub':       ['staff', 'benevoles'],
+  'spectateurs-hub':  ['spectateurs', 'qr-entree'],
+  finances:           ['exposants', 'cachets'],
+  'gestion-artistes': ['planning', 'cachets'],
+}
+// « cachets » n'a pas d'entrée propre dans le menu : libellé pour les sous-pages
+const CHILD_PAGES = { cachets: { icon: Banknote, label: 'Cachets' } }
 
 export default function Sidebar({
   view, currentPage, onNavigate,
@@ -135,9 +147,26 @@ export default function Sidebar({
   if (hasGestionArtistes) {
     visibleIds = visibleIds.filter(id => !HIDDEN_IF_GESTION_ARTISTES.includes(id))
   }
+  // Le tableau de bord est fusionné dans l'Accueil : une seule entrée
+  if (allowed.includes('accueil')) visibleIds = visibleIds.filter(id => id !== 'dashboard')
   const pages        = visibleIds.map(id => ({ id, ...ALL_PAGES[id] })).filter(p => p.label)
+  const childrenOf   = (hub) => (HUB_CHILDREN[hub] || [])
+    .filter(id => allowed.includes(id) && !visibleIds.includes(id))
+    .map(id => ({ id, ...(ALL_PAGES[id]?.label ? ALL_PAGES[id] : CHILD_PAGES[id]) }))
+    .filter(p => p.label)
   const pendingCount = reservations.filter(r => r.status === 'pending' || r.status === 'ready').length
   const roleName     = BUILTIN_NAMES[view] || customRole?.nom || view
+
+  // Rubriques dépliées : celle de la page affichée l'est toujours
+  const [openHubs, setOpenHubs] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(LS_OPEN) || '[]') } catch { return [] }
+  })
+  const toggleHub = (hub, force) => setOpenHubs(list => {
+    const isOpen = list.includes(hub)
+    const next = (force ?? !isOpen) ? [...new Set([...list, hub])] : list.filter(h => h !== hub)
+    try { localStorage.setItem(LS_OPEN, JSON.stringify(next)) } catch {}
+    return next
+  })
 
   // Bouton du rail : icône + libellé (masqué replié, affiché en infobulle au survol)
   const Item = ({ icon: Icon, label, active, onClick, count = 0, alert = false, danger = false }) => (
@@ -188,16 +217,46 @@ export default function Sidebar({
         <nav className={s.nav} aria-label="Navigation">
           {pages.map(p => {
             const count = p.badge === 'alertes' ? alertCount : p.badge ? pendingCount : 0
-            return (
+            const kids = collapsed ? [] : childrenOf(p.id)
+            const item = (
               <Item
                 key={p.id}
                 icon={p.icon}
                 label={p.label}
                 active={currentPage === p.id}
-                onClick={() => go(p.id)}
+                onClick={() => { if (kids.length) toggleHub(p.id, true); go(p.id) }}
                 count={count}
                 alert={p.badge === 'alertes' && count > 0}
               />
+            )
+            if (!kids.length) return item
+            const childActive = kids.some(k => k.id === currentPage)
+            const open = openHubs.includes(p.id) || childActive
+            return (
+              <div key={p.id} className={clsx(s.hub, childActive && s.hubActive)}>
+                <div className={s.hubRow}>
+                  {item}
+                  <button type="button" className={clsx(s.chevron, open && s.chevronOpen)} onClick={() => toggleHub(p.id)}
+                    aria-expanded={open} aria-controls={`sub-${p.id}`} aria-label={`${open ? 'Replier' : 'Déplier'} ${p.label}`}>
+                    <ChevronDown size={15} aria-hidden="true" />
+                  </button>
+                </div>
+                <div id={`sub-${p.id}`} className={clsx(s.sub, open && s.subOpen)}>
+                  <div className={s.subInner}>
+                    {kids.map(k => {
+                      const kc = k.badge === 'alertes' ? alertCount : k.badge ? pendingCount : 0
+                      return (
+                        <button key={k.id} type="button" tabIndex={open ? 0 : -1} onClick={() => go(k.id)}
+                          className={clsx(s.subItem, currentPage === k.id && s.subActive)} aria-current={currentPage === k.id ? 'page' : undefined}>
+                          <k.icon size={15} aria-hidden="true" />
+                          <span className={s.label}>{k.label}</span>
+                          {kc > 0 && <span className={clsx(s.count, k.badge === 'alertes' && s.countAlert)}>{kc}</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
             )
           })}
         </nav>

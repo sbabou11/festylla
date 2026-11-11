@@ -12,8 +12,8 @@ import s from './BottomNav.module.css'
 
 // Pages mises en avant par rôle (les rôles personnalisés prennent leurs 4 premières pages)
 const FAVORITES = {
-  super_admin:          ['dashboard', 'transactions', 'alertes', 'benevoles'],
-  admin:                ['dashboard', 'transactions', 'alertes', 'benevoles'],
+  super_admin:          ['accueil', 'debit', 'transactions', 'alertes'],
+  admin:                ['accueil', 'debit', 'transactions', 'alertes'],
   billetterie:          ['credit', 'nouveau', 'transactions', 'cloture'],
   stand:                ['debit', 'retrait', 'reservations-admin', 'transactions'],
   consultation:         ['transactions', 'reservations-admin', 'analytics'],
@@ -22,7 +22,7 @@ const FAVORITES = {
 
 // Libellés courts : 5 cases sur 375 px
 const SHORT = {
-  dashboard: 'Direct', transactions: 'Flux', alertes: 'Alertes', benevoles: 'Bénévoles',
+  dashboard: 'Direct', accueil: 'Accueil', transactions: 'Flux', alertes: 'Alertes', benevoles: 'Bénévoles',
   credit: 'Recharger', nouveau: 'Nouveau', cloture: 'Clôture', debit: 'Encaisser',
   retrait: 'Retrait', 'reservations-admin': 'Réserv.', analytics: 'Analyse',
   planning: 'Planning', 'mon-profil': 'Profil', evenements: 'Événements', spectateurs: 'Public',

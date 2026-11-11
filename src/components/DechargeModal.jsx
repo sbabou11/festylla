@@ -19,12 +19,16 @@
  */
 
 import React, { useRef, useState } from 'react'
-import { X, Download, CheckCircle, AlertCircle } from 'lucide-react'
+import clsx from 'clsx'
+import { Download, CheckCircle, AlertCircle, Banknote, Check, Eraser } from 'lucide-react'
 import SignaturePad from './SignaturePad'
 import euroEnLettres from '../utils/euroEnLettres'
 import { APP_VERSION_LABEL } from '../utils/buildInfo'
 import { marquerCachetPaye } from '../firebase/service'
 import jsPDF from 'jspdf'
+import { Button, Dialog, Field, ProgressButton, focusFirstInvalid, toast } from '../ui'
+import { friendlyError } from '../utils/errors'
+import s from './DechargeModal.module.css'
 
 function fmtDate(date) {
   const d = date?.toDate ? date.toDate() : (date instanceof Date ? date : new Date(date))
@@ -46,8 +50,11 @@ export default function DechargeModal({ cachet, creneau, event, onClose, onSigne
   const [signedNom, setSignedNom] = useState(cachet.signedNom || cachet.artiste || '')
   const [signature, setSignature] = useState(cachet.signature || null)
   const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
   const [success, setSuccess] = useState(false)
+  const [tried, setTried] = useState(false)
+  const [sigMissing, setSigMissing] = useState(false)
+  const [logoFailed, setLogoFailed] = useState(false)
+  const formRef = useRef(null)
 
   const isReadOnly = !!cachet.signature // Déjà signé → lecture seule
 
@@ -160,22 +167,22 @@ export default function DechargeModal({ cachet, creneau, event, onClose, onSigne
     }
   })()
 
-  const handleValidate = async () => {
-    setErr('')
+  // Nom obligatoire (même règle qu'avant), affiché sous le champ
+  const nomErr = signedNom?.trim() ? null : 'Indique le nom et le prénom complets'
 
-    // Validations
-    if (!signedNom?.trim()) {
-      setErr('Veuillez saisir votre nom et prénom complets.')
-      return
-    }
-    if (sigRef.current?.isEmpty()) {
-      setErr('Veuillez signer dans la zone prévue.')
+  const handleValidate = async () => {
+    // Validations : on montre toutes les erreurs, puis focus sur la première
+    const empty = !!sigRef.current?.isEmpty()
+    setSigMissing(empty)
+    if (nomErr || empty) {
+      setTried(true)
+      focusFirstInvalid(formRef.current)
       return
     }
 
     const dataUrl = sigRef.current.getDataUrl()
     if (!dataUrl) {
-      setErr('Impossible de récupérer la signature, réessayez.')
+      toast.error('Impossible de récupérer la signature, réessayez.')
       return
     }
 
@@ -190,7 +197,7 @@ export default function DechargeModal({ cachet, creneau, event, onClose, onSigne
       setSuccess(true)
       if (onSigned) onSigned()
     } catch (e) {
-      setErr(e.message || 'Erreur lors de l\'enregistrement.')
+      toast.error(friendlyError(e, "La signature n'a pas été enregistrée."))
     } finally {
       setSaving(false)
     }
@@ -325,87 +332,50 @@ export default function DechargeModal({ cachet, creneau, event, onClose, onSigne
 
       pdf.save(`decharge-${cachet.numeroDecharge || numeroDecharge}-${(signedNom || cachet.artiste).replace(/\s+/g, '_')}.pdf`)
     } catch (e) {
-      console.error('PDF generation failed:', e)
-      setErr('Impossible de générer le PDF : ' + e.message)
+      toast.error(friendlyError(e, "Le PDF n'a pas été généré."))
+      throw e // le bouton de progression revient au repos
     }
   }
 
+  // Couleurs du festival : seules valeurs calculées, passées en variables CSS
+  const festivalVars = {
+    '--ev': eventColor,
+    '--ev-dark': eventColorDark,
+    '--ev-light': eventColorLight,
+    '--ev-on': headerTextColor,
+  }
+  const modeLabelUi = cachet.modePaiement === 'especes' ? 'En espèces' :
+    cachet.modePaiement === 'virement' ? 'Par virement bancaire' :
+    cachet.modePaiement === 'cheque' ? 'Par chèque' : 'En espèces'
+
   return (
-    <div onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: 'rgba(0, 24, 36, 0.85)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: 20, overflowY: 'auto',
-      }}>
-      <div onClick={e => e.stopPropagation()}
-        style={{
-          background: 'white',
-          borderRadius: 16,
-          maxWidth: 540, width: '100%',
-          margin: '20px 0',
-          overflow: 'hidden',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
-        }}>
-        {/* Header — aux couleurs et logo du festival */}
-        <div style={{
-          background: `linear-gradient(135deg, ${eventColor} 0%, ${eventColorDark} 100%)`,
-          color: headerTextColor,
-          padding: '20px 24px',
-          display: 'flex', alignItems: 'center', gap: 14,
-        }}>
-          {/* Logo festival si dispo, sinon Maison Ylla */}
-          <div style={{
-            width: 50, height: 50, borderRadius: 12,
-            background: '#fff', color: '#003048',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: 18,
-            overflow: 'hidden', flexShrink: 0,
-          }}>
-            <img src={eventLogo || '/logo.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              onError={e => { e.target.style.display = 'none'; e.target.parentElement.innerHTML = 'MY' }}/>
+    <Dialog open title="Décharge de paiement" onClose={() => { if (!saving) onClose() }} className={s.panel}>
+      <div ref={formRef} className={s.doc} style={festivalVars}>
+        {/* Bandeau aux couleurs et logo du festival */}
+        <div className={clsx(s.band, headerTextColor === '#FFFFFF' ? s.bandDark : s.bandLight)}>
+          <div className={s.logo}>
+            {logoFailed
+              ? 'MY'
+              : <img src={eventLogo || '/logo.png'} alt="" onError={() => setLogoFailed(true)}/>}
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 800 }}>Décharge de paiement</div>
-            <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{eventName}</div>
+          <div className={s.bandText}>
+            <div className={s.bandTitle}>Décharge de paiement</div>
+            <div className={s.bandSub}>{eventName}</div>
           </div>
-          <div style={{
-            background: headerTextColor === '#FFFFFF' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.10)',
-            padding: '5px 10px', borderRadius: 6,
-            fontSize: 11, fontWeight: 700,
-            whiteSpace: 'nowrap',
-          }}>
-            N° {numeroDecharge}
-          </div>
-          <button onClick={onClose}
-            style={{
-              background: headerTextColor === '#FFFFFF' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)',
-              border: 'none', borderRadius: 6,
-              width: 28, height: 28, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: headerTextColor, flexShrink: 0,
-            }}>
-            <X size={16}/>
-          </button>
+          <div className={s.numero}>N° {numeroDecharge}</div>
         </div>
 
-        {/* Body */}
-        <div style={{ padding: 24, fontSize: 13, lineHeight: 1.6, color: 'var(--text)' }}>
+        {/* Nom du signataire : libellé au-dessus du champ */}
+        {!isReadOnly && (
+          <Field label="Nom et prénom de l'artiste" error={nomErr} valid={!nomErr} showError={tried}>
+            <input type="text" value={signedNom} onChange={e => setSignedNom(e.target.value)} autoComplete="name"/>
+          </Field>
+        )}
+
+        {/* Corps */}
+        <div className={s.body}>
           Je soussigné(e){' '}
-          {isReadOnly ? (
-            <strong>{cachet.signedNom || cachet.artiste}</strong>
-          ) : (
-            <input type="text" value={signedNom} onChange={e => setSignedNom(e.target.value)}
-              placeholder="Votre nom et prénom"
-              style={{
-                display: 'inline-block', width: 220,
-                padding: '4px 8px',
-                border: '1px solid var(--border2)', borderRadius: 6,
-                fontSize: 13, fontFamily: 'inherit', outline: 'none',
-                fontWeight: 700, color: 'var(--marine)',
-              }}/>
-          )}
+          <strong className={s.nom}>{isReadOnly ? (cachet.signedNom || cachet.artiste) : (signedNom.trim() || '…')}</strong>
           {', intervenant(e) artistique au festival '}
           <strong>{eventName}</strong>
           {', reconnais avoir reçu de l\'association '}
@@ -413,25 +383,12 @@ export default function DechargeModal({ cachet, creneau, event, onClose, onSigne
           {' la somme de :'}
 
           {/* Montant en surbrillance — aux couleurs du festival */}
-          <div style={{
-            background: eventColorLight,
-            borderLeft: `4px solid ${eventColor}`,
-            padding: '12px 14px', margin: '16px 0',
-            borderRadius: '0 8px 8px 0',
-          }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: eventColorDark }}>
-              {(Number(cachet.montant) || 0).toFixed(2)} €
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic', marginTop: 2 }}>
-              ({euroEnLettres(cachet.montant)})
-            </div>
+          <div className={s.amount}>
+            <div className={s.amountValue}>{(Number(cachet.montant) || 0).toFixed(2)} €</div>
+            <div className={s.amountWords}>({euroEnLettres(cachet.montant)})</div>
           </div>
 
-          <span style={{ fontWeight: 700, color: eventColorDark }}>
-            💵 {cachet.modePaiement === 'especes' ? 'En espèces' :
-                cachet.modePaiement === 'virement' ? 'Par virement bancaire' :
-                cachet.modePaiement === 'cheque' ? 'Par chèque' : 'En espèces'}
-          </span>
+          <span className={s.mode}><Banknote size={15} aria-hidden="true"/> {modeLabelUi}</span>
           {', en règlement de '}
           {cachet.type === 'acompte' ? 'un acompte sur mon cachet artistique' :
            cachet.type === 'solde' ? 'le solde de mon cachet artistique' :
@@ -440,108 +397,58 @@ export default function DechargeModal({ cachet, creneau, event, onClose, onSigne
           {' pour la prestation du '}
           <strong>{prestationDate}</strong>.
 
-          <div style={{
-            marginTop: 14, padding: 10,
-            background: 'var(--bg2)', borderRadius: 6,
-            fontSize: 11, color: 'var(--muted)',
-          }}>
+          <div className={s.lieu}>
             Bon pour solde de tout compte. Fait à {lieu}, le <strong>{dateSign}</strong> à <strong>{heureSign}</strong>.
           </div>
-
-          {/* Signature */}
-          {!success && (
-            <div style={{
-              border: isReadOnly ? '1px solid var(--border)' : '2px dashed var(--border2)',
-              borderRadius: 12, padding: 14, marginTop: 16,
-              background: isReadOnly ? '#fff' : 'var(--bg2)',
-            }}>
-              <div style={{
-                fontSize: 11, fontWeight: 700, color: 'var(--marine)',
-                marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}>
-                {isReadOnly && <CheckCircle size={14} style={{ color: 'var(--green)' }}/>}
-                Signature de l'artiste
-                {isReadOnly && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600, marginLeft: 'auto' }}>Signée le {fmtDateShort(cachet.signedAt)}</span>}
-              </div>
-              <SignaturePad ref={sigRef} height={150} initialDataUrl={cachet.signature} disabled={isReadOnly}/>
-              {!isReadOnly && (
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button type="button" onClick={() => sigRef.current?.clear()}
-                    style={{
-                      flex: 1, padding: 10, borderRadius: 8,
-                      background: 'var(--bg)', border: '1px solid var(--border)',
-                      fontSize: 12, fontWeight: 700, color: 'var(--muted)',
-                      cursor: 'pointer', fontFamily: 'inherit',
-                    }}>
-                    Effacer
-                  </button>
-                  <button type="button" onClick={handleValidate} disabled={saving}
-                    style={{
-                      flex: 2, padding: 10, borderRadius: 8,
-                      background: 'var(--coral)', border: 'none',
-                      fontSize: 12, fontWeight: 700, color: '#fff',
-                      cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit',
-                      opacity: saving ? 0.6 : 1,
-                    }}>
-                    {saving ? 'Enregistrement…' : '✓ Valider la signature'}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Bandeau success ou erreur */}
-          {err && (
-            <div style={{
-              marginTop: 12, padding: '10px 12px',
-              background: 'var(--red-light)', color: 'var(--red)',
-              borderRadius: 8, fontSize: 12, fontWeight: 600,
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}>
-              <AlertCircle size={14}/> {err}
-            </div>
-          )}
-
-          {success && (
-            <div style={{
-              marginTop: 16, padding: 14,
-              background: 'var(--green-light)', borderLeft: '4px solid var(--green)',
-              borderRadius: '0 8px 8px 0',
-            }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)', marginBottom: 4 }}>
-                ✓ Décharge signée et enregistrée
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                Le cachet est marqué comme payé. {cachet.modePaiement === 'especes' && 'Une transaction de débit a été créée dans la caisse.'}
-              </div>
-            </div>
-          )}
-
-          {/* Bouton PDF */}
-          {(isReadOnly || success) && (
-            <button onClick={handleDownloadPdf}
-              style={{
-                marginTop: 16, width: '100%', padding: 12,
-                background: 'var(--brand)', border: 'none', borderRadius: 10,
-                color: '#fff', fontSize: 13, fontWeight: 700,
-                cursor: 'pointer', fontFamily: 'inherit',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              }}>
-              <Download size={16}/> Télécharger le PDF
-            </button>
-          )}
         </div>
 
-        {/* Footer */}
-        <div style={{
-          borderTop: '1px solid var(--border)',
-          padding: '12px 24px',
-          fontSize: 10, color: 'var(--muted)', textAlign: 'center',
-        }}>
+        {/* Signature */}
+        {!success && (
+          <div className={clsx(s.sigBox, isReadOnly ? s.sigBoxDone : s.sigBoxOpen, sigMissing && s.sigBoxInvalid)}>
+            <div className={s.sigHead}>
+              {isReadOnly && <CheckCircle size={14} aria-hidden="true" className={s.ok}/>}
+              Signature de l'artiste
+              {isReadOnly && <span className={s.sigDate}>Signée le {fmtDateShort(cachet.signedAt)}</span>}
+            </div>
+            <div tabIndex={-1} aria-invalid={sigMissing || undefined} aria-label="Zone de signature" className={s.sigZone}>
+              <SignaturePad ref={sigRef} height={150} initialDataUrl={cachet.signature} disabled={isReadOnly}
+                onSignatureChange={() => setSigMissing(false)}/>
+            </div>
+            {sigMissing && (
+              <p className={s.error}><AlertCircle size={13} aria-hidden="true"/> Signe dans la zone prévue</p>
+            )}
+            {!isReadOnly && (
+              <div className={s.sigActions}>
+                <Button variant="secondary" icon={Eraser} onClick={() => sigRef.current?.clear()}>Effacer</Button>
+                <Button variant="coral" icon={Check} loading={saving} onClick={handleValidate} className={s.grow}>
+                  {saving ? 'Enregistrement…' : 'Valider la signature'}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {success && (
+          <div className={s.success} role="status">
+            <div className={s.successTitle}><Check size={16} aria-hidden="true"/> Décharge signée et enregistrée</div>
+            <div className={s.successText}>
+              Le cachet est marqué comme payé. {cachet.modePaiement === 'especes' && 'Une transaction de débit a été créée dans la caisse.'}
+            </div>
+          </div>
+        )}
+
+        {/* Bouton PDF : jsPDF est synchrone, durée inconnue → bande animée */}
+        {(isReadOnly || success) && (
+          <ProgressButton block icon={Download} onRun={async () => handleDownloadPdf()}
+            runningLabel="Génération du PDF…" doneLabel="PDF téléchargé">
+            Télécharger le PDF
+          </ProgressButton>
+        )}
+
+        <div className={s.foot}>
           Document généré le {fmtDateShort(new Date())} · Édité par {association} · YllaCash {APP_VERSION_LABEL}
         </div>
       </div>
-    </div>
+    </Dialog>
   )
 }

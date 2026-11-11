@@ -4,13 +4,17 @@
  * Éditeur de pages personnalisées pour le rapport de clôture.
  * Chaque page : { id, titre, sousTitre, position, tables: [{ source, titre, ...filtres, fields, totalRow }] }
  * B1 : 1 tableau par page, 5 sources, aperçu temps réel des vraies données.
+ * onChange(pages) remonte la liste complète ; l'enregistrement (automatique) est fait par le parent.
  *
  * L'aperçu est calculé en JS (estimation fidèle alignée sur la logique Python).
  * Le PDF reste la source de vérité.
  */
 import React, { useState, useMemo } from 'react'
 import { Plus, Trash2, ArrowUp, ArrowDown, FileText, Eye, Table2, Copy } from 'lucide-react'
+import clsx from 'clsx'
 import TransferList from './TransferList'
+import { Button, Dialog } from '../ui'
+import s from './CustomPagesEditor.module.css'
 
 // Colonnes disponibles par source (clé, label court, sommable?)
 export const SOURCE_COLUMNS = {
@@ -83,20 +87,6 @@ export const POSITION_OPTIONS = [
   { key: 'end',          label: 'À la fin du rapport' },
 ]
 
-const LABEL_STYLE = {
-  fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-  letterSpacing: '0.04em', color: 'var(--muted)',
-  marginBottom: 6, display: 'block',
-}
-const INPUT_STYLE = {
-  width: '100%', padding: '7px 10px', fontSize: 12,
-  border: '0.5px solid var(--border)', borderRadius: 6,
-  background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box',
-}
-const BLOCK_STYLE = {
-  background: 'var(--bg)', borderRadius: 6, padding: 12, marginBottom: 10,
-}
-
 function newTable() {
   return {
     source: 'articles',
@@ -136,14 +126,18 @@ export default function CustomPagesEditor({
   reservationsList = [], staffList = [], transactionsList = [],
 }) {
   const [expandedPage, setExpandedPage] = useState(null)
+  // Page dont la suppression attend confirmation (remplace window.confirm)
+  const [pendingRemove, setPendingRemove] = useState(null)
 
   const addPage = () => {
     const p = newPage()
     onChange([...(pages || []), p])
     setExpandedPage(p.id)
   }
-  const removePage = (id) => {
-    if (!confirm('Supprimer cette page personnalisée ?')) return
+  const removePage = (id) => setPendingRemove(id)
+  const confirmRemove = () => {
+    const id = pendingRemove
+    setPendingRemove(null)
     onChange((pages || []).filter(p => p.id !== id))
   }
   const updatePage = (id, patch) => {
@@ -172,32 +166,21 @@ export default function CustomPagesEditor({
     setExpandedPage(copy.id)
   }
 
+  const pendingTitre = (pages || []).find(p => p.id === pendingRemove)?.titre
+
   return (
     <div>
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        marginBottom: 10,
-      }}>
-        <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
+      <div className={s.top}>
+        <div className={s.intro}>
           Ajoutez des pages sur mesure avec leurs propres tableaux, insérées entre les sections standard.
         </div>
-        <button type="button" onClick={addPage}
-          style={{
-            padding: '6px 12px', background: 'var(--brand)', color: '#fff',
-            border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'var(--font)', whiteSpace: 'nowrap',
-            display: 'flex', alignItems: 'center', gap: 4,
-          }}>
+        <button type="button" className={s.addBtn} onClick={addPage}>
           <Plus size={13}/> Ajouter une page
         </button>
       </div>
 
       {(pages || []).length === 0 && (
-        <div style={{
-          padding: '20px', textAlign: 'center', fontSize: 11,
-          color: 'var(--muted)', fontStyle: 'italic',
-          border: '0.5px dashed var(--border)', borderRadius: 6,
-        }}>
+        <div className={s.empty}>
           Aucune page personnalisée. Le rapport ne contient que les sections standard.
         </div>
       )}
@@ -222,6 +205,14 @@ export default function CustomPagesEditor({
           transactionsList={transactionsList}
         />
       ))}
+
+      <Dialog open={!!pendingRemove} onClose={() => setPendingRemove(null)} title="Supprimer cette page personnalisée ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setPendingRemove(null)}>Annuler</Button>
+          <Button variant="danger" icon={Trash2} onClick={confirmRemove}>Supprimer</Button>
+        </>}>
+        {pendingTitre ? <>La page « {pendingTitre} » sera retirée du rapport.</> : 'La page sera retirée du rapport.'}
+      </Dialog>
     </div>
   )
 }
@@ -239,51 +230,45 @@ function CustomPageCard({
   }
 
   return (
-    <div style={{
-      marginBottom: 10, border: '0.5px solid var(--border)',
-      borderRadius: 8, overflow: 'hidden', background: '#fff',
-    }}>
+    <div className={s.card}>
       {/* En-tête */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px',
-        background: expanded ? 'var(--brand-light)' : 'var(--bg)', cursor: 'pointer',
-      }} onClick={onToggle}>
-        <FileText size={15} style={{ color: 'var(--brand-dark)', flexShrink: 0 }}/>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div className={clsx(s.cardHead, expanded && s.cardHeadOpen)} onClick={onToggle}>
+        <FileText size={15} className={s.cardIcon}/>
+        <div className={s.grow}>
+          <div className={s.cardTitle}>
             {page.titre || 'Page sans titre'}
           </div>
-          <div style={{ fontSize: 10, color: 'var(--muted)' }}>
+          <div className={s.cardMeta}>
             {SOURCE_META[table.source]?.icon} {SOURCE_META[table.source]?.label} · {posLabel}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-          <button type="button" onClick={() => onMove(-1)} disabled={index === 0}
-            style={iconBtn(index === 0)} aria-label="Monter"><ArrowUp size={13}/></button>
-          <button type="button" onClick={() => onMove(1)} disabled={index === total - 1}
-            style={iconBtn(index === total - 1)} aria-label="Descendre"><ArrowDown size={13}/></button>
-          <button type="button" onClick={onDuplicate}
-            style={iconBtn(false)} aria-label="Dupliquer" title="Dupliquer cette page"><Copy size={13}/></button>
-          <button type="button" onClick={onRemove}
-            style={{ ...iconBtn(false), color: 'var(--red-dark)' }} aria-label="Supprimer"><Trash2 size={13}/></button>
+        <div className={s.cardTools} onClick={e => e.stopPropagation()}>
+          <button type="button" className={s.iconBtn} onClick={() => onMove(-1)} disabled={index === 0}
+            aria-label="Monter"><ArrowUp size={13}/></button>
+          <button type="button" className={s.iconBtn} onClick={() => onMove(1)} disabled={index === total - 1}
+            aria-label="Descendre"><ArrowDown size={13}/></button>
+          <button type="button" className={s.iconBtn} onClick={onDuplicate}
+            aria-label="Dupliquer" title="Dupliquer cette page"><Copy size={13}/></button>
+          <button type="button" className={clsx(s.iconBtn, s.iconBtnDanger)} onClick={onRemove}
+            aria-label="Supprimer"><Trash2 size={13}/></button>
         </div>
       </div>
 
       {/* Contenu déplié */}
       {expanded && (
-        <div style={{ padding: 12 }}>
+        <div className={s.cardBody}>
           {/* Métadonnées de la page */}
-          <div style={BLOCK_STYLE}>
-            <label style={LABEL_STYLE}>Titre de la page</label>
-            <input style={INPUT_STYLE} value={page.titre}
+          <div className={s.block}>
+            <label className={s.label}>Titre de la page</label>
+            <input className={s.input} value={page.titre}
               onChange={e => onUpdate({ titre: e.target.value })}
               placeholder="ex: Bilan restauration détaillé"/>
-            <label style={{ ...LABEL_STYLE, marginTop: 10 }}>Sous-titre (optionnel)</label>
-            <input style={INPUT_STYLE} value={page.sousTitre}
+            <label className={clsx(s.label, s.labelSpaced)}>Sous-titre (optionnel)</label>
+            <input className={s.input} value={page.sousTitre}
               onChange={e => onUpdate({ sousTitre: e.target.value })}
               placeholder="ex: Ventes par catégorie — service du soir"/>
-            <label style={{ ...LABEL_STYLE, marginTop: 10 }}>Position dans le rapport</label>
-            <select style={INPUT_STYLE} value={page.position}
+            <label className={clsx(s.label, s.labelSpaced)}>Position dans le rapport</label>
+            <select className={s.input} value={page.position}
               onChange={e => onUpdate({ position: e.target.value })}>
               {POSITION_OPTIONS.map(opt => (
                 <option key={opt.key} value={opt.key}>{opt.label}</option>
@@ -308,15 +293,14 @@ function CustomPageCard({
   )
 }
 
-function iconBtn(disabled) {
-  return {
-    width: 26, height: 24, padding: 0,
-    background: 'transparent', border: '0.5px solid var(--border)',
-    borderRadius: 4, cursor: disabled ? 'not-allowed' : 'pointer',
-    color: disabled ? 'var(--muted)' : 'var(--brand-dark)',
-    opacity: disabled ? 0.4 : 1,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  }
+// Case à cocher compacte
+function Check({ checked, onChange, children, className }) {
+  return (
+    <label className={clsx(s.check, className)}>
+      <input type="checkbox" checked={checked} onChange={onChange}/>
+      {children}
+    </label>
+  )
 }
 
 // ── Éditeur d'un tableau custom (5 étapes) ──
@@ -385,29 +369,19 @@ function CustomTableEditor({
   const summableCols = cols.filter(c => c.sum)
 
   return (
-    <div style={{
-      border: '0.5px solid var(--border)', borderRadius: 8, padding: 12,
-      background: 'var(--bg2)',
-    }}>
-      <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div className={s.tableEditor}>
+      <div className={s.tableEditorTitle}>
         <Table2 size={14}/> Tableau de la page
       </div>
 
       {/* 1. Source */}
-      <div style={BLOCK_STYLE}>
-        <label style={LABEL_STYLE}>1. Source de données</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(72px, 1fr))', gap: 6 }}>
+      <div className={s.block}>
+        <label className={s.label}>1. Source de données</label>
+        <div className={s.sources}>
           {Object.entries(SOURCE_META).map(([key, meta]) => (
             <div key={key} onClick={() => changeSource(key)}
-              style={{
-                padding: '8px 4px', textAlign: 'center', borderRadius: 6,
-                cursor: 'pointer', fontSize: 10,
-                border: table.source === key ? '2px solid var(--brand)' : '0.5px solid var(--border)',
-                background: table.source === key ? 'var(--brand-light)' : '#fff',
-                color: table.source === key ? 'var(--brand-dark)' : 'var(--muted)',
-                fontWeight: table.source === key ? 600 : 400,
-              }}>
-              <div style={{ fontSize: 15, marginBottom: 3 }}>{meta.icon}</div>
+              className={clsx(s.source, table.source === key && s.sourceOn)}>
+              <div className={s.sourceIcon}>{meta.icon}</div>
               {meta.label}
             </div>
           ))}
@@ -415,9 +389,9 @@ function CustomTableEditor({
       </div>
 
       {/* 2. Titre tableau */}
-      <div style={BLOCK_STYLE}>
-        <label style={LABEL_STYLE}>2. Titre du tableau (optionnel)</label>
-        <input style={INPUT_STYLE} value={table.titre || ''}
+      <div className={s.block}>
+        <label className={s.label}>2. Titre du tableau (optionnel)</label>
+        <input className={s.input} value={table.titre || ''}
           onChange={e => onChange({ titre: e.target.value })}
           placeholder="ex: Plats chauds — service du soir"/>
       </div>
@@ -430,8 +404,8 @@ function CustomTableEditor({
       {/* Sections standard (masquées pour le tableau croisé) */}
       {table.source !== 'croise' && (<>
       {/* 3. Filtres & sélection */}
-      <div style={BLOCK_STYLE}>
-        <label style={LABEL_STYLE}>3. Filtres &amp; sélection précise</label>
+      <div className={s.block}>
+        <label className={s.label}>3. Filtres &amp; sélection précise</label>
         <CustomTableFilters
           table={table} onChange={onChange}
           menuList={menuList} categoriesList={categoriesList}
@@ -441,57 +415,48 @@ function CustomTableEditor({
       </div>
 
       {/* 4. Colonnes */}
-      <div style={BLOCK_STYLE}>
-        <label style={LABEL_STYLE}>4. Colonnes affichées</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 4 }}>
+      <div className={s.block}>
+        <label className={s.label}>4. Colonnes affichées</label>
+        <div className={s.checksGrid}>
           {cols.map(c => (
-            <label key={c.key} style={{
-              fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer',
-              color: fieldActive(c.key) ? 'var(--text)' : 'var(--muted)',
-            }}>
-              <input type="checkbox" checked={fieldActive(c.key)}
-                onChange={() => toggleField(c.key)} style={{ accentColor: 'var(--brand)' }}/>
+            <Check key={c.key} checked={fieldActive(c.key)} onChange={() => toggleField(c.key)}
+              className={!fieldActive(c.key) ? s.muted : undefined}>
               {c.label}
-            </label>
+            </Check>
           ))}
         </div>
       </div>
 
       {/* 5. Ligne de total */}
-      <div style={BLOCK_STYLE}>
-        <label style={LABEL_STYLE}>5. Ligne de total</label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
-          <input type="checkbox" checked={!!total.enabled}
-            onChange={e => updateTotal({ enabled: e.target.checked })}
-            style={{ accentColor: 'var(--brand)' }}/>
+      <div className={s.block}>
+        <label className={s.label}>5. Ligne de total</label>
+        <Check checked={!!total.enabled} onChange={e => updateTotal({ enabled: e.target.checked })} className={s.checkLg}>
           Afficher une ligne de total
-        </label>
+        </Check>
         {total.enabled && (
-          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '0.5px solid var(--border)' }}>
-            <input style={{ ...INPUT_STYLE, marginBottom: 6 }} value={total.label || ''}
+          <div className={s.divided}>
+            <input className={clsx(s.input, s.mb6)} value={total.label || ''}
               onChange={e => updateTotal({ label: e.target.value })} placeholder="Libellé (ex: Total)"/>
-            <select style={{ ...INPUT_STYLE, marginBottom: 6 }} value={total.position || 'bottom'}
+            <select className={clsx(s.input, s.mb6)} value={total.position || 'bottom'}
               onChange={e => updateTotal({ position: e.target.value })}>
               <option value="bottom">En bas du tableau</option>
               <option value="top">En haut du tableau</option>
             </select>
             {summableCols.length > 0 ? (
               <>
-                <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3 }}>Colonnes à sommer :</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 4 }}>
+                <div className={s.subLabel}>Colonnes à sommer :</div>
+                <div className={s.checksGrid}>
                   {summableCols.map(c => (
-                    <label key={c.key} style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={(total.columns || []).includes(c.key)}
-                        onChange={() => toggleSumCol(c.key)} style={{ accentColor: 'var(--brand)' }}/>
+                    <Check key={c.key} checked={(total.columns || []).includes(c.key)} onChange={() => toggleSumCol(c.key)}>
                       {c.label}
-                    </label>
+                    </Check>
                   ))}
                 </div>
                 {/* Sous-totaux par catégorie : articles uniquement */}
                 {table.source === 'articles' && (
-                  <div style={{ marginTop: 8 }}>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3 }}>Sous-totaux :</div>
-                    <select style={INPUT_STYLE} value={total.groupBy || ''}
+                  <div className={s.mt8}>
+                    <div className={s.subLabel}>Sous-totaux :</div>
+                    <select className={s.input} value={total.groupBy || ''}
                       onChange={e => updateTotal({ groupBy: e.target.value || null })}>
                       <option value="">Aucun</option>
                       <option value="categorie">Par catégorie</option>
@@ -500,7 +465,7 @@ function CustomTableEditor({
                 )}
               </>
             ) : (
-              <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+              <div className={s.note}>
                 Aucune colonne sommable pour cette source.
               </div>
             )}
@@ -523,7 +488,7 @@ function CustomTableEditor({
 function CroiseConfig({ table, onChange, articleItems = [] }) {
   const [search, setSearch] = useState('')
   const selected = table.croiseArticles || []
-  const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const norm = (x) => (x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
   // Liste des noms d'articles disponibles. articleItems = { id, label, meta }.
   // On retire un éventuel préfixe ⚠️ (articles supprimés du menu).
@@ -544,41 +509,33 @@ function CroiseConfig({ table, onChange, articleItems = [] }) {
   const removeArticle = (n) => onChange({ croiseArticles: selected.filter(x => x !== n) })
 
   return (
-    <div style={BLOCK_STYLE}>
-      <label style={LABEL_STYLE}>Colonnes du tableau croisé (articles)</label>
+    <div className={s.block}>
+      <label className={s.label}>Colonnes du tableau croisé (articles)</label>
 
       {/* Articles sélectionnés */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+      <div className={s.chips}>
         {selected.length === 0 && (
-          <span style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+          <span className={s.note}>
             Aucun article sélectionné — ajoutez-en ci-dessous.
           </span>
         )}
         {selected.map(n => (
-          <span key={n} style={{
-            fontSize: 11, padding: '4px 8px', borderRadius: 14,
-            background: 'var(--brand-light)', color: 'var(--brand-dark)',
-            border: '0.5px solid var(--brand)', display: 'inline-flex', alignItems: 'center', gap: 5,
-          }}>
+          <span key={n} className={s.chip}>
             {n}
-            <span onClick={() => removeArticle(n)} style={{ cursor: 'pointer', opacity: 0.6 }}>✕</span>
+            <span onClick={() => removeArticle(n)} className={s.chipRemove}>✕</span>
           </span>
         ))}
       </div>
 
       {/* Recherche + ajout */}
-      <input style={{ ...INPUT_STYLE, marginBottom: 6 }} value={search}
+      <input className={clsx(s.input, s.mb6)} value={search}
         onChange={e => setSearch(e.target.value)} placeholder="Rechercher un article à ajouter…"/>
       {search && (
-        <div style={{
-          maxHeight: 160, overflowY: 'auto', border: '0.5px solid var(--border)',
-          borderRadius: 6, marginBottom: 8,
-        }}>
+        <div className={s.results}>
           {available.length === 0 ? (
-            <div style={{ padding: 8, fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>Aucun résultat</div>
+            <div className={s.resultsEmpty}>Aucun résultat</div>
           ) : available.map(n => (
-            <div key={n} onClick={() => addArticle(n)}
-              style={{ padding: '6px 10px', fontSize: 12, cursor: 'pointer', borderBottom: '0.5px solid var(--border)' }}>
+            <div key={n} onClick={() => addArticle(n)} className={s.result}>
               {n}
             </div>
           ))}
@@ -586,22 +543,16 @@ function CroiseConfig({ table, onChange, articleItems = [] }) {
       )}
 
       {/* Options */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-        <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <input type="checkbox" checked={table.croiseDetail !== false}
-            onChange={e => onChange({ croiseDetail: e.target.checked })} style={{ accentColor: 'var(--brand)' }}/>
+      <div className={s.options}>
+        <Check checked={table.croiseDetail !== false} onChange={e => onChange({ croiseDetail: e.target.checked })} className={s.checkLg}>
           Détailler chaque transaction (sinon totaux uniquement)
-        </label>
-        <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <input type="checkbox" checked={table.croiseShowUnits !== false}
-            onChange={e => onChange({ croiseShowUnits: e.target.checked })} style={{ accentColor: 'var(--brand)' }}/>
+        </Check>
+        <Check checked={table.croiseShowUnits !== false} onChange={e => onChange({ croiseShowUnits: e.target.checked })} className={s.checkLg}>
           Afficher les unités (en plus du montant)
-        </label>
-        <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-          <input type="checkbox" checked={table.croiseSubtotalsByDay !== false}
-            onChange={e => onChange({ croiseSubtotalsByDay: e.target.checked })} style={{ accentColor: 'var(--brand)' }}/>
+        </Check>
+        <Check checked={table.croiseSubtotalsByDay !== false} onChange={e => onChange({ croiseSubtotalsByDay: e.target.checked })} className={s.checkLg}>
           Sous-totaux par jour (si plusieurs jours)
-        </label>
+        </Check>
       </div>
     </div>
   )
@@ -619,13 +570,13 @@ function CustomTableFilters({
   return (
     <div>
       {showPeriod && (
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3 }}>Période</div>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="date" style={{ ...INPUT_STYLE, flex: 1 }} value={table.periodFrom || ''}
+        <div className={s.mb8}>
+          <div className={s.subLabel}>Période</div>
+          <div className={s.range}>
+            <input type="date" className={clsx(s.input, s.grow)} value={table.periodFrom || ''}
               onChange={e => onChange({ periodFrom: e.target.value })}/>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>→</span>
-            <input type="date" style={{ ...INPUT_STYLE, flex: 1 }} value={table.periodTo || ''}
+            <span className={s.arrow}>→</span>
+            <input type="date" className={clsx(s.input, s.grow)} value={table.periodTo || ''}
               onChange={e => onChange({ periodTo: e.target.value })}/>
           </div>
         </div>
@@ -648,7 +599,7 @@ function CustomTableFilters({
       {src === 'spectateurs' && (
         <PreciseSelect
           label="Spectateurs" field="spectateurSelection" table={table} onChange={onChange}
-          items={(spectateursList || []).map(s => ({ id: s.id, label: s.nom || s.id || '—', meta: s.id }))}
+          items={(spectateursList || []).map(sp => ({ id: sp.id, label: sp.nom || sp.id || '—', meta: sp.id }))}
         />
       )}
       {src === 'benevoles' && (
@@ -658,12 +609,12 @@ function CustomTableFilters({
         />
       )}
       {src === 'transactions' && (
-        <div style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic', marginTop: 4 }}>
+        <div className={s.hint}>
           Filtres avancés (types, montants) hérités des réglages standard.
         </div>
       )}
       {src === 'reservations' && (
-        <div style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic', marginTop: 4 }}>
+        <div className={s.hint}>
           Toutes les réservations sont incluses (filtres statut/type à venir).
         </div>
       )}
@@ -686,14 +637,12 @@ function PreciseSelect({ label, field, table, onChange, items }) {
   const active = table[field] !== null && table[field] !== undefined
   const selectedIds = active ? (table[field] || []) : []
   return (
-    <div style={{ marginBottom: 8 }}>
-      <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 3, display: 'flex', justifyContent: 'space-between' }}>
+    <div className={s.mb8}>
+      <div className={clsx(s.subLabel, s.spread)}>
         <span>{label}{active ? ` (${selectedIds.length}/${items.length})` : ''}</span>
         {active
-          ? <button type="button" onClick={() => onChange({ [field]: null })}
-              style={linkBtn}>tout inclure</button>
-          : <button type="button" onClick={() => onChange({ [field]: [] })}
-              style={linkBtn}>sélectionner…</button>}
+          ? <button type="button" className={s.linkBtn} onClick={() => onChange({ [field]: null })}>tout inclure</button>
+          : <button type="button" className={s.linkBtn} onClick={() => onChange({ [field]: [] })}>sélectionner…</button>}
       </div>
       {active && (
         <TransferList
@@ -708,11 +657,6 @@ function PreciseSelect({ label, field, table, onChange, items }) {
   )
 }
 
-const linkBtn = {
-  background: 'transparent', border: 'none', color: 'var(--brand-dark)',
-  fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', padding: 0,
-}
-
 // ── Aperçu temps réel du tableau (vraies données, calcul JS) ──
 // Reproduit fidèlement la logique Python de _custom_build_data.
 // Le PDF reste la source de vérité ; ceci est une estimation à l'écran.
@@ -721,18 +665,18 @@ function CustomTablePreview({ table, menuList, spectateursList, reservationsList
   if (table.source === 'croise') {
     const arts = table.croiseArticles || []
     return (
-      <div style={{ background: '#fff', border: '0.5px solid var(--border)', borderRadius: 6, padding: 10, marginTop: 4 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase' }}>
+      <div className={s.preview}>
+        <div className={s.previewTitle}>
           Aperçu — tableau croisé
         </div>
         {arts.length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>
+          <div className={s.note}>
             Sélectionnez des articles pour voir les colonnes.
           </div>
         ) : (
-          <div style={{ fontSize: 11, color: 'var(--text)' }}>
+          <div className={s.previewText}>
             {arts.length} colonne{arts.length > 1 ? 's' : ''} : {arts.join(', ')}.
-            <div style={{ color: 'var(--muted)', marginTop: 4 }}>
+            <div className={s.previewSub}>
               {table.croiseDetail !== false ? 'Lignes par transaction' : 'Totaux uniquement'}
               {table.croiseShowUnits !== false ? ' · montant + unités' : ' · montant'}
               {table.croiseSubtotalsByDay !== false ? ' · sous-totaux par jour' : ''}.
@@ -759,51 +703,38 @@ function CustomTablePreview({ table, menuList, spectateursList, reservationsList
   const previewRows = rows.slice(0, 6)
 
   return (
-    <div style={{
-      background: '#fff', border: '0.5px solid var(--border)',
-      borderRadius: 6, padding: 10, marginTop: 4,
-    }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 4 }}>
+    <div className={s.preview}>
+      <div className={clsx(s.previewTitle, s.previewTitleIcon)}>
         <Eye size={12}/> Aperçu ({rows.length} ligne{rows.length > 1 ? 's' : ''})
       </div>
       {activeCols.length === 0 ? (
-        <div style={{ fontSize: 11, color: 'var(--muted)', fontStyle: 'italic' }}>Aucune colonne sélectionnée.</div>
+        <div className={s.note}>Aucune colonne sélectionnée.</div>
       ) : (
-        <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse' }}>
+        <table className={s.previewTable}>
           <thead>
             <tr>
               {activeCols.map(c => (
-                <th key={c.key} style={{
-                  textAlign: c.sum ? 'right' : 'left', padding: '3px 5px',
-                  background: 'var(--brand-light)', color: 'var(--brand-dark)',
-                  fontWeight: 600, fontSize: 9,
-                }}>{c.label}</th>
+                <th key={c.key} className={c.sum ? s.right : undefined}>{c.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {previewRows.length === 0 ? (
-              <tr><td colSpan={activeCols.length} style={{ padding: '8px 5px', textAlign: 'center', color: 'var(--muted)', fontStyle: 'italic' }}>Aucune donnée</td></tr>
+              <tr><td colSpan={activeCols.length} className={s.previewEmpty}>Aucune donnée</td></tr>
             ) : previewRows.map((row, ri) => (
               <tr key={ri}>
                 {activeCols.map(c => (
-                  <td key={c.key} style={{
-                    padding: '3px 5px', borderTop: '0.5px solid var(--border)',
-                    textAlign: c.sum ? 'right' : 'left',
-                  }}>{row[c.key] != null ? row[c.key] : '—'}</td>
+                  <td key={c.key} className={c.sum ? s.right : undefined}>{row[c.key] != null ? row[c.key] : '—'}</td>
                 ))}
               </tr>
             ))}
             {total.enabled && rows.length > 0 && (
-              <tr style={{ fontWeight: 600, background: 'var(--bg)' }}>
+              <tr className={s.totalRow}>
                 {activeCols.map((c, ci) => {
                   const isSum = (total.columns || []).includes(c.key)
                   const showLabel = ci === 0 && !(total.columns || []).includes(activeCols[0]?.key)
                   return (
-                    <td key={c.key} style={{
-                      padding: '3px 5px', borderTop: '1px solid var(--border)',
-                      textAlign: c.sum ? 'right' : 'left',
-                    }}>
+                    <td key={c.key} className={c.sum ? s.right : undefined}>
                       {isSum ? (sums[c.key] != null ? sums[c.key] : '') : (showLabel ? (total.label || 'Total') : '')}
                     </td>
                   )
@@ -814,11 +745,11 @@ function CustomTablePreview({ table, menuList, spectateursList, reservationsList
         </table>
       )}
       {rows.length > 6 && (
-        <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 4, fontStyle: 'italic' }}>
+        <div className={s.previewMore}>
           … et {rows.length - 6} ligne(s) de plus dans le PDF.
         </div>
       )}
-      <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 6, lineHeight: 1.4, fontStyle: 'italic' }}>
+      <div className={s.previewFoot}>
         Estimation calculée en direct. Le PDF généré fait foi.
       </div>
     </div>

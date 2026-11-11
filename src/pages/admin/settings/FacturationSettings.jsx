@@ -7,9 +7,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Building2, Check, Copy, Download, FileText, Palette, Pencil, Plus, Receipt, Save, Star, Tag, Trash2, Upload } from 'lucide-react'
 import clsx from 'clsx'
-import { Badge, Button, Card, Dialog, Field, toast } from '../../../ui'
+import { Badge, Button, Card, Dialog, Field, SaveStatus, toast } from '../../../ui'
 import useAppStore from '../../../store/useAppStore'
 import { friendlyError } from '../../../utils/errors'
+import { useAutosave } from '../../../hooks/useAutosave'
 import {
   getSettings, saveSettings, saveDechargeTemplate, deleteDechargeTemplate,
   saveInvoiceTemplate, deleteInvoiceTemplate, duplicateInvoiceTemplate, importInvoiceTemplate,
@@ -20,6 +21,81 @@ import {
 import s from './settings.module.css'
 
 const cardTitle = (Icon, label) => <span className={s.cardTitle}><Icon size={16}/>{label}</span>
+const chip = (a) => <SaveStatus status={a.status} savedAt={a.savedAt} onRetry={a.retry}/>
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+// Dernière valeur valide : une saisie incomplète (libellé vide, couleur à moitié tapée,
+// taux négatif) ne part pas en base ; l'enregistrement reprend dès qu'elle redevient valide.
+function useLastValid(value, valid) {
+  const ref = useRef(value)
+  if (valid) ref.current = value
+  return ref.current
+}
+
+// Éditeur d'un template de décharge existant : enregistré automatiquement.
+// Monté avec key={tpl.id} : ouvrir un autre template ne déclenche pas d'écriture.
+function DechargeEditor({ initial, currentEventId, onSaved, onClose }) {
+  const [tpl, setTpl] = useState(initial)
+  const nomOk = !!tpl.nom.trim()
+  const valid = useLastValid(tpl, nomOk)
+  const save = async (v) => onSaved(await saveDechargeTemplate(v, currentEventId))
+  const auto = useAutosave(valid, save, { enabled: !!currentEventId })
+
+  // Fermer pendant la temporisation : on enregistre d'abord la dernière version
+  const close = async () => {
+    if (auto.status !== 'idle' && auto.status !== 'saved') {
+      try { await save(valid) }
+      catch (e) { toast.error(friendlyError(e, "Le template n'a pas été enregistré.")); return }
+    }
+    onClose()
+  }
+
+  return (
+    <div className={s.editor}>
+      <div className={s.editorHead}>
+        <span className={s.toggleTitle}>Modifier le template</span>
+        {chip(auto)}
+      </div>
+      <TemplateFields tpl={tpl} setTpl={setTpl} tried={!nomOk}/>
+      <div className={s.actions}>
+        <Button variant="secondary" icon={Check} onClick={close}>Fermer</Button>
+      </div>
+    </div>
+  )
+}
+
+// Champs communs au nouvel éditeur et à l'éditeur existant
+function TemplateFields({ tpl, setTpl, tried }) {
+  return (
+    <>
+      <Field label={<span className={s.label}>Nom du template *</span>}
+        error={tpl.nom.trim() ? null : 'Indique un nom pour ce template'} valid={!!tpl.nom.trim()} showError={tried}>
+        <input type="text" value={tpl.nom} maxLength={80}
+          onChange={e => setTpl(t => ({ ...t, nom: e.target.value }))}
+          placeholder="Ex : Décharge espèces — Édition 2025"/>
+      </Field>
+      <label className={s.field}>
+        <span className={s.label}>Texte d'introduction</span>
+        <textarea className={clsx(s.input, s.textarea)} rows={8} value={tpl.intro}
+          onChange={e => setTpl(t => ({ ...t, intro: e.target.value }))}
+          placeholder="Texte principal de la décharge…"/>
+      </label>
+      <label className={s.field}>
+        <span className={s.label}>Mentions complémentaires (optionnel)</span>
+        <textarea className={clsx(s.input, s.textarea)} rows={3} value={tpl.mentions}
+          onChange={e => setTpl(t => ({ ...t, mentions: e.target.value }))}
+          placeholder="Ex : Conformément à l'article…"/>
+      </label>
+      <label className={s.field}>
+        <span className={s.label}>Pied de page</span>
+        <input type="text" className={s.input} value={tpl.piedDePage} maxLength={200}
+          onChange={e => setTpl(t => ({ ...t, piedDePage: e.target.value }))}
+          placeholder="Ex : Document généré électroniquement"/>
+      </label>
+    </>
+  )
+}
 
 // Champ texte des coordonnées de l'organisateur
 function OrgInput({ label, value, onChange, placeholder }) {
@@ -41,8 +117,6 @@ export default function FacturationSettings({ currentEventId, onNavigate }) {
     iban: '', bic: '', banque: '',
     email: '', telephone: '', siteWeb: '',
   })
-  const [expoSaved, setExpoSaved] = useState(false)
-  const [orgSaved, setOrgSaved] = useState(false)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   // Identité visuelle (logo + couleur principale) pour les PDF.
@@ -50,13 +124,11 @@ export default function FacturationSettings({ currentEventId, onNavigate }) {
   // car limité à ~200 Ko après compression côté navigateur ; suffit pour un logo de PDF).
   const [logoDataUrl, setLogoDataUrl] = useState('')
   const [brandColor, setBrandColor]   = useState('#1a6b7a')
-  const [identiteVisSaved, setIdentiteVisSaved] = useState(false)
 
   // Templates de décharge : texte réutilisable (intro, mentions, pied),
   // éditable ici et persisté dans settings.dechargeTemplates.
   const [templates, setTemplates] = useState([])
   const [editingTpl, setEditingTpl] = useState(null) // template en cours d'édition (objet ou null)
-  const [tplSaved, setTplSaved]   = useState(false)
   const [tplTried, setTplTried]   = useState(false)
 
   // Templates de facture personnalisés, créés depuis l'éditeur visuel.
@@ -69,7 +141,6 @@ export default function FacturationSettings({ currentEventId, onNavigate }) {
   const [tvaActive, setTvaActive]                 = useState(false)
   const [tvaDefaultTaux, setTvaDefaultTaux]       = useState(20)
   const [tvaMentionExoneration, setTvaMentionExoneration] = useState('TVA non applicable, art. 293 B du CGI')
-  const [tvaSaved, setTvaSaved]                   = useState(false)
 
   // Confirmation partagée par les suppressions : { title, text, action }
   const [pendingConfirm, setPendingConfirm] = useState(null)
@@ -77,6 +148,8 @@ export default function FacturationSettings({ currentEventId, onNavigate }) {
   // Charge les settings de l'événement au montage (ou changement d'event)
   useEffect(() => {
     let cancelled = false
+    // Pendant le chargement, l'enregistrement automatique est coupé (les valeurs lues ne sont pas des modifications)
+    setSettingsLoaded(false)
     if (!currentEventId) { setSettingsLoaded(true); return }
     getSettings(currentEventId).then(cfg => {
       if (cancelled) return
@@ -96,18 +169,10 @@ export default function FacturationSettings({ currentEventId, onNavigate }) {
     return () => { cancelled = true }
   }, [currentEventId])
 
-  const flash = (set) => { set(true); setTimeout(() => set(false), 1500) }
-
-  // Enregistre dans settings ; true si l'écriture a réussi
-  const persist = async (data, what) => {
-    try {
-      await saveSettings(data, currentEventId)
-      return true
-    } catch (e) {
-      toast.error(friendlyError(e, what))
-      return false
-    }
-  }
+  // Enregistrement automatique : actif seulement une fois les réglages chargés.
+  // Mêmes écritures qu'avant (saveSettings avec le même objet), déclenchées 800 ms après la saisie.
+  const autoOn = settingsLoaded && !!currentEventId
+  const persist = (data) => saveSettings(data, currentEventId)
 
   // ─── Thématiques ─────────────────────────────────────────────────
   const addThematique = () => {
@@ -124,37 +189,23 @@ export default function FacturationSettings({ currentEventId, onNavigate }) {
     text: 'Les exposants déjà créés avec cette thématique conservent leur libellé mais ne pourront plus être réassociés.',
     action: () => setExpoThematiques(prev => prev.filter((_, i) => i !== idx)),
   })
-  const saveThematiques = async () => {
-    if (!currentEventId) return
-    // Validation : ids uniques, label non vide
-    const seen = new Set()
-    for (const t of expoThematiques) {
-      if (!t.label || !t.label.trim()) { toast.error('Toutes les thématiques doivent avoir un libellé.'); return }
-      if (seen.has(t.id)) { toast.error('IDs en double détectés. Veuillez recharger la page.'); return }
-      seen.add(t.id)
-    }
-    // Normalise : tarifs en entiers (centimes), labels trim
-    const cleaned = expoThematiques.map(t => ({
-      id: t.id,
-      label: t.label.trim(),
-      tarif: Math.round(Number(t.tarif) || 0),
-    }))
-    if (!(await persist({ expoThematiques: cleaned }, "Les thématiques n'ont pas été enregistrées."))) return
-    setExpoThematiques(cleaned)
-    flash(setExpoSaved)
-  }
+  // Validation : ids uniques, label non vide. Tant qu'une ligne n'a pas de libellé,
+  // la liste enregistrée reste la dernière liste valide.
+  const thmIds = expoThematiques.map(t => t.id)
+  const thmValid = expoThematiques.every(t => t.label && t.label.trim()) && new Set(thmIds).size === thmIds.length
+  // Normalise : tarifs en entiers (centimes), labels trim
+  const thmCleaned = useLastValid(
+    thmValid ? expoThematiques.map(t => ({ id: t.id, label: t.label.trim(), tarif: Math.round(Number(t.tarif) || 0) })) : null,
+    thmValid,
+  )
+  const thmAuto = useAutosave(thmCleaned, (v) => persist({ expoThematiques: v }), { enabled: autoOn && !!thmCleaned })
 
   // ─── Organisateur ────────────────────────────────────────────────
-  const saveOrganisateur = async () => {
-    if (!currentEventId) return
-    // Trim toutes les valeurs string
-    const cleaned = Object.fromEntries(
-      Object.entries(organisateur).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v])
-    )
-    if (!(await persist({ organisateur: cleaned }, "Les coordonnées n'ont pas été enregistrées."))) return
-    setOrganisateur(cleaned)
-    flash(setOrgSaved)
-  }
+  // Trim toutes les valeurs string
+  const orgCleaned = Object.fromEntries(
+    Object.entries(organisateur).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v])
+  )
+  const orgAuto = useAutosave(orgCleaned, (v) => persist({ organisateur: v }), { enabled: autoOn })
   const orgField = (key) => ({
     value: organisateur[key],
     onChange: v => setOrganisateur(o => ({ ...o, [key]: v })),
@@ -194,28 +245,21 @@ export default function FacturationSettings({ currentEventId, onNavigate }) {
   }
   const removeLogo = () => setLogoDataUrl('')
 
-  const saveIdentiteVisuelle = async () => {
-    if (!currentEventId) return
-    if (!(await persist({ logoDataUrl, brandColor }, "L'identité visuelle n'a pas été enregistrée."))) return
-    flash(setIdentiteVisSaved)
-  }
+  // Couleur saisie au clavier : enregistrée seulement une fois le code complet (#rrggbb)
+  const colorOk = HEX_COLOR.test(brandColor)
+  const savedColor = useLastValid(brandColor, colorOk)
+  const identiteAuto = useAutosave({ logoDataUrl, brandColor: savedColor }, persist, { enabled: autoOn })
 
   // ─── TVA ─────────────────────────────────────────────────────────
-  const saveTvaConfig = async () => {
-    if (!currentEventId) return
-    // Validation : si TVA active, le taux par défaut doit être ≥ 0
-    const taux = Number(tvaDefaultTaux)
-    if (tvaActive && (!Number.isFinite(taux) || taux < 0)) {
-      toast.error('Le taux de TVA par défaut doit être un nombre positif ou nul.')
-      return
-    }
-    const ok = await persist({
-      tvaActive,
-      tvaDefaultTaux: Number.isFinite(taux) ? taux : 20,
-      tvaMentionExoneration: (tvaMentionExoneration || '').trim(),
-    }, "La configuration TVA n'a pas été enregistrée.")
-    if (ok) flash(setTvaSaved)
-  }
+  // Validation : si TVA active, le taux par défaut doit être ≥ 0
+  const taux = Number(tvaDefaultTaux)
+  const tauxOk = !tvaActive || (Number.isFinite(taux) && taux >= 0)
+  const tvaConfig = useLastValid({
+    tvaActive,
+    tvaDefaultTaux: Number.isFinite(taux) ? taux : 20,
+    tvaMentionExoneration: (tvaMentionExoneration || '').trim(),
+  }, tauxOk)
+  const tvaAuto = useAutosave(tvaConfig, persist, { enabled: autoOn })
 
   // ─── Templates de décharge : CRUD ─────────────────────────────────
   const addTemplate = () => {
@@ -239,20 +283,25 @@ pour un montant total facturé de {{montantTotal}}.`,
   }
   const editTemplate = (tpl) => { setTplTried(false); setEditingTpl({ ...tpl }) }
 
+  // Met à jour la liste locale après une écriture
+  const upsertTemplate = (saved) => setTemplates(prev => {
+    const idx = prev.findIndex(t => t.id === saved.id)
+    return idx >= 0
+      ? [...prev.slice(0, idx), saved, ...prev.slice(idx + 1)]
+      : [...prev, saved]
+  })
+
+  // Création d'un template : bouton explicite. Un enregistrement automatique avant que
+  // le template ait un identifiant créerait un doublon à chaque écriture.
+  // Une fois créé, l'éditeur reste ouvert et passe en enregistrement automatique.
   const saveTemplate = async () => {
     if (!editingTpl) return
     if (!editingTpl.nom.trim()) { setTplTried(true); return }
     try {
       const saved = await saveDechargeTemplate(editingTpl, currentEventId)
-      // Recharger la liste localement
-      setTemplates(prev => {
-        const idx = prev.findIndex(t => t.id === saved.id)
-        return idx >= 0
-          ? [...prev.slice(0, idx), saved, ...prev.slice(idx + 1)]
-          : [...prev, saved]
-      })
-      setEditingTpl(null)
-      flash(setTplSaved)
+      upsertTemplate(saved)
+      setEditingTpl(saved)
+      toast.success(`Template « ${saved.nom} » créé`)
     } catch (e) { toast.error(friendlyError(e, "Le template n'a pas été enregistré.")) }
   }
 
@@ -422,7 +471,7 @@ pour un montant total facturé de {{montantTotal}}.`,
   return (
     <>
       {/* Thématiques d'exposition */}
-      <Card title={cardTitle(Tag, "Thématiques d'exposition")}
+      <Card title={cardTitle(Tag, "Thématiques d'exposition")} actions={chip(thmAuto)}
         subtitle="Définissez les types de stands et leurs tarifs. Les exposants sélectionneront une thématique pour un calcul automatique du montant.">
         <div className={s.stack}>
           {!settingsLoaded ? (
@@ -438,6 +487,7 @@ pour un montant total facturé de {{montantTotal}}.`,
                     className={s.input}
                     placeholder="Nom de la thématique"
                     aria-label="Nom de la thématique"
+                    aria-invalid={!t.label?.trim() || undefined}
                     value={t.label}
                     onChange={e => updateThematique(i, 'label', e.target.value)}
                   />
@@ -469,8 +519,10 @@ pour un montant total facturé de {{montantTotal}}.`,
 
           <div className={s.actions}>
             <Button variant="secondary" icon={Plus} onClick={addThematique}>Ajouter une thématique</Button>
-            <Button icon={expoSaved ? Check : Save} onClick={saveThematiques}>{expoSaved ? 'Sauvegardé' : 'Sauvegarder'}</Button>
           </div>
+          {!thmValid && (
+            <p className={s.error}>Chaque thématique doit avoir un libellé : la liste sera enregistrée dès que ce sera le cas.</p>
+          )}
           <p className={s.hint}>
             Tarif en euros (ex : <code>250.00</code> pour 250 €). Calcul automatique appliqué lors de la création d'un exposant.
           </p>
@@ -478,7 +530,7 @@ pour un montant total facturé de {{montantTotal}}.`,
       </Card>
 
       {/* Coordonnées de l'organisateur */}
-      <Card title={cardTitle(Building2, "Coordonnées de l'organisateur")}
+      <Card title={cardTitle(Building2, "Coordonnées de l'organisateur")} actions={chip(orgAuto)}
         subtitle="Informations utilisées pour générer les factures et décharges (en-tête des PDF).">
         <div className={s.stack}>
           <OrgInput label="Raison sociale" placeholder="Ex : Association Festylla" {...orgField('raisonSociale')}/>
@@ -504,15 +556,11 @@ pour un montant total facturé de {{montantTotal}}.`,
             <OrgInput label="Téléphone" placeholder="01 23 45 67 89" {...orgField('telephone')}/>
             <OrgInput label="Site web (optionnel)" placeholder="https://festylla.com" {...orgField('siteWeb')}/>
           </div>
-
-          <div className={s.actions}>
-            <Button icon={orgSaved ? Check : Save} onClick={saveOrganisateur}>{orgSaved ? 'Sauvegardé' : 'Sauvegarder'}</Button>
-          </div>
         </div>
       </Card>
 
       {/* Identité visuelle : logo + couleur, réutilisés dans tous les PDF */}
-      <Card title={cardTitle(Palette, 'Identité visuelle des PDF')}
+      <Card title={cardTitle(Palette, 'Identité visuelle des PDF')} actions={chip(identiteAuto)}
         subtitle="Logo et couleur appliqués automatiquement sur les factures et décharges générées.">
         <div className={s.stack}>
           <div className={s.field}>
@@ -538,19 +586,17 @@ pour un montant total facturé de {{montantTotal}}.`,
             <div className={s.colorRow}>
               <input type="color" className={s.colorInput} aria-label="Couleur principale" value={brandColor} onChange={e => setBrandColor(e.target.value)}/>
               <input type="text" className={clsx(s.input, s.inputCode)} aria-label="Code couleur" value={brandColor}
+                aria-invalid={!colorOk || undefined}
                 onChange={e => setBrandColor(e.target.value)} placeholder="#1a6b7a"/>
-              <span className={s.colorSwatch} style={{ background: brandColor }}/>
+              <span className={s.colorSwatch} style={{ background: savedColor }}/>
             </div>
-          </div>
-
-          <div className={s.actions}>
-            <Button icon={identiteVisSaved ? Check : Save} onClick={saveIdentiteVisuelle}>{identiteVisSaved ? 'Sauvegardé' : 'Sauvegarder'}</Button>
+            {!colorOk && <p className={s.error}>Code couleur attendu au format #rrggbb : la couleur sera enregistrée une fois complète.</p>}
           </div>
         </div>
       </Card>
 
       {/* TVA */}
-      <Card title={cardTitle(Receipt, 'TVA')}
+      <Card title={cardTitle(Receipt, 'TVA')} actions={chip(tvaAuto)}
         subtitle="Activez la TVA si votre structure y est assujettie. Le taux par défaut s'applique à toutes les lignes facturables, sauf override individuel. Si désactivée, la mention d'exonération apparaît automatiquement sur les factures.">
         <div className={s.stack}>
           <label className={s.toggle}>
@@ -571,7 +617,9 @@ pour un montant total facturé de {{montantTotal}}.`,
                 <span className={s.label}>Taux de TVA par défaut (%)</span>
                 <input type="number" step="0.1" min="0" max="100" className={clsx(s.input, s.inputShort)}
                   value={tvaDefaultTaux}
+                  aria-invalid={!tauxOk || undefined}
                   onChange={e => setTvaDefaultTaux(parseFloat(e.target.value) || 0)}/>
+                {!tauxOk && <span className={s.error}>Le taux de TVA par défaut doit être un nombre positif ou nul.</span>}
                 <span className={s.hint}>
                   Taux libre. Standards français : 0, 5.5, 10, 20.
                   Chaque ligne facturable peut avoir un taux différent.
@@ -594,10 +642,6 @@ pour un montant total facturé de {{montantTotal}}.`,
               <span className={s.hint}>Modifiez si vous relevez d'un autre régime d'exonération (ex : art. 261 du CGI pour associations).</span>
             </label>
           )}
-
-          <div className={s.actions}>
-            <Button icon={tvaSaved ? Check : Save} onClick={saveTvaConfig}>{tvaSaved ? 'Sauvegardé' : 'Sauvegarder'}</Button>
-          </div>
         </div>
       </Card>
 
@@ -633,45 +677,27 @@ pour un montant total facturé de {{montantTotal}}.`,
           )}
 
           {/* Éditeur inline (si template en cours d'édition) */}
-          {editingTpl && (
+          {/* Template existant : enregistrement automatique */}
+          {editingTpl?.id && (
+            <DechargeEditor key={editingTpl.id} initial={editingTpl} currentEventId={currentEventId}
+              onSaved={upsertTemplate} onClose={() => setEditingTpl(null)}/>
+          )}
+
+          {/* Nouveau template : création explicite (voir saveTemplate) */}
+          {editingTpl && !editingTpl.id && (
             <div className={s.editor}>
-              <div className={s.toggleTitle}>{editingTpl.id ? 'Modifier le template' : 'Nouveau template'}</div>
-              <Field label={<span className={s.label}>Nom du template *</span>}
-                error={editingTpl.nom.trim() ? null : 'Indique un nom pour ce template'} valid={!!editingTpl.nom.trim()} showError={tplTried}>
-                <input type="text" value={editingTpl.nom} maxLength={80}
-                  onChange={e => setEditingTpl(t => ({ ...t, nom: e.target.value }))}
-                  placeholder="Ex : Décharge espèces — Édition 2025"/>
-              </Field>
-              <label className={s.field}>
-                <span className={s.label}>Texte d'introduction</span>
-                <textarea className={clsx(s.input, s.textarea)} rows={8} value={editingTpl.intro}
-                  onChange={e => setEditingTpl(t => ({ ...t, intro: e.target.value }))}
-                  placeholder="Texte principal de la décharge…"/>
-              </label>
-              <label className={s.field}>
-                <span className={s.label}>Mentions complémentaires (optionnel)</span>
-                <textarea className={clsx(s.input, s.textarea)} rows={3} value={editingTpl.mentions}
-                  onChange={e => setEditingTpl(t => ({ ...t, mentions: e.target.value }))}
-                  placeholder="Ex : Conformément à l'article…"/>
-              </label>
-              <label className={s.field}>
-                <span className={s.label}>Pied de page</span>
-                <input type="text" className={s.input} value={editingTpl.piedDePage} maxLength={200}
-                  onChange={e => setEditingTpl(t => ({ ...t, piedDePage: e.target.value }))}
-                  placeholder="Ex : Document généré électroniquement"/>
-              </label>
+              <div className={s.toggleTitle}>Nouveau template</div>
+              <TemplateFields tpl={editingTpl} setTpl={setEditingTpl} tried={tplTried}/>
               <div className={s.actions}>
                 <Button variant="secondary" onClick={() => setEditingTpl(null)}>Annuler</Button>
-                <Button icon={Save} onClick={saveTemplate}>Enregistrer</Button>
+                <Button icon={Save} onClick={saveTemplate}>Créer le template</Button>
               </div>
             </div>
           )}
 
           {!editingTpl && (
             <div className={s.actions}>
-              <Button variant="secondary" icon={Plus} onClick={addTemplate}>Nouveau template</Button>
-              {tplSaved && <span className={s.saved}><Check size={14} aria-hidden="true"/> Template enregistré</span>}
-            </div>
+              <Button variant="secondary" icon={Plus} onClick={addTemplate}>Nouveau template</Button>            </div>
           )}
         </div>
       </Card>

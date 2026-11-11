@@ -24,6 +24,27 @@
 .table tbody tr:hover td { background: var(--bg2); }
 .right { text-align: right !important; font-variant-numeric: tabular-nums; }
 .clickable { cursor: pointer; }
+/* En-têtes triables */
+.sortBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 0;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.sortBtn:hover { background: var(--bg3); color: var(--text); }
+.sortIcon { opacity: .45; transition: transform var(--dur-base) var(--ease); }
+.sortOn { color: var(--brand-dark); }
+.sortOn .sortIcon { opacity: 1; }
 .clickable:focus-visible td { background: var(--brand-light); }
 
 /* Nouvelles lignes : elles glissent en place (une seule fois, à l'insertion) */

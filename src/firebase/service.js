@@ -16,6 +16,7 @@ import {
   arrayUnion, Timestamp } from 'firebase/firestore'
 import { db }        from './config'
 import { nowStr, uid, makeResaCode } from '../utils/helpers'
+import { toCents } from '../utils/money'
 
 const SEUIL_STOCK = 10
 
@@ -154,7 +155,7 @@ export const getSpectateur = async (id, evId) => {
 // moyen : 'especes' | 'cb' — mode de paiement de la recharge initiale (clôture de caisse)
 export const createSpectateur = async (nom, soldeEuros, staffNom = 'Billetterie', { moyen = null } = {}) => {
   const id    = uid()
-  const solde = Math.round((parseFloat(soldeEuros) || 0) * 100)
+  const solde = toCents(soldeEuros)
   const eid   = getEventId()
   await addDoc(collection(db, 'events', eid, 'spectateurs'), { id, nom, solde, avatar: null, createdAt: serverTimestamp() })
   if (solde > 0) {
@@ -203,7 +204,7 @@ export const watchTransactions = (callback, evId) =>
 // moyen : 'especes' | 'cb' — enregistré sur la transaction pour la clôture de caisse
 export const crediter = async (specId, montantEuros, staffNom = 'Billetterie', evId = null, { moyen = null } = {}) => {
   // Math.round évite les artefacts flottants (ex: 12.10 * 100 = 1209.9999...)
-  const pts  = Math.round((parseFloat(montantEuros) || 0) * 100)
+  const pts  = toCents(montantEuros)
   const eid = evId || getEventId()
   const snap = await getDocs(query(collection(db, 'events', eid, 'spectateurs'), where('id', '==', specId)))
   if (snap.empty) throw new Error('Spectateur introuvable')
@@ -821,7 +822,7 @@ export const saveSettings = async (data, evId) => {
     } else {
       await setDoc(ref, data)
     }
-  } catch (e) { console.warn('saveSettings error:', e) }
+  } catch (e) { console.warn('saveSettings error:', e); throw e }
   try { await audit('MODIF_SETTINGS', { userType: 'admin', label: 'Modification des paramètres événement' }) } catch {}
 }
 

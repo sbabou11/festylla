@@ -95,7 +95,7 @@ export const ROLE_PAGES = {
 }
 
 export const ROLE_HOME = {
-  super_admin:'evenements', admin:'dashboard', billetterie:'accueil', stand:'accueil', consultation:'accueil', directeur_artistique:'accueil', benevole:'mon-profil',
+  super_admin:'evenements', admin:'accueil', billetterie:'accueil', stand:'accueil', consultation:'accueil', directeur_artistique:'accueil', benevole:'mon-profil',
 }
 
 const useAuthStore = create(

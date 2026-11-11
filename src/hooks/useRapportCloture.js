@@ -32,10 +32,10 @@ export function useRapportCloture() {
    * @param {array|null} overrideCustomPages - Pages custom (Lot Custom B).
    *   Si null/undefined, charge depuis Firestore.
    */
-  const generer = async (overrideSections = null, overrideCustomPages = null) => {
-    if (!currentEvent || !currentEventId) {
-      alert('Aucun événement sélectionné.'); return
-    }
+  // onProgress(0..1) : facultatif, pour un bouton qui affiche l'avancement
+  const generer = async (overrideSections = null, overrideCustomPages = null, onProgress) => {
+    const report = typeof onProgress === 'function' ? onProgress : () => {}
+    if (!currentEvent || !currentEventId) throw new Error('Aucun événement sélectionné.')
 
     // Charger l'audit Firestore
     let auditLogs = []
@@ -68,6 +68,7 @@ export function useRapportCloture() {
     let cachetsList = []
     let expositionsList = []
     try {
+      report(0.25)
       const snapC = await getDocs(query(
         collection(db, 'events', currentEventId, 'cachets'),
         orderBy('createdAt', 'desc')
@@ -75,6 +76,7 @@ export function useRapportCloture() {
       cachetsList = snapC.docs.map(d => ({ ...d.data(), id: d.id }))
     } catch(e) { console.warn('Cachets load error:', e) }
     try {
+      report(0.35)
       const snapE = await getDocs(query(
         collection(db, 'events', currentEventId, 'expositions'),
         orderBy('createdAt', 'desc')
@@ -85,6 +87,7 @@ export function useRapportCloture() {
     // Finances d'organisation (Lot Finances 1) : dépenses/recettes manuelles.
     let financesList = []
     try {
+      report(0.45)
       const snapF = await getDocs(query(
         collection(db, 'events', currentEventId, 'finances'),
         orderBy('createdAt', 'desc')
@@ -108,6 +111,7 @@ export function useRapportCloture() {
       } catch(e) { console.warn('Settings load error:', e) }
     }
 
+    report(0.6)
     // Appel à /api/rapport-pdf (Python reportlab — testé et validé)
     try {
       const resp = await fetch('/api/rapport-pdf', {
@@ -138,6 +142,7 @@ export function useRapportCloture() {
         const err = await resp.text()
         throw new Error(`Erreur serveur ${resp.status}: ${err.slice(0, 300)}`)
       }
+      report(0.9)
       const blob = await resp.blob()
       const now  = new Date()
       const jj   = String(now.getDate()).padStart(2,'0')
@@ -150,7 +155,7 @@ export function useRapportCloture() {
       document.body.removeChild(a); URL.revokeObjectURL(url)
     } catch(e) {
       console.error('Rapport PDF:', e)
-      alert('Erreur rapport de clôture: ' + e.message)
+      throw e
     }
   }
 

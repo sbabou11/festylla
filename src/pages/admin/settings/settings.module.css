@@ -67,9 +67,95 @@
 .remembered > span { flex: 1; min-width: 0; }
 .rememberedSub { display: block; margin-top: 2px; font-size: var(--fs-11); opacity: .85; }
 
+/* En-tête de bloc avec pastille d'enregistrement automatique */
+.editorHead { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); }
+
 /* Rapport de clôture : modale de génération */
 .rapportDialog { max-width: 720px; }
 .rapportCount { margin: var(--space-1) 0 0; font-size: var(--fs-11); font-weight: 600; color: var(--brand-dark); }
+
+/* Rapport de clôture : panneau sections et filtres (ex-styles en ligne) */
+.rcPanel { margin-bottom: 14px; overflow: hidden; border: 0.5px solid var(--border); border-radius: 8px; background: var(--bg); }
+.rcPanelModal { margin-bottom: 0; border: none; background: transparent; }
+.rcHeadRow { display: flex; align-items: center; gap: var(--space-2); padding-right: 14px; }
+.rcHead {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border: none; background: transparent; cursor: pointer;
+  font: 600 13px var(--font); color: var(--text); text-align: left;
+}
+.rcHeadTitle { display: inline-flex; align-items: center; gap: 8px; }
+.rcHeadCount { font-size: 11px; font-weight: 500; color: var(--muted); }
+.rcChevron { color: var(--muted); font-size: 16px; }
+.rcBody { padding: 10px 14px 14px; border-top: 0.5px solid var(--border); }
+.rcPanelModal .rcBody { padding: 0; border-top: none; }
+.rcIntro { margin-bottom: 10px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+.rcSection { margin-bottom: 6px; overflow: hidden; border: 0.5px solid var(--border); border-radius: 6px; background: var(--bg); }
+.rcSectionOff { background: var(--bg2); }
+.rcSectionRow { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+.rcSectionCheck { width: 16px; height: 16px; flex-shrink: 0; accent-color: var(--brand); cursor: pointer; }
+.rcGrow { flex: 1; min-width: 0; }
+.rcSectionLabel { font-size: 13px; font-weight: 600; color: var(--text); }
+.rcSectionOff .rcSectionLabel { color: var(--muted); }
+.rcSectionDesc { margin-top: 1px; font-size: 10px; color: var(--muted); line-height: 1.3; }
+.rcFiltersBtn {
+  flex-shrink: 0; padding: 4px 8px; border: 0.5px solid var(--border); border-radius: 4px;
+  background: var(--bg2); color: var(--muted); font: 600 10px var(--font); white-space: nowrap; cursor: pointer;
+}
+.rcFiltersBtnOn { background: var(--brand); color: #fff; }
+.rcFilters { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; border-top: 0.5px solid var(--border); background: var(--bg2); }
+.rcQuickRow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.rcQuick {
+  padding: 6px 12px; border: 0.5px solid var(--border); border-radius: 6px;
+  background: var(--bg2); color: var(--text); font: 600 11px var(--font); cursor: pointer;
+}
+.rcQuickDanger { color: var(--red-dark); }
+
+/* Filtres */
+.rcLabel { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.rcLabelCount { margin-left: 6px; font-weight: 500; color: var(--brand-dark); text-transform: none; letter-spacing: 0; }
+.rcLabelNote { margin-left: 6px; font-style: italic; text-transform: none; letter-spacing: 0; }
+.rcInput { padding: 6px 8px; border: 0.5px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 12px; }
+.rcInputNarrow { width: 100px; }
+.rcInputFull { width: 100%; }
+.rcInputSm {
+  width: 100%; box-sizing: border-box; padding: 5px 8px; border: 0.5px solid var(--border); border-radius: 4px;
+  background: var(--bg); color: var(--text); font-family: inherit; font-size: 11px;
+}
+.rcRange { display: flex; align-items: center; gap: 8px; }
+.rcArrow { color: var(--muted); font-size: 12px; }
+.rcEmpty { font-size: 11px; color: var(--muted); font-style: italic; }
+.rcHelp { margin-top: 3px; font-size: 10px; color: var(--muted); }
+.rcHelpItalic { margin-top: 4px; font-size: 10px; color: var(--muted); font-style: italic; }
+.rcScrollList { display: flex; flex-direction: column; gap: 3px; max-height: 120px; overflow-y: auto; }
+.rcChecksGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 4px; }
+.rcChecksWrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.rcCheck { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text); cursor: pointer; }
+.rcCheck input { accent-color: var(--brand); }
+.rcCheck input.rcCheckDanger { accent-color: var(--red); }
+.rcCheckTight { gap: 6px; }
+.rcCheckLg { gap: 8px; font-size: 12px; }
+.rcExcluded { color: var(--red-dark); }
+.rcExcluded span { text-decoration: line-through; }
+.rcMuted { color: var(--muted); }
+.rcMb6 { margin-bottom: 6px; }
+.rcMb8 { margin-bottom: 8px; }
+.rcMiniRow { display: flex; flex-wrap: wrap; gap: 6px; }
+.rcMini {
+  padding: 3px 8px; border: 0.5px solid var(--border); border-radius: 4px;
+  background: var(--bg); color: var(--text); font-family: var(--font); font-size: 10px; cursor: pointer;
+}
+.rcMini:disabled { opacity: .5; cursor: not-allowed; }
+.rcMiniBrand { color: var(--brand-dark); }
+.rcBox { padding: 10px; border: 0.5px solid var(--border); border-radius: 4px; background: var(--bg); }
+.rcDivided { margin-top: 10px; padding-top: 10px; border-top: 0.5px solid var(--border); }
+.rcDividedTop { padding-top: 8px; border-top: 0.5px solid var(--border); }
+.rcSubLabel { margin-bottom: 3px; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; }
+.rcInactive { padding: 12px; border: 0.5px dashed var(--border); border-radius: 4px; background: var(--bg); text-align: center; }
+.rcInactiveText { margin-bottom: 8px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+.rcActivate { padding: 5px 12px; border: none; border-radius: 4px; background: var(--brand); color: #fff; font: 600 11px var(--font); cursor: pointer; }
+.rcDeactivateRow { margin-top: 6px; text-align: right; }
+.rcLink { border: none; background: transparent; color: var(--muted); font-family: inherit; font-size: 10px; text-decoration: underline; cursor: pointer; }
+.rcWarn { margin-top: 6px; padding: 6px 8px; border-radius: 4px; background: var(--amber-light); color: var(--amber-dark); font-size: 10px; line-height: 1.4; }
 
 /* Cartes teintées */
 .brandCard { background: var(--brand-light); border-color: var(--brand); }

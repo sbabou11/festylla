@@ -47,6 +47,7 @@ import Remboursement from '../billetterie/Remboursement'
 import PrendreCommande from '../stand/PrendreCommande'
 import RetraitCommande from '../stand/RetraitCommande'
 import Cuisine from '../stand/Cuisine'
+import { cuisineDemo } from '../stand/cuisine/demoData'
 import shell from '../../App.module.css'
 
 const H = 3600 * 1000
@@ -206,7 +207,7 @@ export default function DevDashboard() {
             </button>
           </header>
           <main className={shell.content}>
-            {(() => { const P = PAGES[page]; return P ? <P onNavigate={setPage} view="admin" /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
+            {(() => { const P = PAGES[page]; return P === Cuisine ? <Cuisine demo={cuisineDemo()} /> : P ? <P onNavigate={setPage} view="admin" /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
           </main>
         </div>
         {isMobile && <BottomNav role="admin" currentPage={page} onNavigate={setPage} onMore={() => setDrawer(true)} canAccess={() => true} badges={{ alertes: 2 }} />}

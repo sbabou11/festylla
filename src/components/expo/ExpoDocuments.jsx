@@ -7,13 +7,17 @@
  */
 
 import React, { useState, useRef } from 'react'
-import { Upload, Download, Trash2, File, AlertCircle } from 'lucide-react'
+import { Upload, Download, Trash2, File, Paperclip } from 'lucide-react'
 import { uploadExpoDocument, deleteExpoDocument } from '../../firebase/service'
+import { Button, Card, Table, Empty, toast } from '../../ui'
+import { friendlyError } from '../../utils/errors'
+import ConfirmDialog from './ConfirmDialog'
+import s from './expo.module.css'
 
 export default function ExpoDocuments({ expo, eventId }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress]   = useState(0)
-  const [err, setErr]             = useState('')
+  const [toDelete, setToDelete]   = useState(null)
   const fileInputRef = useRef(null)
 
   const docs = expo.documents || []
@@ -21,11 +25,12 @@ export default function ExpoDocuments({ expo, eventId }) {
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setUploading(true); setProgress(0); setErr('')
+    setUploading(true); setProgress(0)
     try {
       await uploadExpoDocument(expo.id, file, (pct) => setProgress(pct), eventId)
+      toast.success('Document ajouté')
     } catch (e2) {
-      setErr(e2.message || 'Erreur lors du téléversement')
+      toast.error(friendlyError(e2, "Le document n'a pas été téléversé."))
     } finally {
       setUploading(false); setProgress(0)
       // Reset le champ pour pouvoir re-uploader le même fichier
@@ -34,9 +39,8 @@ export default function ExpoDocuments({ expo, eventId }) {
   }
 
   const handleDelete = async (docMeta) => {
-    if (!confirm(`Supprimer "${docMeta.name}" ?`)) return
     try { await deleteExpoDocument(expo.id, docMeta.path, eventId) }
-    catch (e) { alert(e.message) }
+    catch (e) { toast.error(friendlyError(e, "Le document n'a pas été supprimé.")); throw e }
   }
 
   const fmtSize = (bytes) => {
@@ -46,113 +50,63 @@ export default function ExpoDocuments({ expo, eventId }) {
     return `${(bytes / 1024 / 1024).toFixed(1)} Mo`
   }
 
+  const rows = docs.map((d, i) => ({ ...d, _key: d.path || `${i}` }))
+
   return (
-    <div style={{
-      background: 'var(--bg)',
-      border: '0.5px solid var(--border)',
-      borderRadius: 12, padding: '14px 16px', marginBottom: 10,
-    }}>
-      <div style={{
-        fontSize: 11, fontWeight: 700, color: 'var(--muted)',
-        textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10,
-      }}>
-        Pièces jointes {docs.length > 0 && `(${docs.length})`}
+    <Card
+      title={<span className={s.cardTitle}><Paperclip size={16} aria-hidden="true" />Pièces jointes{docs.length > 0 && ` (${docs.length})`}</span>}
+      subtitle="Formats : images, PDF, Word, Excel. Taille max : 10 Mo."
+    >
+      <div className={s.stack}>
+        <Table
+          rowKey="_key"
+          rows={rows}
+          empty={<Empty icon={File} title="Aucun document joint">Les contrats, attestations et justificatifs ajoutés ici restent attachés à l'exposant.</Empty>}
+          columns={[
+            { key: 'name', label: 'Document', render: d => (
+              <span className={s.docName}><File size={14} aria-hidden="true" className={s.docIcon} /><span className={s.ellipsis}>{d.name}</span></span>
+            ) },
+            { key: 'size', label: 'Taille', align: 'right', render: d => fmtSize(d.size) || '—' },
+            { key: 'actions', label: 'Actions', render: d => (
+              <span className={s.rowActions}>
+                <a href={d.url} target="_blank" rel="noopener noreferrer" className={s.iconLink}
+                  title="Ouvrir / télécharger" aria-label={`Ouvrir ${d.name}`}>
+                  <Download size={16} aria-hidden="true" />
+                </a>
+                <Button variant="ghost" size="sm" iconOnly icon={Trash2} className={s.dangerIcon}
+                  onClick={() => setToDelete(d)} aria-label={`Supprimer ${d.name}`} title="Supprimer" />
+              </span>
+            ) },
+          ]}
+        />
+
+        {/* Barre de progression upload */}
+        {uploading && (
+          <div className={s.upload} role="status">
+            <div className={s.uploadLabel}>Téléversement en cours… {progress} %</div>
+            <div className={s.track}><div className={s.trackFill} style={{ transform: `scaleX(${progress / 100})` }} /></div>
+          </div>
+        )}
+
+        <Button variant="secondary" block icon={Upload} loading={uploading}
+          onClick={() => fileInputRef.current?.click()}>
+          {uploading ? 'Téléversement…' : 'Téléverser un document'}
+        </Button>
+
+        <input ref={fileInputRef} type="file" onChange={handleFileChange}
+          accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+          className={s.hidden} tabIndex={-1} aria-hidden="true" />
       </div>
 
-      {docs.length === 0 && !uploading && (
-        <div style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic', marginBottom: 10 }}>
-          Aucun document joint pour l'instant.
-        </div>
-      )}
-
-      {/* Liste des documents */}
-      {docs.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 }}>
-          {docs.map((d, i) => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '8px 10px', background: 'var(--bg2)', borderRadius: 6,
-              fontSize: 12,
-            }}>
-              <File size={14} style={{ color: 'var(--muted)', flexShrink: 0 }}/>
-              <div style={{
-                flex: 1, minWidth: 0,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                <div style={{ color: 'var(--text)', fontWeight: 500 }}>{d.name}</div>
-                <div style={{ fontSize: 10, color: 'var(--muted)' }}>{fmtSize(d.size)}</div>
-              </div>
-              <a href={d.url} target="_blank" rel="noopener noreferrer"
-                title="Ouvrir / télécharger"
-                style={{
-                  width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--brand-dark)', borderRadius: 4,
-                  textDecoration: 'none',
-                }}>
-                <Download size={13}/>
-              </a>
-              <button onClick={() => handleDelete(d)} title="Supprimer"
-                style={{
-                  width: 28, height: 28, padding: 0,
-                  background: 'transparent', color: 'var(--red-dark)',
-                  border: 'none', borderRadius: 4, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                <Trash2 size={13}/>
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Barre de progression upload */}
-      {uploading && (
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
-            Téléversement en cours… {progress}%
-          </div>
-          <div style={{ height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%', width: `${progress}%`,
-              background: 'var(--brand)', transition: 'width .2s',
-            }}/>
-          </div>
-        </div>
-      )}
-
-      {err && (
-        <div style={{
-          padding: '8px 10px', marginBottom: 10,
-          background: 'var(--red-light)', color: 'var(--red-dark)',
-          borderRadius: 6, fontSize: 11,
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          <AlertCircle size={12}/> {err}
-        </div>
-      )}
-
-      {/* Bouton upload */}
-      <button onClick={() => fileInputRef.current?.click()}
-        disabled={uploading}
-        style={{
-          width: '100%', padding: '10px',
-          background: 'transparent', color: 'var(--text)',
-          border: '0.5px dashed var(--border2)', borderRadius: 6,
-          fontSize: 12, fontFamily: 'inherit',
-          cursor: uploading ? 'not-allowed' : 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-          WebkitTapHighlightColor: 'transparent',
-        }}>
-        <Upload size={13}/> {uploading ? 'Téléversement…' : 'Téléverser un document'}
-      </button>
-
-      <input ref={fileInputRef} type="file" onChange={handleFileChange}
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-        style={{ display: 'none' }}/>
-
-      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8, fontStyle: 'italic' }}>
-        Formats : images, PDF, Word, Excel. Taille max : 10 Mo.
-      </div>
-    </div>
+      <ConfirmDialog
+        open={!!toDelete}
+        title="Supprimer ce document ?"
+        hold icon={Trash2} confirmLabel="Maintenir pour supprimer"
+        onClose={() => setToDelete(null)}
+        onConfirm={() => handleDelete(toDelete)}
+      >
+        « {toDelete?.name} » sera supprimé définitivement.
+      </ConfirmDialog>
+    </Card>
   )
 }

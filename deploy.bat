@@ -77,6 +77,18 @@ echo  OK >> %LOGFILE%
 
 :: === 3. Build ===
 echo.
+echo [2b/5] Tests automatiques...
+echo [2b/5] tests >> %LOGFILE%
+call npm test >> %LOGFILE% 2>&1
+if %errorlevel% neq 0 (
+    echo  ERREUR : des tests automatiques echouent, rien n'a ete envoye.
+    echo  Detail dans %LOGFILE%
+    echo ERREUR tests >> %LOGFILE%
+    pause
+    exit /b 1
+)
+echo  OK
+
 echo [3/5] Build production...
 echo [3/5] build >> %LOGFILE%
 call npm run build >> %LOGFILE% 2>&1

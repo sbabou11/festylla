@@ -617,6 +617,7 @@ input, select { min-height: var(--touch); }
     column-count: 2;
   }
 }
+/* ─── Lignes de facture (Exposants) ─────────────────────────────
    Sur mobile, on masque l'en-tête colonne et on bascule les inputs sur 2 lignes :
    description sur sa propre ligne, puis qté + PU + total + delete sur ligne suivante. */
 @media (max-width: 520px) {
@@ -681,3 +682,9 @@ input, select { min-height: var(--touch); }
 .yc-spin {
   animation: ycSpin 0.8s linear infinite;
 }
+
+/* ── Changement de thème : le nouveau se répand en cercle (voir hooks/useTheme) ──
+   Pendant cette transition, toute la page est une seule image : pas de glissement de contenu */
+.yc-theme-vt * { view-transition-name: none !important; }
+.yc-theme-vt::view-transition-old(root),
+.yc-theme-vt::view-transition-new(root) { animation: none; mix-blend-mode: normal; }

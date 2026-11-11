@@ -19,7 +19,11 @@
 .invalid .control > input:focus, .invalid .control > select:focus, .invalid .control > textarea:focus { box-shadow: 0 0 0 3px var(--red-light); }
 .ok .control > input, .ok .control > select { border-color: var(--green); padding-right: 34px; }
 .check { position: absolute; right: 11px; top: 14px; color: var(--green); animation: pop var(--dur-slow) var(--ease); pointer-events: none; }
-.error { margin: 0; font-size: var(--fs-12); font-weight: 600; color: var(--red-dark); animation: in var(--dur-base) var(--ease); }
+.spin { position: absolute; right: 12px; top: 14px; width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--brand); border-right-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* Désactivé : grisé et pointillé, sans jouer sur l'opacité */
+.control > input:disabled, .control > select:disabled, .control > textarea:disabled { background: var(--bg3); color: var(--muted); border-style: dashed; cursor: not-allowed; }
+.error { display: flex; align-items: center; gap: 5px; margin: 0; font-size: var(--fs-12); font-weight: 600; color: var(--red-dark); animation: in var(--dur-base) var(--ease); }
 .hint  { margin: 0; font-size: var(--fs-12); color: var(--muted); }
 @keyframes pop { from { opacity: 0; transform: scale(.6); } }
 @keyframes in  { from { opacity: 0; transform: translateY(-3px); } }

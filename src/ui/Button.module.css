@@ -13,7 +13,10 @@
   transition: background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast);
 }
 .btn:active:not(:disabled) { transform: scale(0.97); }
-.btn:disabled { opacity: .4; cursor: not-allowed; box-shadow: none; }
+.btn:disabled { cursor: not-allowed; box-shadow: none; }
+/* Désactivé : gris franc, jamais une opacité (qui se lit comme un chargement) */
+.btn:disabled:not([aria-busy]) { background: var(--bg3); color: var(--muted); border-color: var(--border); }
+.btn[aria-busy] { cursor: progress; opacity: .85; }
 
 .sm { min-height: 32px; padding: 0 var(--space-3); font-size: var(--fs-12); }
 .md { min-height: var(--touch); padding: 0 var(--space-5); font-size: var(--fs-15); }

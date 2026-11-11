@@ -85,6 +85,11 @@ echo "[2/5] npm install" >> "$LOGFILE"
 npm install >> "$LOGFILE" 2>&1 || fail "npm install"
 ok
 
+# Tests automatiques : rien ne part si un calcul d'argent est faux
+echo -e "\n${YELLOW}[2b/5] Tests automatiques...${NC}"
+echo "[2b/5] tests" >> "$LOGFILE"
+npm test >> "$LOGFILE" 2>&1 || fail "Tests automatiques : rien n'a ete envoye, detail dans $LOGFILE"
+
 # 3. Build
 echo -e "\n${YELLOW}[3/5] Build production...${NC}"
 echo "[3/5] build" >> "$LOGFILE"
