@@ -10,6 +10,7 @@
  * Lot 1 (cette livraison) :
  *   - Écran 1 : accueil "Toucher pour commencer"
  *   - Écran 2 : identification QR + saisie manuelle
+ *   - Lecteur de QR branché (USB/Bluetooth, mode clavier) : voir utils/scanWedge
  *   - Validation du spectateur depuis Firestore
  *
  * Lots suivants (à venir) :
@@ -24,9 +25,10 @@
  *   - Pas d'historique, pas d'infos personnelles affichées.
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
-import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2 } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2, ScanLine } from 'lucide-react'
 import useKioskMode from '../../hooks/useKioskMode'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
+import { createWedge } from '../../utils/scanWedge'
 import { getSpectateur, setCurrentEvent, watchMenu, createCommande, getSettings } from '../../firebase/service'
 
 // ─── Étapes du flux ─────────────────────────────────────────────────────
@@ -217,6 +219,27 @@ export default function Borne() {
     }
   }, [])
 
+  // ─── Lecteur de QR (USB ou Bluetooth, mode clavier) ────────────────────
+  // Actif sur l'accueil et l'identification : présenter son QR suffit, même sans toucher l'écran.
+  // Ignoré pendant la commande, pour qu'un QR présenté par erreur ne change pas de client.
+  const scanActive = eventReady && !loading && (step === STEP.ACCUEIL || step === STEP.IDENTIFICATION)
+  const validateRef = useRef(validateSpec)
+  validateRef.current = validateSpec
+  useEffect(() => {
+    if (!scanActive) return
+    const wedge = createWedge({
+      onScan: (code) => { setStep(STEP.IDENTIFICATION); validateRef.current(code) },
+      onUnknown: () => {
+        setStep(STEP.IDENTIFICATION)
+        setError('Ce QR code n\'est pas un code spectateur. Présentez le QR de votre espace YllaCash.')
+      },
+    })
+    // Phase de capture : la rafale du lecteur (et son Entrée) n'atteint pas les boutons de la page
+    const onKey = (e) => { if (wedge.feed(e)) e.preventDefault() }
+    window.addEventListener('keydown', onKey, true)
+    return () => { window.removeEventListener('keydown', onKey, true); wedge.reset() }
+  }, [scanActive])
+
   // ─── Helpers de transition ────────────────────────────────────────────
   // resetSession : retour à l'accueil + effacement de toute donnée perso.
   // Appelé après commande terminée, inactivité, ou bouton "Terminer".
@@ -404,6 +427,9 @@ function Accueil({ onStart, standName, logoUrl }) {
         maxWidth: 500, lineHeight: 1.5,
       }}>
         Pas d'attente, paiement direct sur votre solde.
+        <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, fontWeight: 600 }}>
+          <ScanLine size={18} aria-hidden="true"/> Présentez votre QR devant le lecteur pour commencer
+        </span>
       </div>
       <div style={{
         background: COLORS.coral, color: '#fff',
@@ -502,7 +528,7 @@ function Identification({ onValidated, onCancel, loading, error, standName }) {
           Identifiez-vous
         </div>
         <div style={{ fontSize: 13, color: COLORS.muted }}>
-          Saisissez votre identifiant (ex : FY-A2B4)
+          Présentez votre QR devant le lecteur, ou saisissez votre identifiant (ex : FY-A2B4)
         </div>
       </div>
 

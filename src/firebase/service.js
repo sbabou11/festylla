@@ -22,7 +22,12 @@ const SEUIL_STOCK = 10
 
 // ── Lecture de l'eventId — TOUJOURS depuis le localStorage ──────────
 // Synchrone, fiable, pas de race condition
+// Événement imposé par la page (borne, écran public : ?ev= dans l'adresse) ou par l'app staff.
+// Passe avant le store : une tablette de borne peut garder la session d'un autre événement.
+let forcedEventId = null
+
 const getEventId = () => {
+  if (forcedEventId) return forcedEventId
   try {
     // 1. Lire depuis le store Zustand en mémoire (le plus fiable)
     const storeId = window.__yllacash_stores__?.eventStore?.getState?.()?.currentEventId
@@ -61,7 +66,7 @@ const auditCol = (evId) => eCol('audit',         evId)
 const settingsDoc = () => doc(db, 'settings', 'global')
 
 // setCurrentEvent conservé pour compatibilité (ne fait rien — on lit le localStorage)
-export const setCurrentEvent    = (_id) => {}
+export const setCurrentEvent    = (id) => { forcedEventId = id || null }
 export const getCurrentEventId  = () => getEventId()
 
 // ── Helpers internes ─────────────────────────────────────────────────
