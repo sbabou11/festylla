@@ -1092,6 +1092,15 @@ function MenuCard({ item, qty, onAdd, onRemove, onShowInfo }) {
         }}>Rupture</span>
       )}
 
+      {/* Image générée : mention discrète en haut à droite (la rupture prend la place) */}
+      {item.photoGenerated && photoSrc && !outOfStock && (
+        <span style={{
+          position: 'absolute', top: 8, right: 8,
+          background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.9)',
+          padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 500,
+        }}>Photo non contractuelle</span>
+      )}
+
       {/* Badge quantité en cart, en haut à gauche */}
       {inCart && (
         <span style={{

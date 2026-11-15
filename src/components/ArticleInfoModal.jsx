@@ -78,6 +78,13 @@ export default function ArticleInfoModal({ item, onClose, onAdd = null, qty = 0 
               </span>
             </div>
           )}
+          {item.photoGenerated && photoSrc && (
+            <span style={{
+              position: 'absolute', left: 10, bottom: 10,
+              background: 'rgba(0,0,0,0.5)', color: '#fff',
+              padding: '3px 8px', borderRadius: 4, fontSize: 10,
+            }}>Photo non contractuelle</span>
+          )}
           <button
             onClick={onClose}
             aria-label="Fermer"

@@ -46,9 +46,9 @@ export default function ProductGrid({ items, qtys, onAdd, onInfo, big = false })
               {m.photoUrl
                 ? (
                   <span className={clsx(s.pic, s.picPhoto)} data-pic>
-                    {/* Fond flouté pour combler les bandes laissées par contain */}
-                    <span className={s.picBlur} style={{ backgroundImage: `url(${m.photoUrl})` }} aria-hidden="true" />
-                    <img className={s.picImg} src={m.photoUrl} alt="" />
+                    {/* Image générée (carrée, produit centré) : plein cadre. Photo libre : entière sur fond flouté */}
+                    {!m.photoGenerated && <span className={s.picBlur} style={{ backgroundImage: `url(${m.photoUrl})` }} aria-hidden="true" />}
+                    <img className={clsx(s.picImg, m.photoGenerated && s.picCover)} src={m.photoUrl} alt="" />
                   </span>
                 )
                 : <span className={clsx(s.pic, s[toneFor(m.cat)])} data-pic>{initials(m.nom)}</span>}

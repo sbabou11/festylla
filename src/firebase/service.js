@@ -690,7 +690,8 @@ export const deleteMenuItem = async (id) => {
 // utils/imageUtils.js déjà utilisé pour le logo) pour éviter de stocker
 // des photos pro de 5–10 Mo qui ralentiraient le rendu de la borne.
 
-export const uploadMenuItemPhoto = async (itemId, file, onProgress = null, evId = null) => {
+// extra : champs ajoutés au document (ex. { photoGenerated: true } pour une image générée)
+export const uploadMenuItemPhoto = async (itemId, file, onProgress = null, evId = null, extra = {}) => {
   const { ref: sref, uploadBytesResumable, getDownloadURL, deleteObject } = await import('firebase/storage')
   const { storage } = await import('./config')
   const eid = evId || getEventId()
@@ -728,6 +729,9 @@ export const uploadMenuItemPhoto = async (itemId, file, onProgress = null, evId 
   await updateDoc(doc(db, 'events', eid, 'menu', itemId), {
     photoUrl: url,
     photoPath: path,
+    photoGenerated: false,
+    aiPending: null,
+    ...extra,
   })
 
   // Nettoyer l'ancienne photo en best-effort (échec non bloquant)
@@ -737,7 +741,7 @@ export const uploadMenuItemPhoto = async (itemId, file, onProgress = null, evId 
 
   await audit('MODIF_ARTICLE', {
     articleId: itemId, userType: 'admin',
-    label: `Photo ajoutée à l'article #${itemId} (${(file.size / 1024).toFixed(0)} Ko)`,
+    label: `${extra.photoGenerated ? 'Image générée' : 'Photo'} ajoutée à l'article #${itemId} (${(file.size / 1024).toFixed(0)} Ko)`,
   })
   return { url, path }
 }
@@ -758,7 +762,7 @@ export const deleteMenuItemPhoto = async (itemId, evId = null) => {
   try { await deleteObject(sref(storage, path)) }
   catch (e) { console.warn('deleteMenuItemPhoto storage:', e.message) }
 
-  await updateDoc(itemRef, { photoUrl: null, photoPath: null })
+  await updateDoc(itemRef, { photoUrl: null, photoPath: null, photoGenerated: false })
   await audit('MODIF_ARTICLE', {
     articleId: itemId, userType: 'admin',
     label: `Photo retirée de l'article #${itemId}`,

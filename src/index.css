@@ -688,3 +688,6 @@ input, select { min-height: var(--touch); }
 .yc-theme-vt * { view-transition-name: none !important; }
 .yc-theme-vt::view-transition-old(root),
 .yc-theme-vt::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
+/* Rotation des indicateurs de chargement écrits en style en ligne */
+@keyframes yc-spin { to { transform: rotate(360deg); } }
