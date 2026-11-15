@@ -14,6 +14,7 @@ const BY_CODE = {
   'resource-exhausted':  'Le service est saturé, un nouvel essai est possible dans un instant.',
   'failed-precondition': "L'opération n'est pas possible pour le moment.",
   'aborted':             'Une autre modification est passée en même temps, un nouvel essai est possible.',
+  'archive/read-only':   'Cette édition est une archive consultée en lecture seule.',
 }
 
 const TECHNICAL = /firebase|firestore|undefined|null|cannot read|is not |failed to fetch|network|typeerror|permission|missing|insufficient|invalid/i

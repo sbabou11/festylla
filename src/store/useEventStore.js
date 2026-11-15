@@ -9,8 +9,11 @@ import { persist } from 'zustand/middleware'
 import { db } from '../firebase/config'
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
-  onSnapshot, serverTimestamp, query, orderBy, getDoc, getDocs,
+  onSnapshot, serverTimestamp, query, orderBy, getDoc, getDocs, setReadOnlyEvents,
 } from 'firebase/firestore'
+
+// Édition archivée remise en base pour consultation : jamais active, jamais modifiable
+export const isArchiveEvent = (e) => !!e?.archive?.readOnly
 
 const useEventStore = create(
   persist(
@@ -40,15 +43,19 @@ const useEventStore = create(
           snap => {
             const evts    = snap.docs.map(d => ({ ...d.data(), id: d.id })).filter(e => !e.deleted)
             const current = get().currentEventId
+            setReadOnlyEvents(evts.filter(isArchiveEvent).map(e => e.id))
 
             // Auto-sélectionner l'événement actif (actif: true) en priorité
-            // Si aucun actif, prendre le premier de la liste
-            const activeEvent  = evts.find(e => e.actif === true)
+            // Si aucun actif, prendre le premier de la liste. Les archives ne sont
+            // jamais choisies automatiquement.
+            const live         = evts.filter(e => !isArchiveEvent(e))
+            const activeEvent  = live.find(e => e.actif === true)
             const stillValid   = current && evts.some(e => e.id === current)
+            const viewingArchive = isArchiveEvent(evts.find(e => e.id === current))
 
-            if (!stillValid && evts.length > 0) {
-              set({ currentEventId: (activeEvent || evts[0]).id })
-            } else if (stillValid && activeEvent && activeEvent.id !== current) {
+            if (!stillValid && (live.length || evts.length) > 0) {
+              set({ currentEventId: (activeEvent || live[0] || evts[0]).id })
+            } else if (stillValid && !viewingArchive && activeEvent && activeEvent.id !== current) {
               // L'admin a changé l'événement actif — synchroniser tous les appareils
               set({ currentEventId: activeEvent.id })
             }
@@ -64,6 +71,9 @@ const useEventStore = create(
       // Sélectionner un événement
       selectEvent: async (id) => {
         set({ currentEventId: id })
+        // Consulter une archive ne concerne que cet appareil : les stands et la borne
+        // restent sur l'édition en cours
+        if (isArchiveEvent(get().events.find(e => e.id === id))) return
         // Marquer cet événement comme actif dans Firebase
         // et désactiver tous les autres — synchronise tous les appareils
         try {
@@ -129,6 +139,10 @@ const useEventStore = create(
     }),
     {
       name: 'yllacash-event',
+      // Verrou des archives actif dès le rechargement, avant la réponse de Firestore
+      onRehydrateStorage: () => (state) => {
+        setReadOnlyEvents((state?.events || []).filter(isArchiveEvent).map(e => e.id))
+      },
       // Persiste l'ID actif + un cache léger des events de base (id, nom, dates,
       // logo, couleur) pour permettre un affichage immédiat au reload, en
       // attendant que Firestore livre la version fraîche du cache offline.
@@ -136,7 +150,7 @@ const useEventStore = create(
         currentEventId: s.currentEventId,
         events: (s.events || []).map(e => ({
           id: e.id, nom: e.nom, date: e.date, dateFin: e.dateFin,
-          logoSrc: e.logoSrc, couleur: e.couleur, actif: e.actif,
+          logoSrc: e.logoSrc, couleur: e.couleur, actif: e.actif, archive: e.archive ? { readOnly: !!e.archive.readOnly } : undefined,
         })),
       }),
     }

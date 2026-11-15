@@ -1,0 +1,14 @@
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: 10px var(--space-4);
+  background: var(--gold-light, #fdf3dc);
+  color: var(--gold-dark, #7a5200);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-13);
+  line-height: 1.4;
+}
+.icon { flex-shrink: 0; }
+.text { flex: 1; min-width: 220px; }

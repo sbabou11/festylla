@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { fileURLToPath } from 'node:url'
 
 // Timestamp de build (date+heure de compilation) — format DDMM.HHMM
 // Différent du numéro de VERSION (qui est manuel, défini dans src/utils/buildInfo.js).
@@ -46,7 +47,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico,webmanifest}'],
         // Exclure le SW FCM du cache Workbox
-        globIgnores: ['firebase-messaging-sw.js', 'sw-fcm.js'],
+        globIgnores: ['firebase-messaging-sw.js', 'sw-fcm.js', '**/exceljs*.js'],  // ~1 Mo, chargé seulement pour les archives
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,
         // skipWaiting + clientsClaim laissés à FALSE :
@@ -77,6 +78,10 @@ export default defineConfig({
     }),
   ],
   resolve: {
-    alias: { '@': '/src' },
+    alias: [
+      { find: '@', replacement: '/src' },
+      // Verrou lecture seule des éditions archivées (voir src/firebase/guardedFirestore.js)
+      { find: /^firebase\/firestore$/, replacement: fileURLToPath(new URL('./src/firebase/guardedFirestore.js', import.meta.url)) },
+    ],
   },
 })

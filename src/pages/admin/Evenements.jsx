@@ -4,10 +4,13 @@
  * - Bouton "Nouvel événement" en bas (FAB sur mobile)
  * - Copie nommée dans une fenêtre, suppression confirmée par appui long
  * La couleur d'un événement est une donnée : elle passe par la variable CSS --c.
+ * Archives : télécharger une édition en ZIP, la supprimer définitivement, la rouvrir
+ * en lecture seule (voir evenements/ArchiveDialogs.jsx et src/archive/).
  */
 import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
-import useEventStore from '../../store/useEventStore'
+import useEventStore, { isArchiveEvent } from '../../store/useEventStore'
+import { ArchiveDialog, RestoreDialog, RemoveArchiveDialog } from './evenements/ArchiveDialogs'
 import { compressImage } from '../../utils/imageUtils'
 import useAuthStore  from '../../store/useAuthStore'
 import useAppStore   from '../../store/useAppStore'
@@ -15,7 +18,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { friendlyError } from '../../utils/errors'
 import {
   Plus, Pencil, Trash2, Copy, X, Save,
-  Calendar, MapPin, CheckCircle, ArrowRight, Upload, Info,
+  Calendar, MapPin, CheckCircle, ArrowRight, Upload, Info, Archive, Eye, FolderOpen,
 } from 'lucide-react'
 import { Button, Empty, Skeleton, Dialog, HoldButton, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './evenements/evenements.module.css'
@@ -50,8 +53,9 @@ const EventIcon = ({ event, size = 'md' }) => {
 }
 
 // ── Carte événement ──────────────────────────────────────────────
-const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, isMobile }) => {
+const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, onArchive, onCloseArchive, isMobile }) => {
   const couleur = event.couleur || '#1a6b7a'
+  const archived = isArchiveEvent(event)
   return (
     <article className={clsx(s.card, isActive && s.cardActive)} style={{ '--c': couleur }}>
       {/* Header : icône + nom + badge actif */}
@@ -60,7 +64,9 @@ const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, i
         <div className={s.cardInfo}>
           <div className={s.cardTitleRow}>
             <h3 className={s.cardTitle}>{event.nom}</h3>
-            {isActive && <span className={s.activeTag}>Actif</span>}
+            {archived
+              ? <span className={s.archiveTag}><Archive size={11} aria-hidden="true"/> Archive · lecture seule</span>
+              : isActive && <span className={s.activeTag}>Actif</span>}
           </div>
           {event.description && <p className={s.cardDesc}>{event.description}</p>}
           {/* Infos date + lieu */}
@@ -81,6 +87,17 @@ const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, i
       </div>
 
       {/* Actions */}
+      {archived ? (
+        <div className={s.cardActions}>
+          {isActive
+            ? <span className={s.activeLabel}><Eye size={14} aria-hidden="true"/> En consultation</span>
+            : <Button size="sm" icon={Eye} onClick={() => onSelect(event.id)}>Consulter</Button>}
+          <Button variant="secondary" size="sm" icon={Copy} iconOnly title="Dupliquer (nouvelle édition à partir de cette carte)"
+            aria-label={`Dupliquer ${event.nom}`} onClick={() => onDuplicate(event)}/>
+          <Button variant="secondary" size="sm" icon={Archive} className={s.pushRight}
+            onClick={() => onCloseArchive(event)}>Refermer</Button>
+        </div>
+      ) : (
       <div className={s.cardActions}>
         {!isActive ? (
           <Button size="sm" icon={ArrowRight} onClick={() => onSelect(event.id)}>Activer</Button>
@@ -91,9 +108,12 @@ const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, i
           iconOnly={isMobile} aria-label={`Modifier ${event.nom}`}>Modifier</Button>
         <Button variant="secondary" size="sm" icon={Copy} iconOnly title="Dupliquer"
           aria-label={`Dupliquer ${event.nom}`} onClick={() => onDuplicate(event)}/>
-        <Button variant="danger" size="sm" icon={Trash2} iconOnly className={s.pushRight}
+        <Button variant="secondary" size="sm" icon={Archive} iconOnly={isMobile} className={s.pushRight}
+          aria-label={`Archiver ${event.nom}`} title="Télécharger une archive, puis supprimer si besoin" onClick={() => onArchive(event)}>Archiver</Button>
+        <Button variant="danger" size="sm" icon={Trash2} iconOnly
           aria-label={`Supprimer ${event.nom}`} onClick={() => onDelete(event)}/>
       </div>
+      )}
     </article>
   )
 }
@@ -262,6 +282,9 @@ export default function Evenements() {
   const [copy,       setCopy]       = useState(null)   // { evt, nom }
   const [copyTried,  setCopyTried]  = useState(false)
   const copyFormRef = useRef(null)
+  const [archiving,    setArchiving]    = useState(null)   // événement à archiver
+  const [restoring,    setRestoring]    = useState(false)
+  const [closingArch,  setClosingArch]  = useState(null)   // archive à refermer
 
   useEffect(() => {
     const unsub = watchEvents()
@@ -328,7 +351,7 @@ export default function Evenements() {
     </div>
   )
 
-  const activeEvent = visible.find(e => e.id === currentEventId)
+  const activeEvent = visible.find(e => e.id === currentEventId && !isArchiveEvent(e))
 
   return (
     <div className={clsx(s.page, isMobile && s.pageFab)}>
@@ -369,9 +392,18 @@ export default function Evenements() {
               onEdit={setEditing}
               onDelete={handleDelete}
               onDuplicate={handleDuplicate}
+              onArchive={setArchiving}
+              onCloseArchive={setClosingArch}
               isMobile={isMobile}
             />
           ))}
+        </div>
+      )}
+
+      {/* Rouvrir une édition archivée */}
+      {!showForm && !editing && (
+        <div className={s.restoreRow}>
+          <Button variant="ghost" size="sm" icon={FolderOpen} onClick={() => setRestoring(true)}>Consulter une archive</Button>
         </div>
       )}
 
@@ -415,6 +447,10 @@ export default function Evenements() {
         )}
       </Dialog>
 
+      <ArchiveDialog event={archiving} onClose={() => setArchiving(null)}/>
+      <RestoreDialog open={restoring} onClose={() => setRestoring(false)} onRestored={(id) => selectEvent(id)}/>
+      <RemoveArchiveDialog event={closingArch} onClose={() => setClosingArch(null)}/>
+
       {/* Suppression (irréversible côté interface) */}
       <Dialog open={!!pendingDel} onClose={() => setPendingDel(null)} title="Supprimer cet événement ?"
         footer={<>
@@ -422,7 +458,8 @@ export default function Evenements() {
           <HoldButton tone="danger" icon={Trash2} onConfirm={confirmDelete}>Maintenir pour supprimer</HoldButton>
         </>}>
         <p className={s.dialogText}>
-          Supprimer <b>« {pendingDel?.nom} »</b> ? Toutes ses données seront désactivées.
+          Masquer <b>« {pendingDel?.nom} »</b> ? L'événement disparaît de la liste mais ses données restent dans la base.
+          Pour les effacer vraiment, utilisez plutôt « Archiver ».
         </p>
       </Dialog>
     </div>

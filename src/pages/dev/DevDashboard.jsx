@@ -43,6 +43,8 @@ import Cachets from '../admin/Cachets'
 import GestionArtistes from '../admin/GestionArtistes'
 import Exposants from '../admin/Exposants'
 import Finances from '../admin/Finances'
+import Evenements from '../admin/Evenements'
+import ArchiveBanner from '../../components/ArchiveBanner'
 import Remboursement from '../billetterie/Remboursement'
 import PrendreCommande from '../stand/PrendreCommande'
 import RetraitCommande from '../stand/RetraitCommande'
@@ -60,13 +62,13 @@ const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, sta
   nouveau: Nouveau, credit: Credit, retrait: Retrait, debit: Debit,
   accueil: Accueil, comptabilite: Comptabilite, operations: Operations, 'equipe-hub': EquipeHub, 'spectateurs-hub': SpectateursHub,
   cachets: Cachets, 'gestion-artistes': GestionArtistes, exposants: Exposants, finances: Finances, remboursement: Remboursement,
-  'prendre-commande': PrendreCommande, 'retrait-commande': RetraitCommande, cuisine: Cuisine }
+  'prendre-commande': PrendreCommande, 'retrait-commande': RetraitCommande, cuisine: Cuisine, evenements: Evenements }
 const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres', transactions: 'Transactions', alertes: 'Alertes financières',
   'qr-entree': 'QR code entrée', benevoles: 'Bénévoles', 'reservations-admin': 'Réservations', spectateurs: 'Spectateurs', 'mon-profil': 'Mon profil',
   nouveau: 'Nouveau QR', credit: 'Créditer', retrait: 'Retrait réservation', debit: 'Encaisser',
   accueil: 'Accueil', comptabilite: 'Comptabilité', operations: 'Opérations', 'equipe-hub': 'Équipe & Bénévoles', 'spectateurs-hub': 'Spectateurs & Accès',
   cachets: 'Cachets artistes', 'gestion-artistes': 'Gestion des artistes', exposants: 'Exposants', finances: 'Finances', remboursement: 'Remboursement',
-  'prendre-commande': 'Prendre commande', 'retrait-commande': 'Retrait commande', cuisine: 'Cuisine' }
+  'prendre-commande': 'Prendre commande', 'retrait-commande': 'Retrait commande', cuisine: 'Cuisine', evenements: 'Événements' }
 
 function sampleData(now) {
   const spectateurs = NAMES.map((nom, i) => ({ id: `YT-${(4100 + i * 37).toString(16).toUpperCase()}`, nom, solde: i === 6 ? -150 : 500 + i * 650 }))
@@ -175,8 +177,15 @@ export default function DevDashboard() {
     // currentEventId est persisté : on remet la vraie valeur en quittant l'aperçu
     const previousEventId = useEventStore.getState().currentEventId
     useEventStore.setState({
-      events: [{ id: 'demo', nom: 'Festylla 2026', objectifJour: 60000 }],
+      events: [
+        { id: 'demo', nom: 'Festylla 2026', objectifJour: 60000, actif: true, date: '2026-05-22', dateFin: '2026-05-25', lieu: 'Strasbourg' },
+        { id: 'demo-2025', nom: 'Festylla 2025', date: '2025-05-23', dateFin: '2025-05-26', lieu: 'Strasbourg', archive: { readOnly: true, archivedAt: '2026-11-15T10:00:00Z' } },
+      ],
       currentEventId: 'demo',
+      // Aperçu : pas d'abonnement Firestore, sélection locale seulement
+      eventLoading: false,
+      watchEvents: () => () => {},
+      selectEvent: async (id) => useEventStore.setState({ currentEventId: id }),
       updateEvent: async (id, patch) => useEventStore.setState(st => ({ events: st.events.map(e => e.id === id ? { ...e, ...patch } : e) })),
     })
     setReady(true)
@@ -206,6 +215,7 @@ export default function DevDashboard() {
               <Search size={16} />{!isMobile && <><span className={shell.searchText}>Chercher un spectateur, un article…</span><kbd className={shell.kbd}>Ctrl K</kbd></>}
             </button>
           </header>
+          <ArchiveBanner />
           <main className={shell.content}>
             {(() => { const P = PAGES[page]; return P === Cuisine ? <Cuisine demo={cuisineDemo()} /> : P ? <P onNavigate={setPage} view="admin" /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
           </main>

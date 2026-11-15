@@ -230,3 +230,28 @@
   .formActions > button { flex: 1; }
   .urlInput { min-width: 0; flex-basis: 100%; }
 }
+
+/* ── Archives ─────────────────────────────────────────────── */
+.archiveTag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--gold-light, #fdf3dc); color: var(--gold-dark, #7a5200);
+  font-size: var(--fs-11); font-weight: 700;
+}
+.archiveStep { display: grid; gap: var(--space-2); justify-items: start; }
+.archiveStep + .archiveStep { padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.archiveStepTitle { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--fs-15); font-weight: 700; }
+.stepNum {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--brand-light); color: var(--brand-dark); font-size: var(--fs-12); font-weight: 800;
+}
+.archiveSummary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; font-size: var(--fs-13); color: var(--green-dark, #1d6b3a); }
+.problemList { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: var(--fs-13); color: var(--red-dark, #a32d2d); }
+.problemList li { display: flex; gap: 6px; align-items: flex-start; }
+.confirmInput { width: 100%; padding: 8px 10px; border: 1px solid var(--border2); border-radius: var(--radius-md, 8px); font: inherit; background: var(--bg); color: var(--text); }
+.dialogHint { margin: 0; font-size: var(--fs-12); color: var(--muted); }
+.progress { display: grid; gap: 6px; width: 100%; }
+.progressTrack { height: 6px; border-radius: 3px; background: var(--bg2); overflow: hidden; }
+.progressFill { height: 100%; background: var(--brand); transition: width var(--dur-slow, 250ms) ease; }
+.progressLabel { font-size: var(--fs-12); color: var(--muted); }
+.restoreRow { display: flex; justify-content: flex-end; }

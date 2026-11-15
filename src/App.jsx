@@ -21,6 +21,7 @@ import BottomNav from './components/BottomNav'
 import Studio   from './components/Studio'
 import Avatar   from './components/Avatar'
 import UpdateBanner from './components/UpdateBanner'
+import ArchiveBanner from './components/ArchiveBanner'
 import { useTheme }      from './hooks/useTheme'
 import { useOffline }    from './hooks/useOffline'
 import { useFirestore }  from './hooks/useFirestore'
@@ -465,6 +466,9 @@ function StaffApp() {
               </button>
             </div>
           </header>
+
+          {/* Édition archivée consultée : lecture seule */}
+          <ArchiveBanner />
 
           {/* Contenu de la page */}
           <main className={shell.content}>

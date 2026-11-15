@@ -6,3 +6,6 @@
 deploy-log.txt
 dist/
 node_modules/
+
+# Exports de données (budget, rapports) : ne pas versionner
+exports/
