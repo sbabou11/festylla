@@ -15,10 +15,11 @@ import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
-import { Plus, Trash2, Pencil, X, Save, PackagePlus } from 'lucide-react'
+import { Plus, Trash2, Pencil, X, Save, PackagePlus, FileSpreadsheet } from 'lucide-react'
 import { Button, Card, Badge, Tabs, Empty, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './menu/menu.module.css'
 import MenuItemPhoto from '../../components/MenuItemPhoto'
+import MenuImportDialog from './menu/MenuImportDialog'
 import { ALLERGENES_UE } from '../../utils/allergenes'
 
 // ── Icônes ──────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ export default function Menu() {
 
   // ── Articles ─────────────────────────────────────────────────────
   const [editingItem, setEditingItem] = useState(null)
+  const [importing,   setImporting]   = useState(false)
   const [itemForm,    setItemForm]    = useState({ nom:'', prix:0, stock:100, cat:'', typeConsommation:'' })
   const [savingItem,  setSavingItem]  = useState(false)
   const [itemTried,   setItemTried]   = useState(false)
@@ -278,7 +280,10 @@ export default function Menu() {
           <Button icon={Plus} onClick={startNewCat}>Nouvelle catégorie</Button>
         )}
         {section === 'articles' && editingItem === null && (
-          <Button icon={Plus} onClick={startNewItem}>Ajouter un article</Button>
+          <div className={s.toolbarActions}>
+            <Button variant="secondary" icon={FileSpreadsheet} onClick={() => setImporting(true)}>Importer</Button>
+            <Button icon={Plus} onClick={startNewItem}>Ajouter un article</Button>
+          </div>
         )}
       </div>
 
@@ -580,6 +585,9 @@ export default function Menu() {
           </Field>
         </form>
       </Dialog>
+
+      <MenuImportDialog open={importing} onClose={() => setImporting(false)}
+        menu={menu} categories={categories} eventId={currentEventId}/>
     </div>
   )
 }

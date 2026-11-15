@@ -155,3 +155,30 @@
 /* Dialog réassort */
 .dialogStack { display: grid; gap: var(--space-3); }
 .dialogText { margin: 0; font-size: var(--fs-13); color: var(--text); line-height: 1.5; }
+
+/* ── Import depuis Excel ─────────────────────────────────── */
+.toolbarActions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.importPanel.importPanel { max-width: min(920px, 100%); }
+.importStack { display: grid; gap: var(--space-3); }
+.importText { margin: 0; font-size: var(--fs-13); line-height: 1.5; }
+.importHint { margin: 0; font-size: var(--fs-12); color: var(--muted); }
+.importActions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.importError { display: flex; gap: 6px; align-items: flex-start; margin: 0; font-size: var(--fs-13); color: var(--red-dark, #a32d2d); }
+.importOk { display: flex; gap: 6px; align-items: flex-start; margin: 0; font-size: var(--fs-14); font-weight: 600; color: var(--green-dark, #1d6b3a); }
+.importSummary { display: flex; gap: var(--space-4); flex-wrap: wrap; font-size: var(--fs-13); }
+.importChoice { margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); display: grid; gap: 6px; font-size: var(--fs-13); }
+.importChoice legend { padding: 0 4px; font-weight: 700; font-size: var(--fs-12); color: var(--muted); }
+.importChoice label, .importCheck { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.importCheck { font-size: var(--fs-13); }
+.importTableWrap { max-height: 46vh; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-md, 8px); }
+.importTable { width: 100%; border-collapse: collapse; font-size: var(--fs-12); }
+.importTable th { position: sticky; top: 0; background: var(--bg2); text-align: left; padding: 6px 8px; font-weight: 700; white-space: nowrap; }
+.importTable td { padding: 6px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+.importTable .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.importSub { color: var(--muted); font-size: var(--fs-11); max-width: 260px; }
+.rowBad { background: var(--red-light, #fcebeb); }
+.importBad { color: var(--red-dark, #a32d2d); display: flex; gap: 4px; align-items: flex-start; }
+.importWarn { color: var(--gold-dark, #7a5200); display: flex; gap: 4px; align-items: flex-start; font-size: var(--fs-11); }
+.importFails { margin: 0; padding-left: 18px; font-size: var(--fs-12); max-height: 180px; overflow: auto; }
+.importTrack { height: 8px; border-radius: 4px; background: var(--bg2); overflow: hidden; }
+.importFill { height: 100%; background: var(--brand); transition: width var(--dur-slow, 250ms) ease; }
