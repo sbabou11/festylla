@@ -19,9 +19,7 @@ import {
 import { Button, Card, Badge, Tabs, Empty, Dialog, Sheet, PasswordStrength, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './staff/staff.module.css'
 
-// Adresse e-mail facultative : vide, ou de la forme nom@domaine.ext
-const cleanEmail = (v) => (v || '').trim().toLowerCase() || null
-const emailOk = (v) => !(v || '').trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
+import { cleanEmail, emailOk } from '../../utils/msAccount'
 
 // ── Pages assignables ──────────────────────────────────────────────
 const ALL_PAGES = [

@@ -7,12 +7,14 @@ import clsx from 'clsx'
 import { Save, X, Check } from 'lucide-react'
 import { Button, Field, focusFirstInvalid } from '../../../ui'
 import { JOURS, CRENEAUX, ITEM_CFG, calcDroits, countCreneaux } from './constants'
+import { cleanEmail, emailOk } from '../../../utils/msAccount'
 import s from './benevoles.module.css'
 
 export default function FormBenevole({ initial, onSave, onCancel }) {
   const [nom, setNom]           = useState(initial?.nom || '')
   const [prenom, setPrenom]     = useState(initial?.prenom || '')
   const [poste, setPoste]       = useState(initial?.poste || '')
+  const [email, setEmail]       = useState(initial?.email || '')
   const [creneaux, setCreneaux] = useState(initial?.creneaux || {})
   const [saving, setSaving]     = useState(false)
   const [tried, setTried]       = useState(false)
@@ -29,10 +31,10 @@ export default function FormBenevole({ initial, onSave, onCancel }) {
   const nbCreneaux = countCreneaux(creneaux)
 
   const handleSave = async () => {
-    if (!nom.trim() || !prenom.trim()) { setTried(true); focusFirstInvalid(formRef.current); return }
+    if (!nom.trim() || !prenom.trim() || !emailOk(email)) { setTried(true); focusFirstInvalid(formRef.current); return }
     setSaving(true)
     try {
-      await onSave({ nom: nom.trim(), prenom: prenom.trim(), poste: poste.trim(), creneaux, droits })
+      await onSave({ nom: nom.trim(), prenom: prenom.trim(), poste: poste.trim(), email: cleanEmail(email), creneaux, droits })
     } finally { setSaving(false) }
   }
 
@@ -56,6 +58,13 @@ export default function FormBenevole({ initial, onSave, onCancel }) {
         <input id="benev-poste" className={s.input} value={poste} onChange={e=>setPoste(e.target.value)}
           placeholder="ex : Sécurité, Billetterie, Bar…"/>
       </div>
+      {/* Adresse Microsoft : relie le bouton « Se connecter avec Microsoft » à ce bénévole */}
+      <Field label={<span className={s.label}>Adresse e-mail Microsoft <span className={s.labelHint}>(pour « Se connecter avec Microsoft », facultatif)</span></span>}
+        error={emailOk(email) ? null : 'Adresse e-mail incomplète'} valid={emailOk(email)} showError={tried}>
+        <input id="benev-email" type="email" value={email} onChange={e=>setEmail(e.target.value)}
+          placeholder="prenom.nom@maisonyllastrasbourg.onmicrosoft.com"
+          autoCapitalize="none" autoComplete="off" spellCheck={false}/>
+      </Field>
 
       {/* Créneaux de présence */}
       <fieldset className={s.slots}>

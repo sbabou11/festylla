@@ -236,3 +236,4 @@
   .formActions > button { flex: 1; }
   .mini { width: 100%; justify-content: flex-start; padding-left: 56px; }
 }
+.labelHint { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--brand-dark); }

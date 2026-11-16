@@ -49,3 +49,15 @@ describe('connexion Microsoft : compte et annuaire', () => {
     expect(microsoftErrorMessage('autre')).toMatch(/mot de passe/)
   })
 })
+
+import { cleanEmail, emailOk } from './msAccount'
+describe('champ « Adresse e-mail Microsoft »', () => {
+  it('accepte vide ou une adresse complète, refuse une adresse incomplète', () => {
+    expect(emailOk('')).toBe(true); expect(emailOk(undefined)).toBe(true)
+    expect(emailOk(' Awa@maisonyllastrasbourg.onmicrosoft.com ')).toBe(true)
+    expect(emailOk('awa@')).toBe(false); expect(emailOk('awa')).toBe(false)
+  })
+  it('enregistre en minuscules, ou rien si vide', () => {
+    expect(cleanEmail(' Awa@Maison.COM ')).toBe('awa@maison.com'); expect(cleanEmail('  ')).toBe(null)
+  })
+})

@@ -73,3 +73,7 @@ export function microsoftErrorMessage(code) {
       return 'Connexion Microsoft impossible. Réessayez, ou utilisez votre identifiant et votre mot de passe.'
   }
 }
+
+/* Champ « Adresse e-mail Microsoft » des fiches : facultatif, vide ou nom@domaine.ext */
+export const cleanEmail = (v) => (v || '').trim().toLowerCase() || null
+export const emailOk = (v) => !(v || '').trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
