@@ -70,7 +70,8 @@ export function microsoftErrorMessage(code) {
     case 'auth/network-request-failed':
       return 'Pas de connexion internet. Réessayez dans un instant.'
     default:
-      return 'Connexion Microsoft impossible. Réessayez, ou utilisez votre identifiant et votre mot de passe.'
+      // Le code technique aide à trouver le réglage en cause (guide, « En cas de problème »)
+      return `Connexion Microsoft impossible${code ? ` (code : ${code})` : ''}. Réessayez, ou utilisez votre identifiant et votre mot de passe.`
   }
 }
 

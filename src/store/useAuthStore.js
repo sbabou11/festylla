@@ -199,6 +199,7 @@ const useAuthStore = create(
           provider.setCustomParameters({ tenant: MS_TENANT })
           result = await signInWithPopup(auth, provider)
         } catch (err) {
+          console.error('Connexion Microsoft :', err)
           set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code) })
           return false
         }
@@ -220,7 +221,7 @@ const useAuthStore = create(
           return await openSession(set, data, found.id, (found.data.username || '').toLowerCase(), 'microsoft')
         } catch (err) {
           console.error('Connexion Microsoft :', err)
-          set({ loginLoading:false, loginError:'Connexion Microsoft impossible. Réessayez, ou utilisez votre identifiant et votre mot de passe.' })
+          set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code || 'lecture-des-fiches') })
           return false
         } finally {
           // YllaCash garde sa propre session : la session Firebase ne sert qu'à lire le compte Microsoft
