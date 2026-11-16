@@ -19,6 +19,10 @@ import {
 import { Button, Card, Badge, Tabs, Empty, Dialog, Sheet, PasswordStrength, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './staff/staff.module.css'
 
+// Adresse e-mail facultative : vide, ou de la forme nom@domaine.ext
+const cleanEmail = (v) => (v || '').trim().toLowerCase() || null
+const emailOk = (v) => !(v || '').trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())
+
 // ── Pages assignables ──────────────────────────────────────────────
 const ALL_PAGES = [
   { id:'credit',             label:'Créditer',             group:'Billetterie' },
@@ -174,11 +178,11 @@ export default function Staff() {
   const roleInfo = (id) => allRoles.find(r => r.id === id) || { nom:id, couleur:'#888' }
 
   // ── Handlers membre ───────────────────────────────────────────────
-  const openNewMember = () => { setMemberTried(false); setMemberForm({ nom:'', username:'', role:'stand', couleur:'#1a6b7a', pwd:'', eventIds:[] }) }
-  const openEditMember = (s) => { setMemberTried(false); setMemberForm({ ...s, email: undefined, pwd:'', username: s.username || genUsername(s.nom), eventIds: s.eventIds || [] }) }
+  const openNewMember = () => { setMemberTried(false); setMemberForm({ nom:'', username:'', email:'', role:'stand', couleur:'#1a6b7a', pwd:'', eventIds:[] }) }
+  const openEditMember = (s) => { setMemberTried(false); setMemberForm({ ...s, email: s.email || '', pwd:'', username: s.username || genUsername(s.nom), eventIds: s.eventIds || [] }) }
 
   const saveMember = async () => {
-    if (!memberForm.nom.trim()) { setMemberTried(true); focusFirstInvalid(memberFormRef.current); return }
+    if (!memberForm.nom.trim() || !emailOk(memberForm.email)) { setMemberTried(true); focusFirstInvalid(memberFormRef.current); return }
     setSavingMember(true)
     try {
       const docId = memberForm._docId || memberForm.id
@@ -198,6 +202,7 @@ export default function Staff() {
         await ud(staffRef, {
           nom:      memberForm.nom.trim(),
           username: autoUsername.toLowerCase(),
+          email:    cleanEmail(memberForm.email),
           role:     memberForm.role,
           couleur:  memberForm.couleur,
           eventIds: forcedEventIds,
@@ -210,6 +215,7 @@ export default function Staff() {
         await addStaff({
           nom:      memberForm.nom.trim(),
           username: autoUsername.toLowerCase(),
+          email:    cleanEmail(memberForm.email),
           role:     memberForm.role,
           couleur:  memberForm.couleur,
           avatar:   null,
@@ -539,6 +545,15 @@ export default function Staff() {
                 </p>
               )}
             </div>
+
+            {/* Adresse Microsoft : relie le bouton « Se connecter avec Microsoft » à ce membre */}
+            <Field label={<span className={s.label}>Adresse e-mail Microsoft <span className={s.labelHint}>(pour « Se connecter avec Microsoft », facultatif)</span></span>}
+              error={emailOk(memberForm.email) ? null : 'Adresse e-mail incomplète'} valid={emailOk(memberForm.email)} showError={memberTried}>
+              <input id="staff-email" type="email" value={memberForm.email || ''}
+                onChange={e => setMemberForm(f => ({...f, email: e.target.value}))}
+                placeholder="prenom.nom@maisonyllastrasbourg.onmicrosoft.com"
+                autoCapitalize="none" autoComplete="off" spellCheck={false}/>
+            </Field>
 
             {/* Rôle */}
             <div className={s.field}>

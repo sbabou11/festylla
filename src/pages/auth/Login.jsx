@@ -3,14 +3,14 @@
  * Carte en verre dépoli sur le dégradé signature (AuthShell).
  */
 import React, { useRef, useState } from 'react'
-import useAuthStore from '../../store/useAuthStore'
+import useAuthStore, { MS_TENANT } from '../../store/useAuthStore'
 import { Eye, EyeOff, LogIn } from 'lucide-react'
 import { Button, Field, focusFirstInvalid } from '../../ui'
 import AuthShell from './AuthShell'
 import s from './auth.module.css'
 
 export default function Login() {
-  const { login, loginError, loginLoading, requestPasswordReset } = useAuthStore()
+  const { login, loginMicrosoft, loginError, loginLoading, requestPasswordReset } = useAuthStore()
   const [username, setUsername] = useState('')
   const [pwd, setPwd] = useState('')
   const [showPwd, setShowPwd] = useState(false)
@@ -48,6 +48,16 @@ export default function Login() {
     <AuthShell>
       <form ref={formRef} onSubmit={doLogin} className={s.card} noValidate>
         <h2 className={s.cardTitle}>Connexion staff</h2>
+
+        {MS_TENANT && (
+          <>
+            <button type="button" className={s.ms} onClick={() => loginMicrosoft()} disabled={loginLoading} aria-busy={loginLoading}>
+              <span className={s.msLogo} aria-hidden="true"><i /><i /><i /><i /></span>
+              Se connecter avec Microsoft
+            </button>
+            <div className={s.or}><span>ou</span></div>
+          </>
+        )}
 
         <Field label={<span className={s.label}>Nom d'utilisateur</span>} error={userErr} showError={tried}>
           <input className={s.input} type="text" value={username} onChange={e => setUsername(e.target.value)} required

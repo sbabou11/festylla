@@ -62,6 +62,25 @@
 .cardSub { margin: -10px 0 0; font-size: var(--fs-12); color: var(--muted); }
 
 .field { display: grid; gap: 6px; }
+
+/* Connexion Microsoft (au-dessus du formulaire de secours) */
+.ms {
+  display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; width: 100%;
+  padding: 0 16px; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--bg);
+  color: var(--text); font-family: inherit; font-size: var(--fs-15); font-weight: 700; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, transform .1s;
+}
+.ms:focus-visible { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
+.ms:active { transform: scale(.99); }
+.ms:disabled { opacity: .6; cursor: progress; }
+@media (hover: hover) { .ms:hover { border-color: var(--brand); } }
+.msLogo { display: grid; grid-template-columns: 9px 9px; gap: 2px; flex-shrink: 0; }
+.msLogo i { width: 9px; height: 9px; background: #F25022; }
+.msLogo i:nth-child(2) { background: #7FBA00; }
+.msLogo i:nth-child(3) { background: #00A4EF; }
+.msLogo i:nth-child(4) { background: #FFB900; }
+.or { display: flex; align-items: center; gap: 12px; font-size: var(--fs-12); color: var(--muted); }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 .label { font-size: var(--fs-11); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .inputWrap { position: relative; }
 .input {

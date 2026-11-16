@@ -4,9 +4,14 @@
  */
 import { create } from 'zustand'
 import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore'
-import { db } from '../firebase/config'
+import { OAuthProvider, signInWithPopup, signOut, getAdditionalUserInfo } from 'firebase/auth'
+import { db, auth } from '../firebase/config'
 import { verifyPassword } from '../utils/kpis'
+import { jwtClaims, microsoftEmail, microsoftErrorMessage, pickAccountByEmail, tenantAllowed } from '../utils/msAccount'
 import { persist } from 'zustand/middleware'
+
+// Annuaire Microsoft Fest'Ylla (ID de l'annuaire / locataire). Vide : pas de bouton Microsoft.
+export const MS_TENANT = (import.meta.env.VITE_MS_TENANT_ID || '').trim()
 
 
 // Helper audit local (évite circular dep avec service.js)
@@ -76,6 +81,51 @@ async function findAccountSnap(uname) {
   return snap
 }
 
+// Toutes les fiches qui portent une adresse e-mail : racine, puis staff et bénévoles de chaque événement
+async function accountGroups() {
+  const asDocs = snap => snap.docs.map(d => ({ id: d.id, data: d.data() }))
+  const groups = [{ kind: 'staff', docs: asDocs(await getDocs(collection(db, 'staff'))) }]
+  const eventsSnap = await getDocs(collection(db, 'events'))
+  for (const evDoc of eventsSnap.docs) {
+    groups.push({ kind: 'staff', eventId: evDoc.id, docs: asDocs(await getDocs(collection(db, 'events', evDoc.id, 'staff'))) })
+  }
+  for (const evDoc of eventsSnap.docs) {
+    groups.push({ kind: 'benevole', eventId: evDoc.id, docs: asDocs(await getDocs(collection(db, 'events', evDoc.id, 'benevoles'))) })
+  }
+  return groups
+}
+
+// Ouvre la session YllaCash d'une fiche trouvée (même suite pour le mot de passe et pour Microsoft)
+async function openSession(set, data, docId, uname, method) {
+  const userRole = data.role || 'benevole'
+  // Chercher si ce staff a aussi un profil bénévole (même username)
+  let benevoleDocId = null
+  let benevoleEventId = null
+  if (userRole !== 'benevole' && data.eventId && uname) {
+    try {
+      const benevSnap = await getDocs(
+        query(collection(db, 'events', data.eventId, 'benevoles'), where('username', '==', uname))
+      )
+      if (!benevSnap.empty) {
+        benevoleDocId  = benevSnap.docs[0].id
+        benevoleEventId = data.eventId
+      }
+    } catch {}
+  }
+  const user  = { id:docId, nom:(data.prenom ? data.prenom+' '+data.nom : data.nom), email:data.email||'', username:data.username||uname, role:userRole, avatar:data.avatar||null, eventId:data.eventId||null, isBenevole: userRole === 'benevole', benevoleDocId, benevoleEventId, via: method }
+  const token = btoa(JSON.stringify({ id:docId, role:data.role, exp:Date.now()+8*3600*1000 }))
+  set({ user, token, loginLoading:false, loginError:null, espaceChoisi:'' })
+  await writeAudit('CONNEXION', { staff: user.nom, role: user.role, userType: userRole === 'benevole' ? 'benevole' : 'staff', methode: method, label: `Connexion de ${user.nom} (${userRole})${method === 'microsoft' ? ' avec Microsoft' : ''}` })
+  // Auto-sélectionner l'événement du staff si défini
+  if (data.eventId) {
+    try {
+      const evStore = window.__yllacash_stores__?.eventStore
+      if (evStore) evStore.getState().selectEvent(data.eventId)
+    } catch {}
+  }
+  return true
+}
+
 // Mot de passe en clair (legacy) ou empreinte
 async function passwordMatches(data, password) {
   const storedPwd = data.password || data.pwd || null
@@ -127,33 +177,7 @@ const useAuthStore = create(
               return false
             }
 
-            const userRole = data.role || 'benevole'
-            // Chercher si ce staff a aussi un profil bénévole (même username)
-            let benevoleDocId = null
-            let benevoleEventId = null
-            if (userRole !== 'benevole' && data.eventId) {
-              try {
-                const benevSnap = await getDocs(
-                  query(collection(db, 'events', data.eventId, 'benevoles'), where('username', '==', uname))
-                )
-                if (!benevSnap.empty) {
-                  benevoleDocId  = benevSnap.docs[0].id
-                  benevoleEventId = data.eventId
-                }
-              } catch {}
-            }
-            const user  = { id:docId, nom:(data.prenom ? data.prenom+' '+data.nom : data.nom), email:data.email||'', username:data.username||uname, role:userRole, avatar:data.avatar||null, eventId:data.eventId||null, isBenevole: userRole === 'benevole', benevoleDocId, benevoleEventId }
-            const token = btoa(JSON.stringify({ id:docId, role:data.role, exp:Date.now()+8*3600*1000 }))
-            set({ user, token, loginLoading:false, loginError:null, espaceChoisi:'' })
-            await writeAudit('CONNEXION', { staff: user.nom, role: user.role, userType: userRole === 'benevole' ? 'benevole' : 'staff', label: `Connexion de ${user.nom} (${userRole})` })
-            // Auto-sélectionner l'événement du staff si défini
-            if (data.eventId) {
-              try {
-                const evStore = window.__yllacash_stores__?.eventStore
-                if (evStore) evStore.getState().selectEvent(data.eventId)
-              } catch {}
-            }
-            return true
+            return await openSession(set, data, docId, uname, 'motdepasse')
           }
         } catch (err) {
           console.error('Auth Firebase error:', err)
@@ -161,6 +185,47 @@ const useAuthStore = create(
 
         set({ loginLoading:false, loginError:'Email ou mot de passe incorrect' })
         return false
+      },
+
+      // Connexion avec le compte Microsoft Fest'Ylla : relie la personne à SA fiche par son e-mail.
+      // Une adresse sans fiche est refusée (aucun accès n'est créé). Le rôle est celui de la fiche.
+      loginMicrosoft: async () => {
+        if (!MS_TENANT) { set({ loginError: "La connexion Microsoft n'est pas configurée." }); return false }
+        if (get().loginLoading) return false
+        set({ loginLoading:true, loginError:null })
+        let result
+        try {
+          const provider = new OAuthProvider('microsoft.com')
+          provider.setCustomParameters({ tenant: MS_TENANT })
+          result = await signInWithPopup(auth, provider)
+        } catch (err) {
+          set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code) })
+          return false
+        }
+        try {
+          const credential = OAuthProvider.credentialFromResult(result)
+          const info = { user: result.user, profile: getAdditionalUserInfo(result)?.profile, claims: jwtClaims(credential?.idToken) }
+          if (!tenantAllowed(info, MS_TENANT)) {
+            set({ loginLoading:false, loginError:"Ce compte Microsoft n'appartient pas à Fest'Ylla." })
+            return false
+          }
+          const email = microsoftEmail(info)
+          const found = pickAccountByEmail(await accountGroups(), email)
+          if (!found) {
+            await writeAudit('CONNEXION_MICROSOFT_REFUSEE', { email, userType: 'inconnu', label: `Connexion Microsoft refusée : ${email || 'adresse inconnue'} n'a pas de fiche` })
+            set({ loginLoading:false, loginError:`Le compte ${email || 'Microsoft'} n'est relié à aucun accès YllaCash. Demandez à un administrateur d'indiquer cette adresse dans votre fiche.` })
+            return false
+          }
+          const data = { ...found.data, eventId: found.data.eventId || found.eventId || null }
+          return await openSession(set, data, found.id, (found.data.username || '').toLowerCase(), 'microsoft')
+        } catch (err) {
+          console.error('Connexion Microsoft :', err)
+          set({ loginLoading:false, loginError:'Connexion Microsoft impossible. Réessayez, ou utilisez votre identifiant et votre mot de passe.' })
+          return false
+        } finally {
+          // YllaCash garde sa propre session : la session Firebase ne sert qu'à lire le compte Microsoft
+          signOut(auth).catch(() => {})
+        }
       },
 
       setEspaceChoisi: (val) => set({ espaceChoisi: val }),
