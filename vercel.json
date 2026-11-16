@@ -1,7 +1,11 @@
 {
   "rewrites": [
     {
-      "source": "/((?!api/).*)",
+      "source": "/__/:path*",
+      "destination": "https://yllatok.firebaseapp.com/__/:path*"
+    },
+    {
+      "source": "/((?!api/|__/).*)",
       "destination": "/index.html"
     }
   ],

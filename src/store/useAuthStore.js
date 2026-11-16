@@ -4,7 +4,7 @@
  */
 import { create } from 'zustand'
 import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore'
-import { OAuthProvider, signInWithPopup, signOut, getAdditionalUserInfo } from 'firebase/auth'
+import { OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, getAdditionalUserInfo } from 'firebase/auth'
 import { db, auth } from '../firebase/config'
 import { verifyPassword } from '../utils/kpis'
 import { jwtClaims, microsoftEmail, microsoftErrorMessage, pickAccountByEmail, tenantAllowed } from '../utils/msAccount'
@@ -12,6 +12,42 @@ import { persist } from 'zustand/middleware'
 
 // Annuaire Microsoft Fest'Ylla (ID de l'annuaire / locataire). Vide : pas de bouton Microsoft.
 export const MS_TENANT = (import.meta.env.VITE_MS_TENANT_ID || '').trim()
+
+const msProvider = () => {
+  const provider = new OAuthProvider('microsoft.com')
+  provider.setCustomParameters({ tenant: MS_TENANT })
+  return provider
+}
+let redirectCheck = null
+
+// Après Microsoft (fenêtre ou redirection) : relie la personne à SA fiche par son e-mail.
+// Une adresse sans fiche est refusée (aucun accès n'est créé). Le rôle est celui de la fiche.
+async function finishMicrosoft(set, result) {
+  try {
+    const credential = OAuthProvider.credentialFromResult(result)
+    const info = { user: result.user, profile: getAdditionalUserInfo(result)?.profile, claims: jwtClaims(credential?.idToken) }
+    if (!tenantAllowed(info, MS_TENANT)) {
+      set({ loginLoading:false, loginError:"Ce compte Microsoft n'appartient pas à l'annuaire Maison Ylla." })
+      return false
+    }
+    const email = microsoftEmail(info)
+    const found = pickAccountByEmail(await accountGroups(), email)
+    if (!found) {
+      await writeAudit('CONNEXION_MICROSOFT_REFUSEE', { email, userType: 'inconnu', label: `Connexion Microsoft refusée : ${email || 'adresse inconnue'} n'a pas de fiche` })
+      set({ loginLoading:false, loginError:`Le compte ${email || 'Microsoft'} n'est relié à aucun accès YllaCash. Demandez à un administrateur d'indiquer cette adresse dans votre fiche.` })
+      return false
+    }
+    const data = { ...found.data, eventId: found.data.eventId || found.eventId || null }
+    return await openSession(set, data, found.id, (found.data.username || '').toLowerCase(), 'microsoft')
+  } catch (err) {
+    console.error('Connexion Microsoft :', err)
+    set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code || 'lecture-des-fiches') })
+    return false
+  } finally {
+    // YllaCash garde sa propre session : la session Firebase ne sert qu'à lire le compte Microsoft
+    signOut(auth).catch(() => {})
+  }
+}
 
 
 // Helper audit local (évite circular dep avec service.js)
@@ -195,38 +231,44 @@ const useAuthStore = create(
         set({ loginLoading:true, loginError:null })
         let result
         try {
-          const provider = new OAuthProvider('microsoft.com')
-          provider.setCustomParameters({ tenant: MS_TENANT })
-          result = await signInWithPopup(auth, provider)
+          result = await signInWithPopup(auth, msProvider())
         } catch (err) {
           console.error('Connexion Microsoft :', err)
           set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code) })
           return false
         }
-        try {
-          const credential = OAuthProvider.credentialFromResult(result)
-          const info = { user: result.user, profile: getAdditionalUserInfo(result)?.profile, claims: jwtClaims(credential?.idToken) }
-          if (!tenantAllowed(info, MS_TENANT)) {
-            set({ loginLoading:false, loginError:"Ce compte Microsoft n'appartient pas à Fest'Ylla." })
-            return false
-          }
-          const email = microsoftEmail(info)
-          const found = pickAccountByEmail(await accountGroups(), email)
-          if (!found) {
-            await writeAudit('CONNEXION_MICROSOFT_REFUSEE', { email, userType: 'inconnu', label: `Connexion Microsoft refusée : ${email || 'adresse inconnue'} n'a pas de fiche` })
-            set({ loginLoading:false, loginError:`Le compte ${email || 'Microsoft'} n'est relié à aucun accès YllaCash. Demandez à un administrateur d'indiquer cette adresse dans votre fiche.` })
-            return false
-          }
-          const data = { ...found.data, eventId: found.data.eventId || found.eventId || null }
-          return await openSession(set, data, found.id, (found.data.username || '').toLowerCase(), 'microsoft')
-        } catch (err) {
+        return finishMicrosoft(set, result)
+      },
+
+      // Connexion automatique (lien de la page des plateformes) : la page part chez Microsoft
+      // et revient connectée ; le retour est traité par completeMicrosoftRedirect().
+      loginMicrosoftRedirect: async () => {
+        if (!MS_TENANT || get().loginLoading) return
+        set({ loginLoading:true, loginError:null })
+        try { await signInWithRedirect(auth, msProvider()) }
+        catch (err) {
           console.error('Connexion Microsoft :', err)
-          set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code || 'lecture-des-fiches') })
-          return false
-        } finally {
-          // YllaCash garde sa propre session : la session Firebase ne sert qu'à lire le compte Microsoft
-          signOut(auth).catch(() => {})
+          set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code) })
         }
+      },
+
+      // Au chargement de l'écran de connexion : termine une connexion Microsoft revenue par redirection.
+      // Renvoie true si une session a été ouverte. Un seul traitement par chargement de page.
+      completeMicrosoftRedirect: () => {
+        if (!MS_TENANT) return Promise.resolve(false)
+        if (!redirectCheck) redirectCheck = (async () => {
+          let result
+          try { result = await getRedirectResult(auth) }
+          catch (err) {
+            console.error('Connexion Microsoft :', err)
+            set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code) })
+            return false
+          }
+          if (!result) return false
+          set({ loginLoading:true, loginError:null })
+          return finishMicrosoft(set, result)
+        })()
+        return redirectCheck
       },
 
       setEspaceChoisi: (val) => set({ espaceChoisi: val }),

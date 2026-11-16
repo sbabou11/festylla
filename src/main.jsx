@@ -1,5 +1,12 @@
 // En premier : renomme les clés localStorage yllatok-* avant que les stores ne les lisent
 import './utils/migrateStorageKeys'
+// Une ancienne version hors ligne de l'appli peut répondre à la place de la page de connexion
+// Firebase (/__/auth/…) : on la retire et on recharge, pour que la vraie page s'affiche.
+if (window.location.pathname.startsWith('/__/') && navigator.serviceWorker?.controller) {
+  navigator.serviceWorker.getRegistrations()
+    .then(regs => Promise.all(regs.map(r => r.unregister())))
+    .finally(() => window.location.reload())
+}
 import React    from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'

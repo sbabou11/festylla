@@ -49,6 +49,8 @@ export default defineConfig({
         // Exclure le SW FCM du cache Workbox
         globIgnores: ['firebase-messaging-sw.js', 'sw-fcm.js', '**/exceljs*.js'],  // ~1 Mo, chargé seulement pour les archives
         navigateFallback: '/index.html',
+        // Pages de connexion Firebase (/__/auth/…) : toujours le réseau, jamais l'appli en cache
+        navigateFallbackDenylist: [/^\/__\//],
         cleanupOutdatedCaches: true,
         // skipWaiting + clientsClaim laissés à FALSE :
         // - Le nouveau SW reste en "waiting" jusqu'à ce qu'on déclenche skipWaiting

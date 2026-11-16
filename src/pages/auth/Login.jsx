@@ -2,7 +2,7 @@
  * pages/auth/Login.jsx — connexion staff
  * Carte en verre dépoli sur le dégradé signature (AuthShell).
  */
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import useAuthStore, { MS_TENANT } from '../../store/useAuthStore'
 import { Eye, EyeOff, LogIn } from 'lucide-react'
 import { Button, Field, focusFirstInvalid } from '../../ui'
@@ -10,7 +10,28 @@ import AuthShell from './AuthShell'
 import s from './auth.module.css'
 
 export default function Login() {
-  const { login, loginMicrosoft, loginError, loginLoading, requestPasswordReset } = useAuthStore()
+  const { login, loginMicrosoft, loginMicrosoftRedirect, completeMicrosoftRedirect, loginError, loginLoading, requestPasswordReset } = useAuthStore()
+
+  // Retour de Microsoft, puis connexion automatique si l'adresse contient ?microsoft=1
+  // (lien de la page des plateformes). Une tentative automatique toutes les 2 minutes au plus.
+  useEffect(() => {
+    if (!MS_TENANT) return
+    let alive = true
+    completeMicrosoftRedirect().then(done => {
+      const params = new URLSearchParams(window.location.search)
+      if (done || !alive || params.get('microsoft') !== '1') return
+      params.delete('microsoft')
+      const rest = params.toString()
+      window.history.replaceState(window.history.state, '', window.location.pathname + (rest ? `?${rest}` : '') + window.location.hash)
+      try {
+        const last = Number(sessionStorage.getItem('yllacash-ms-auto')) || 0
+        if (Date.now() - last < 120000) return
+        sessionStorage.setItem('yllacash-ms-auto', String(Date.now()))
+      } catch { /* stockage indisponible : on tente quand même */ }
+      loginMicrosoftRedirect()
+    })
+    return () => { alive = false }
+  }, [completeMicrosoftRedirect, loginMicrosoftRedirect])
   const [username, setUsername] = useState('')
   const [pwd, setPwd] = useState('')
   const [showPwd, setShowPwd] = useState(false)

@@ -28,7 +28,12 @@ import { getMessaging, isSupported } from 'firebase/messaging'
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  // Sur le site Fest'Ylla, la connexion Microsoft passe par le site lui-même (/__/auth, relayé
+  // vers Firebase par vercel.json) : sinon les navigateurs qui isolent les sites tiers perdent
+  // la connexion au retour de Microsoft.
+  authDomain:        (typeof window !== 'undefined' && /(^|\.)festylla\.com$/.test(window.location.hostname))
+                       ? window.location.host
+                       : import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
