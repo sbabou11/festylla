@@ -89,8 +89,8 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
       )}
 
       {/* parse dédié : saisie du code seul (pas de recherche par nom ni de « récemment servis ») */}
-      <QrScanner onScan={control} parse={extractSpecId} placeholder="Code du billet (ex : K7QW3NPX9RTB)" hint="Présentez le billet devant la caméra ou le lecteur"
-        simulate={['FY-K7QW3NPX9RTB', 'FY-AAAA2222BBBB', 'FY-ZZZZ9999ZZZZ']}/>
+      <QrScanner onScan={control} parse={extractSpecId} placeholder="Code du billet (ex : K7Q3NP)" hint="Présentez le billet devant la caméra ou le lecteur"
+        simulate={['FY-K7Q3NP', 'FY-AB2C3D', 'FY-ZZ9Z9Z']}/>
 
       <div aria-live="assertive" className={s.resultZone}>
         {busy && <div className={clsx(s.result, s.pending)}>Vérification…</div>}

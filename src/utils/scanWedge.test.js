@@ -84,16 +84,16 @@ describe('décodage', () => {
   })
 })
 
-describe('codes de billet du site (12 caractères)', () => {
+describe('codes de billet du site (6 caractères)', () => {
   it('reconnaît un billet seul ou dans son adresse', () => {
-    expect(parseSpectatorCode('FY-K7QW3NPX9RTB')).toBe('FY-K7QW3NPX9RTB')
-    expect(parseSpectatorCode('https://festishop.festylla.com/solde?id=FY-K7QW3NPX9RTB&ev=abc123')).toBe('FY-K7QW3NPX9RTB')
+    expect(parseSpectatorCode('FY-K7Q3NP')).toBe('FY-K7Q3NP')
+    expect(parseSpectatorCode('https://festishop.festylla.com/solde?id=FY-K7Q3NP&ev=abc123')).toBe('FY-K7Q3NP')
     expect(parseSpectatorCode('FY-4A2B')).toBe('FY-4A2B')
   })
   it('lit un billet tapé par un lecteur clavier', () => {
     const clock = { t: 0 }, onScan = vi.fn()
     const w = createWedge({ onScan, now: () => clock.t })
-    type(w, us('https://festishop.festylla.com/solde?id=FY-K7QW3NPX9RTB&ev=x'), clock)
-    expect(onScan).toHaveBeenCalledWith('FY-K7QW3NPX9RTB')
+    type(w, us('https://festishop.festylla.com/solde?id=FY-K7Q3NP&ev=x'), clock)
+    expect(onScan).toHaveBeenCalledWith('FY-K7Q3NP')
   })
 })

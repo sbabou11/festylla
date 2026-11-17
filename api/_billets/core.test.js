@@ -30,11 +30,11 @@ const ID = 'a'.repeat(32), ID2 = 'b'.repeat(32), ID3 = 'c'.repeat(32)
 const vente = (id = ID) => ({
   id, type: 'vente', evenement: 'EV1', commande: '1058', le: '2027-03-12T10:41:07+01:00',
   billets: [
-    { code: 'K7QW3NPX9RTB', ref: '9c1f4e0a7b2d6c35', prenom: 'Awa', nom: 'Exemple', pass: 'Pass 2 jours', jours: 2, prix: 10 },
-    { code: 'AAAA2222BBBB', ref: '04be71d2c9a8f360', prenom: 'Malik', nom: 'Exemple', pass: 'Pass 1 jour', jours: 1, prix: 6.5 },
+    { code: 'K7Q3NP', ref: '9c1f4e0a7b2d6c35', prenom: 'Awa', nom: 'Exemple', pass: 'Pass 2 jours', jours: 2, prix: 10 },
+    { code: 'AB2C3D', ref: '04be71d2c9a8f360', prenom: 'Malik', nom: 'Exemple', pass: 'Pass 1 jour', jours: 1, prix: 6.5 },
   ],
 })
-const SPEC = 'events/EV1/spectateurs/FY-K7QW3NPX9RTB'
+const SPEC = 'events/EV1/spectateurs/FY-K7Q3NP'
 
 describe('liaison site → YllaCash : identification', () => {
   it('refuse sans clé réglée (503) et avec une mauvaise clé (401)', () => {
@@ -57,10 +57,10 @@ describe('réception des ventes et annulations', () => {
     const r = await handleMessage(store, vente())
     expect(r).toEqual({ status: 201, body: { ok: true, crees: 2, retablis: 0 } })
     expect(store.docs.get(SPEC)).toMatchObject({
-      id: 'FY-K7QW3NPX9RTB', nom: 'Awa Exemple', solde: 0,
-      billet: { code: 'K7QW3NPX9RTB', ref: '9c1f4e0a7b2d6c35', pass: 'Pass 2 jours', jours: 2, prix: 1000, commande: '1058', annule: false, entrees: {} },
+      id: 'FY-K7Q3NP', nom: 'Awa Exemple', solde: 0,
+      billet: { code: 'K7Q3NP', ref: '9c1f4e0a7b2d6c35', pass: 'Pass 2 jours', jours: 2, prix: 1000, commande: '1058', annule: false, entrees: {} },
     })
-    expect(store.docs.get('events/EV1/spectateurs/FY-AAAA2222BBBB').billet.prix).toBe(650)
+    expect(store.docs.get('events/EV1/spectateurs/FY-AB2C3D').billet.prix).toBe(650)
   })
 
   it('ne traite pas deux fois le même message', async () => {
@@ -75,10 +75,10 @@ describe('réception des ventes et annulations', () => {
   it('annule un billet sans supprimer le compte, et ignore un billet inconnu', async () => {
     const store = memoryStore({ 'events/EV1': {} })
     await handleMessage(store, vente())
-    const r = await handleMessage(store, { id: ID2, type: 'annulation', evenement: 'EV1', commande: '1058', codes: ['K7QW3NPX9RTB', 'ZZZZ9999ZZZZ'] })
+    const r = await handleMessage(store, { id: ID2, type: 'annulation', evenement: 'EV1', commande: '1058', codes: ['K7Q3NP', 'ZZ9Z9Z'] })
     expect(r.body).toEqual({ ok: true, annules: 1, inconnus: 1 })
     expect(store.docs.get(SPEC).billet.annule).toBe(true)
-    expect(store.docs.has('events/EV1/spectateurs/FY-ZZZZ9999ZZZZ')).toBe(false)
+    expect(store.docs.has('events/EV1/spectateurs/FY-ZZ9Z9Z')).toBe(false)
   })
 
   it('une vente renvoyée rétablit le billet sans toucher au solde ni aux entrées', async () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { checkEntree, describeEntree, parisNow } from './entree'
 
-const billet = (b = {}) => ({ id: 'FY-K7QW3NPX9RTB', nom: 'Awa Exemple', billet: { code: 'K7QW3NPX9RTB', jours: 2, annule: false, entrees: {}, commande: '1058', ...b } })
+const billet = (b = {}) => ({ id: 'FY-K7Q3NP', nom: 'Awa Exemple', billet: { code: 'K7Q3NP', jours: 2, annule: false, entrees: {}, commande: '1058', ...b } })
 const J1 = '2027-05-15', J2 = '2027-05-16', J3 = '2027-05-17'
 
 describe('contrôle des billets à l\'entrée : les cinq réponses', () => {

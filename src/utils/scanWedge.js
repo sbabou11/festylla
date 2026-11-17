@@ -27,7 +27,7 @@ export function usCharFromCode(code, shift) {
   return US[code]?.[shift ? 1 : 0] ?? ''
 }
 
-// Code spectateur dans un texte lu (code seul, lien ou texte libre) : « FY-4A2B », « FY-K7QW3NPX9RTB » ou null
+// Code spectateur dans un texte lu (code seul, lien ou texte libre) : « FY-4A2B », « FY-K7Q3NP » ou null
 export function parseSpectatorCode(text) {
   const m = String(text || '').toUpperCase().match(SPEC_CODE)
   return m ? m[0] : null

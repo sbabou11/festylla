@@ -473,7 +473,7 @@ function Identification({ onValidated, onCancel, loading, error, standName }) {
   const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 
   // Ajout d'une lettre/chiffre au clavier manuel.
-  // On limite à 12 caractères : 4 pour un compte créé sur place, 12 pour un billet du site.
+  // On limite à 12 caractères : 4 pour un compte créé sur place, 6 pour un billet du site (12 pour les premiers billets d'essai).
   const addChar = (ch) => {
     if (loading) return
     if (manualInput.length >= 12) return

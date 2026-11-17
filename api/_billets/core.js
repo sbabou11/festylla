@@ -12,6 +12,7 @@ const crypto = require('crypto')
 
 const HEX32 = /^[0-9a-f]{32}$/
 const HEX16 = /^[0-9a-f]{16}$/
+// Codes de billet : 6 caractères depuis la décision du 17/11/2026 (12 tolérés pour les billets d'essai)
 const CODE = /^[A-Z0-9]{4,12}$/
 const EVENT_ID = /^[\w-]{1,128}$/
 

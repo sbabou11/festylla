@@ -33,7 +33,7 @@ import { extractSpecId } from '../utils/specCode'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
 
-// Le QR contient soit l'ID direct (FY-XXXX, ou FY- + 12 caractères pour un billet) soit une URL
+// Le QR contient soit l'ID direct (FY-XXXX, ou FY- + 6 caractères pour un billet du site) soit une URL
 const parseSpecId = (text) => extractSpecId(text) || text.trim().toUpperCase()
 
 // Taille cible du scanner (carré). Sera réduite si l'écran est plus petit.
