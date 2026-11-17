@@ -29,6 +29,7 @@ import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2, S
 import useKioskMode from '../../hooks/useKioskMode'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
 import { createWedge } from '../../utils/scanWedge'
+import { SPEC_CODE } from '../../utils/specCode'
 import { getSpectateur, setCurrentEvent, watchMenu, createCommande, getSettings } from '../../firebase/service'
 
 // ─── Étapes du flux ─────────────────────────────────────────────────────
@@ -193,7 +194,7 @@ export default function Borne() {
       // a encodé une URL complète (ex: https://festishop.festylla.com/spec/FY-XYZ)
       let id = String(rawId).trim().toUpperCase()
       // Si on a une URL avec un FY- dedans, extrait
-      const match = id.match(/FY-[A-Z0-9]+/)
+      const match = id.match(SPEC_CODE)
       if (match) id = match[0]
 
       if (!id.startsWith('FY-')) {
@@ -472,10 +473,10 @@ function Identification({ onValidated, onCancel, loading, error, standName }) {
   const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 
   // Ajout d'une lettre/chiffre au clavier manuel.
-  // On limite à 8 caractères (les IDs typiques font 4-6 caractères après FY-).
+  // On limite à 12 caractères : 4 pour un compte créé sur place, 12 pour un billet du site.
   const addChar = (ch) => {
     if (loading) return
-    if (manualInput.length >= 8) return
+    if (manualInput.length >= 12) return
     setManualInput(prev => prev + ch)
   }
   const removeChar = () => {

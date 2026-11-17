@@ -32,7 +32,7 @@ import BenevoleProfil    from './BenevoleProfil'
 import QRCode from 'qrcode'
 import {
   UtensilsCrossed, Coffee, Droplets, ShoppingCart, Home, Bookmark, User, LogOut, CalendarDays,
-  ScanLine, QrCode, CheckCircle2, AlertCircle, Store, ChevronRight, MapPin, BellRing,
+  ScanLine, QrCode, Ticket, CheckCircle2, AlertCircle, Store, ChevronRight, MapPin, BellRing,
 } from 'lucide-react'
 import { useNotifications } from '../../hooks/useNotifications'
 import NotifBell from '../../components/NotifBell'
@@ -40,6 +40,8 @@ import TeamChat from '../../components/TeamChat'
 import ThemeToggle from '../../components/ThemeToggle'
 import BenevolePlanning from '../../components/BenevolePlanning'
 import QrScanner from '../../components/QrScanner'
+import EntreeControl from '../../components/EntreeControl'
+import { parisNow } from '../../billets/entree'
 import useAuthStore from '../../store/useAuthStore'
 import { useTheme } from '../../hooks/useTheme'
 import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, SuccessCheck, toast } from '../../ui'
@@ -560,8 +562,12 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const pendingResas = resas.filter(r => r.status === 'pending' || r.status === 'processing').length
   const rel = slot ? relativeLabel(slot.range, now) : null
 
+  // Contrôle des billets : affecté aujourd'hui à un poste marqué « contrôle les billets »
+  const canControl = !demo && myShifts(shifts, myId).some(x => x.shift.date === parisNow().jour && postsById[x.postId]?.controleBillets)
+
   const NAV = [
     { id: 'accueil',   label: 'Accueil',  icon: Home },
+    ...(canControl ? [{ id: 'entree', label: 'Entrée', icon: Ticket }] : []),
     { id: 'planning',  label: 'Planning', icon: CalendarDays },
     { id: 'commander', label: 'Conso',    icon: ShoppingCart },
     { id: 'mes-resas', label: 'Résas',    icon: Bookmark, badge: readyResas.length || pendingResas || 0 },
@@ -707,6 +713,10 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           ) : (
             <div className={s.loading}>Chargement…</div>
           )
+        )}
+
+        {tab === 'entree' && canControl && benev && (
+          <EntreeControl eventId={eventId} par={{ type: 'benevole', id: myId, nom: [benev.prenom, benev.nom].filter(Boolean).join(' ') }}/>
         )}
 
         {tab === 'planning' && benev && (

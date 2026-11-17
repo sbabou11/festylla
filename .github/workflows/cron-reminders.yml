@@ -67,3 +67,18 @@ jobs:
           fi
 
           echo "✅ Rappels traités avec succès"
+
+      # Billetterie : envoie à Ylla Event Manager les entrées contrôlées à l'écran « Entrée »
+      # (file d'attente et nouvelles tentatives gérées par /api/process-entrees).
+      # Même adresse que les rappels, en remplaçant « process-reminders » par « process-entrees ».
+      - name: Send ticket entries to Ylla Event Manager
+        if: always()
+        env:
+          REMINDERS_URL: ${{ secrets.REMINDERS_URL }}
+        shell: bash
+        run: |
+          if [ -z "$REMINDERS_URL" ]; then echo "Secret REMINDERS_URL manquant."; exit 0; fi
+          url="${REMINDERS_URL%%\?*}"
+          url="${url/process-reminders/process-entrees}"
+          echo "Appel de $url"
+          curl -sS -X POST --max-time 60 -H "User-Agent: github-actions-cron" "$url" || echo "Appel impossible, nouvel essai à la prochaine minute."

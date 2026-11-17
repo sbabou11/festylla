@@ -11,7 +11,7 @@ const us = (text) => [...text].map(ch => {
   const up = /[A-Z]/.test(ch), shiftDigits = ')!@#$%^&*('
   if (/[a-z]/i.test(ch)) return { key: ch, code: `Key${ch.toUpperCase()}`, shiftKey: up }
   if (/[0-9]/.test(ch)) return { key: ch, code: `Digit${ch}`, shiftKey: false }
-  const map = { '-': ['Minus', false], '/': ['Slash', false], ':': ['Semicolon', true], '.': ['Period', false], '?': ['Slash', true], '=': ['Equal', false] }
+  const map = { '-': ['Minus', false], '/': ['Slash', false], ':': ['Semicolon', true], '.': ['Period', false], '?': ['Slash', true], '=': ['Equal', false], '&': ['Digit7', true] }
   const [code, shiftKey] = map[ch]
   return { key: ch, code, shiftKey }
 })
@@ -81,5 +81,19 @@ describe('décodage', () => {
   it('trouve le code spectateur dans un texte', () => {
     expect(parseSpectatorCode('fy-4a2b')).toBe('FY-4A2B')
     expect(parseSpectatorCode('rien')).toBeNull()
+  })
+})
+
+describe('codes de billet du site (12 caractères)', () => {
+  it('reconnaît un billet seul ou dans son adresse', () => {
+    expect(parseSpectatorCode('FY-K7QW3NPX9RTB')).toBe('FY-K7QW3NPX9RTB')
+    expect(parseSpectatorCode('https://festishop.festylla.com/solde?id=FY-K7QW3NPX9RTB&ev=abc123')).toBe('FY-K7QW3NPX9RTB')
+    expect(parseSpectatorCode('FY-4A2B')).toBe('FY-4A2B')
+  })
+  it('lit un billet tapé par un lecteur clavier', () => {
+    const clock = { t: 0 }, onScan = vi.fn()
+    const w = createWedge({ onScan, now: () => clock.t })
+    type(w, us('https://festishop.festylla.com/solde?id=FY-K7QW3NPX9RTB&ev=x'), clock)
+    expect(onScan).toHaveBeenCalledWith('FY-K7QW3NPX9RTB')
   })
 })

@@ -1619,7 +1619,8 @@ export const purgeOldWalkieChunks = async (evId = null) => {
    ════════════════════════════════════════════════════════════════
 
    Structure :
-   events/{evId}/volunteer-posts/{postId}  → { nom, emoji, couleur, ordre }
+   events/{evId}/volunteer-posts/{postId}  → { nom, emoji, couleur, ordre, controleBillets }
+     controleBillets : les bénévoles affectés au poste ce jour-là voient l'écran « Entrée »
    events/{evId}/volunteer-shifts/{shiftId} → {
      date: 'YYYY-MM-DD',
      label: 'Midi' | 'Soir' | etc.,
@@ -1651,6 +1652,7 @@ export const addVolunteerPost = (post, evId = null) => {
     nom: post.nom || 'Poste',
     emoji: post.emoji || '🎯',
     couleur: post.couleur || '#009090',
+    controleBillets: !!post.controleBillets,
     ordre: post.ordre ?? Date.now(),
     createdAt: serverTimestamp(),
   })

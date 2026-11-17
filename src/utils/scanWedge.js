@@ -9,6 +9,7 @@
  * le caractère reçu (event.key) et la touche physique traduite en QWERTY (event.code).
  * Celle qui contient un code spectateur valide l'emporte.
  */
+import { SPEC_CODE } from './specCode'
 
 // Touche physique → caractère sur un clavier QWERTY américain : [sans Maj, avec Maj]
 const US = {
@@ -26,9 +27,9 @@ export function usCharFromCode(code, shift) {
   return US[code]?.[shift ? 1 : 0] ?? ''
 }
 
-// Code spectateur dans un texte lu (code seul, lien ou texte libre) : « FY-4A2B » ou null
+// Code spectateur dans un texte lu (code seul, lien ou texte libre) : « FY-4A2B », « FY-K7QW3NPX9RTB » ou null
 export function parseSpectatorCode(text) {
-  const m = String(text || '').toUpperCase().match(/FY-[A-Z0-9]{3,8}/)
+  const m = String(text || '').toUpperCase().match(SPEC_CODE)
   return m ? m[0] : null
 }
 

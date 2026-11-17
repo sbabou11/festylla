@@ -29,13 +29,12 @@ import { Camera, CameraOff, Keyboard, Search, X, Clock } from 'lucide-react'
 import useAppStore from '../store/useAppStore'
 import { Tabs, Button, CodeInput, Field, focusFirstInvalid } from '../ui'
 import s from './QrScanner.module.css'
+import { extractSpecId } from '../utils/specCode'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
 
-// Le QR contient soit l'ID direct (FY-XXXX) soit une URL
-const parseSpecId = (text) => text.includes('FY-')
-  ? text.match(/FY-[A-Z0-9]{4}/)?.[0]
-  : text.trim().toUpperCase()
+// Le QR contient soit l'ID direct (FY-XXXX, ou FY- + 12 caractères pour un billet) soit une URL
+const parseSpecId = (text) => extractSpecId(text) || text.trim().toUpperCase()
 
 // Taille cible du scanner (carré). Sera réduite si l'écran est plus petit.
 const SCANNER_TARGET_SIZE = 280
@@ -255,7 +254,8 @@ export default function QrScanner({
   }
 
   const handleManualSubmit = (raw = manualVal) => {
-    const val = String(raw).trim().toUpperCase()
+    // Un code de billet tapé sans « FY- » est complété (sauf en saisie d'un code court de poste)
+    const val = (codeLength ? null : extractSpecId(raw)) || String(raw).trim().toUpperCase()
     if (!val) { setManualTried(true); focusFirstInvalid(manualRef.current); return }
     setManualTried(false)
     if (onScan) onScan(val)

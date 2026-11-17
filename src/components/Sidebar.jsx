@@ -7,7 +7,7 @@
 import React, { useState } from 'react'
 import {
   LayoutDashboard, Home, Bookmark, Users, List, UtensilsCrossed, BadgeCheck, Calendar, CalendarDays,
-  Settings, PlusCircle, QrCode, Package, ShoppingCart, Wallet, User,
+  Settings, PlusCircle, QrCode, Ticket, Package, ShoppingCart, Wallet, User,
   BarChart3, AlertTriangle, PanelLeftClose, PanelLeftOpen, X, LogOut,
   Sun, Moon, Palette, ClipboardList, Calculator,
   Music2, ChevronDown, ArrowLeftRight, Banknote, Briefcase, ChefHat, Building2,
@@ -37,6 +37,7 @@ export const ALL_PAGES = {
   // "Gérer le cachet" dans le formulaire d'édition d'un créneau planning.
   planning:             { icon: CalendarDays,     label: 'Planning Festival' },
   'qr-entree':          { icon: QrCode,          label: 'QR code entrée' },
+  entree:               { icon: Ticket,          label: 'Entrée (billets)' },
   'spectateurs-hub':    { icon: Users,           label: 'Spectateurs & Accès' },
   'equipe-hub':         { icon: Users,           label: 'Équipe & Bénévoles' },
   operations:           { icon: ArrowLeftRight,   label: 'Opérations' },
@@ -75,7 +76,7 @@ const LS_OPEN = 'yllacash-sidebar-rubriques' // rubriques dépliées
 const HUB_CHILDREN = {
   operations:         ['debit', 'credit', 'nouveau', 'retrait', 'prendre-commande', 'retrait-commande', 'cuisine', 'remboursement', 'transactions', 'reservations-admin', 'alertes'],
   'equipe-hub':       ['staff', 'benevoles'],
-  'spectateurs-hub':  ['spectateurs', 'qr-entree'],
+  'spectateurs-hub':  ['entree', 'spectateurs', 'qr-entree'],
   finances:           ['exposants', 'cachets'],
   'gestion-artistes': ['planning', 'cachets'],
 }
@@ -123,7 +124,7 @@ export default function Sidebar({
     // Hub Équipe & Bénévoles
     'benevoles', 'staff',
     // Hub Spectateurs & Accès
-    'spectateurs', 'qr-entree',
+    'entree', 'spectateurs', 'qr-entree',
     // Hub Finances (exposants + cachets accessibles via la page Finances)
     'exposants',
   ]

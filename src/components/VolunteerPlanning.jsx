@@ -530,9 +530,9 @@ function PostesView({ posts }) {
   const handleSave = async () => {
     if (!editing.nom?.trim()) { setTried(true); focusFirstInvalid(formRef.current); return }
     if (editing.id) {
-      await updateVolunteerPost(editing.id, { nom: editing.nom.trim(), emoji: editing.emoji, couleur: editing.couleur }, currentEventId)
+      await updateVolunteerPost(editing.id, { nom: editing.nom.trim(), emoji: editing.emoji, couleur: editing.couleur, controleBillets: !!editing.controleBillets }, currentEventId)
     } else {
-      await addVolunteerPost({ nom: editing.nom.trim(), emoji: editing.emoji, couleur: editing.couleur, ordre: posts.length }, currentEventId)
+      await addVolunteerPost({ nom: editing.nom.trim(), emoji: editing.emoji, couleur: editing.couleur, controleBillets: !!editing.controleBillets, ordre: posts.length }, currentEventId)
     }
     setEditing(null)
   }
@@ -567,7 +567,10 @@ function PostesView({ posts }) {
             <div style={{ width:40, height:40, borderRadius:8, background: p.couleur + '22', color: p.couleur, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
               {p.emoji}
             </div>
-            <div style={{ flex:1, fontSize:14, fontWeight:700, color:'var(--text)', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.nom}</div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.nom}</div>
+              {p.controleBillets && <div style={{ fontSize:11, color:'var(--brand-dark)', fontWeight:600 }}>Contrôle les billets</div>}
+            </div>
             <button onClick={() => setQrPost(p)} className="btn-icon" title="QR de pointage" aria-label={'QR de pointage du poste ' + p.nom} style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><QrCode size={14}/></button>
             <button onClick={() => { setTried(false); setEditing(p) }} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
             <button onClick={() => handleDelete(p.id)} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', color:'var(--red-dark)', flexShrink:0 }}><Trash2 size={14}/></button>
@@ -615,6 +618,16 @@ function PostesView({ posts }) {
                   style={{ width:40, height:40, borderRadius:'50%', border: editing.couleur === c ? '3px solid var(--text)' : '2px solid var(--bg2)', background: c, cursor:'pointer', minHeight:'auto', padding:0, boxShadow: editing.couleur === c ? '0 2px 8px rgba(0,0,0,0.15)' : 'none', transition:'transform .1s', WebkitTapHighlightColor:'transparent' }}/>
               ))}
             </div>
+
+            {/* Droit de contrôler les billets à l'écran « Entrée » (règle d'échange billetterie §3) */}
+            <label style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'12px 0', borderTop:'1px solid var(--border)', marginBottom:16, cursor:'pointer' }}>
+              <input type="checkbox" checked={!!editing.controleBillets} onChange={e => setEditing(f => ({ ...f, controleBillets: e.target.checked }))}
+                style={{ width:20, height:20, marginTop:2, flexShrink:0 }}/>
+              <span>
+                <span style={{ display:'block', fontSize:14, fontWeight:600, color:'var(--text)' }}>Contrôle les billets à l'entrée</span>
+                <span style={{ display:'block', fontSize:12, color:'var(--muted)', marginTop:2 }}>Les bénévoles affectés à ce poste sur un créneau du jour voient l'écran Entrée.</span>
+              </span>
+            </label>
 
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={() => setEditing(null)} className="btn-secondary" style={{ flex:1, minHeight:44 }}>Annuler</button>
