@@ -12,6 +12,10 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App      from './App.jsx'
 import './index.css'
+import { installApiAuth } from './firebase/session'
+
+// Sécurité, lot 1 : les appels aux fonctions serveur portent la session de la personne connectée
+installApiAuth()
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

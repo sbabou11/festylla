@@ -3,12 +3,15 @@
  * Génère un XLSX stylisé de l'export Transactions (équivalent du bouton "Export CSV")
  * POST /api/transactions — body JSON { event, spectateurs, transactions, staff }
  */
+const { requireCaller } = require('./_auth/server')
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') { res.status(204).end(); return }
+  // Sécurité, lot 1 : réservé aux personnes connectées à YllaCash
+  if (!(await requireCaller(req, res, { roles: ['equipe'] }))) return
   if (req.method !== 'POST')    { res.status(405).end(); return }
 
   // Parser le body

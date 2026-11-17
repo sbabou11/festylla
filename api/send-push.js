@@ -27,6 +27,7 @@
  * suppression réelle dans Firestore se fait côté client, on évite d'avoir
  * besoin des permissions admin Firestore pour rester sur des règles simples).
  */
+const { requireCaller } = require('./_auth/server')
 
 const admin = require('firebase-admin')
 
@@ -46,6 +47,7 @@ function getAdminApp() {
   if (creds.private_key && creds.private_key.includes('\\n')) {
     creds.private_key = creds.private_key.replace(/\\n/g, '\n')
   }
+  if (admin.apps.length) { app = admin.app(); return app }
   app = admin.initializeApp({
     credential: admin.credential.cert(creds),
   })
@@ -58,6 +60,8 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') { res.status(204).end(); return }
+  // Sécurité, lot 1 : réservé aux personnes connectées à YllaCash
+  if (!(await requireCaller(req, res, { roles: ['equipe', 'benevole'] }))) return
   if (req.method !== 'POST')    { res.status(405).json({ error: 'Method Not Allowed' }); return }
 
   // Parse body (Vercel passe parfois req.body en string brut)

@@ -3,11 +3,11 @@
  * Authentification + permissions + rôles staff
  */
 import { create } from 'zustand'
-import { collection, query, where, getDocs, updateDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore'
-import { OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, getAdditionalUserInfo } from 'firebase/auth'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { OAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, getAdditionalUserInfo } from 'firebase/auth'
 import { db, auth } from '../firebase/config'
-import { verifyPassword } from '../utils/kpis'
-import { jwtClaims, microsoftEmail, microsoftErrorMessage, pickAccountByEmail, tenantAllowed } from '../utils/msAccount'
+import { jwtClaims, microsoftErrorMessage, tenantAllowed } from '../utils/msAccount'
+import { apiFetch, openFirebaseSession, closeFirebaseSession } from '../firebase/session'
 import { persist } from 'zustand/middleware'
 
 // Annuaire Microsoft Fest'Ylla (ID de l'annuaire / locataire). Vide : pas de bouton Microsoft.
@@ -20,32 +20,26 @@ const msProvider = () => {
 }
 let redirectCheck = null
 
-// Après Microsoft (fenêtre ou redirection) : relie la personne à SA fiche par son e-mail.
-// Une adresse sans fiche est refusée (aucun accès n'est créé). Le rôle est celui de la fiche.
+// Après Microsoft (fenêtre ou redirection) : le serveur relie la personne à SA fiche par son e-mail
+// et ouvre la session YllaCash. Une adresse sans fiche est refusée. Le rôle est celui de la fiche.
 async function finishMicrosoft(set, result) {
   try {
     const credential = OAuthProvider.credentialFromResult(result)
     const info = { user: result.user, profile: getAdditionalUserInfo(result)?.profile, claims: jwtClaims(credential?.idToken) }
     if (!tenantAllowed(info, MS_TENANT)) {
+      await closeFirebaseSession()
       set({ loginLoading:false, loginError:"Ce compte Microsoft n'appartient pas à l'annuaire Maison Ylla." })
       return false
     }
-    const email = microsoftEmail(info)
-    const found = pickAccountByEmail(await accountGroups(), email)
-    if (!found) {
-      await writeAudit('CONNEXION_MICROSOFT_REFUSEE', { email, userType: 'inconnu', label: `Connexion Microsoft refusée : ${email || 'adresse inconnue'} n'a pas de fiche` })
-      set({ loginLoading:false, loginError:`Le compte ${email || 'Microsoft'} n'est relié à aucun accès YllaCash. Demandez à un administrateur d'indiquer cette adresse dans votre fiche.` })
-      return false
-    }
-    const data = { ...found.data, eventId: found.data.eventId || found.eventId || null }
-    return await openSession(set, data, found.id, (found.data.username || '').toLowerCase(), 'microsoft')
+    const idToken = await result.user.getIdToken()
+    const { token, compte } = await apiFetch('/api/connexion', { body: { mode: 'microsoft', idToken } })
+    await openFirebaseSession(token)
+    return openSession(set, compte, 'microsoft')
   } catch (err) {
     console.error('Connexion Microsoft :', err)
-    set({ loginLoading:false, loginError: microsoftErrorMessage(err?.code || 'lecture-des-fiches') })
+    await closeFirebaseSession()
+    set({ loginLoading:false, loginError: err?.status ? err.message : microsoftErrorMessage(err?.code || 'lecture-des-fiches') })
     return false
-  } finally {
-    // YllaCash garde sa propre session : la session Firebase ne sert qu'à lire le compte Microsoft
-    signOut(auth).catch(() => {})
   }
 }
 
@@ -88,86 +82,32 @@ export const PERMISSIONS = {
   directeur_artistique: { credit:false, debit:false, retrait:false, rapports:false, menu:false, staff:false, studio:false, reservations:false, analytics:false, alertes:false },
 }
 
-// Compte par identifiant : racine (legacy), puis events/{id}/staff (username, email), puis bénévoles
-async function findAccountSnap(uname) {
-  let snap = await getDocs(query(collection(db, 'staff'), where('username', '==', uname)))
-  if (snap.empty) {
-    snap = await getDocs(query(collection(db, 'staff'), where('email', '==', uname)))
+// Ouvre la session YllaCash d'une fiche renvoyée par le serveur (mot de passe ou Microsoft).
+// La fiche ne contient jamais de mot de passe ; l'audit de connexion est écrit par le serveur.
+function openSession(set, compte, method) {
+  const userRole = compte.kind === 'benevole' ? 'benevole' : (compte.role || 'benevole')
+  const user = {
+    id: compte.id, nom: (compte.prenom ? compte.prenom + ' ' + compte.nom : compte.nom), email: compte.email || '',
+    username: compte.username || '', role: userRole, avatar: compte.avatar || null, eventId: compte.eventId || null,
+    isBenevole: userRole === 'benevole', benevoleDocId: compte.benevoleDocId || null, benevoleEventId: compte.benevoleEventId || null,
+    via: method,
   }
-  // Si pas trouvé en racine, chercher dans events/
-  if (snap.empty) {
-    const eventsSnap = await getDocs(collection(db, 'events'))
-    for (const evDoc of eventsSnap.docs) {
-      const evStaffSnap = await getDocs(
-        query(collection(db, 'events', evDoc.id, 'staff'), where('username', '==', uname))
-      )
-      if (!evStaffSnap.empty) { snap = evStaffSnap; break }
-      const evStaffEmailSnap = await getDocs(
-        query(collection(db, 'events', evDoc.id, 'staff'), where('email', '==', uname))
-      )
-      if (!evStaffEmailSnap.empty) { snap = evStaffEmailSnap; break }
-
-      // Chercher dans les bénévoles
-      const evBenevSnap = await getDocs(
-        query(collection(db, 'events', evDoc.id, 'benevoles'), where('username', '==', uname))
-      )
-      if (!evBenevSnap.empty) { snap = evBenevSnap; break }
-    }
-  }
-  return snap
-}
-
-// Toutes les fiches qui portent une adresse e-mail : racine, puis staff et bénévoles de chaque événement
-async function accountGroups() {
-  const asDocs = snap => snap.docs.map(d => ({ id: d.id, data: d.data() }))
-  const groups = [{ kind: 'staff', docs: asDocs(await getDocs(collection(db, 'staff'))) }]
-  const eventsSnap = await getDocs(collection(db, 'events'))
-  for (const evDoc of eventsSnap.docs) {
-    groups.push({ kind: 'staff', eventId: evDoc.id, docs: asDocs(await getDocs(collection(db, 'events', evDoc.id, 'staff'))) })
-  }
-  for (const evDoc of eventsSnap.docs) {
-    groups.push({ kind: 'benevole', eventId: evDoc.id, docs: asDocs(await getDocs(collection(db, 'events', evDoc.id, 'benevoles'))) })
-  }
-  return groups
-}
-
-// Ouvre la session YllaCash d'une fiche trouvée (même suite pour le mot de passe et pour Microsoft)
-async function openSession(set, data, docId, uname, method) {
-  const userRole = data.role || 'benevole'
-  // Chercher si ce staff a aussi un profil bénévole (même username)
-  let benevoleDocId = null
-  let benevoleEventId = null
-  if (userRole !== 'benevole' && data.eventId && uname) {
-    try {
-      const benevSnap = await getDocs(
-        query(collection(db, 'events', data.eventId, 'benevoles'), where('username', '==', uname))
-      )
-      if (!benevSnap.empty) {
-        benevoleDocId  = benevSnap.docs[0].id
-        benevoleEventId = data.eventId
-      }
-    } catch {}
-  }
-  const user  = { id:docId, nom:(data.prenom ? data.prenom+' '+data.nom : data.nom), email:data.email||'', username:data.username||uname, role:userRole, avatar:data.avatar||null, eventId:data.eventId||null, isBenevole: userRole === 'benevole', benevoleDocId, benevoleEventId, via: method }
-  const token = btoa(JSON.stringify({ id:docId, role:data.role, exp:Date.now()+8*3600*1000 }))
+  const token = btoa(JSON.stringify({ id: compte.id, role: userRole, exp: Date.now() + 8 * 3600 * 1000 }))
   set({ user, token, loginLoading:false, loginError:null, espaceChoisi:'' })
-  await writeAudit('CONNEXION', { staff: user.nom, role: user.role, userType: userRole === 'benevole' ? 'benevole' : 'staff', methode: method, label: `Connexion de ${user.nom} (${userRole})${method === 'microsoft' ? ' avec Microsoft' : ''}` })
   // Auto-sélectionner l'événement du staff si défini
-  if (data.eventId) {
+  if (compte.eventId) {
     try {
       const evStore = window.__yllacash_stores__?.eventStore
-      if (evStore) evStore.getState().selectEvent(data.eventId)
+      if (evStore) evStore.getState().selectEvent(compte.eventId)
     } catch {}
   }
   return true
 }
 
-// Mot de passe en clair (legacy) ou empreinte
-async function passwordMatches(data, password) {
-  const storedPwd = data.password || data.pwd || null
-  if (!storedPwd && !data.passwordHash) return false
-  const hashOk = data.passwordHash ? await verifyPassword(password, data.passwordHash) : false
-  return storedPwd === password || hashOk
+/** Fixe le mot de passe d'une fiche (administrateur) : 'events/<ev>/staff/<id>', 'staff/<id>' ou 'events/<ev>/benevoles/<id>' */
+export async function setPasswordFor(cible, nouveau) {
+  await apiFetch('/api/mot-de-passe', { body: { mode: 'definir', cible, nouveau } })
+  return true
 }
 
 export const ROLE_PAGES = {
@@ -191,36 +131,19 @@ const useAuthStore = create(
 
       login: async (username, password) => {
         set({ loginLoading:true, loginError:null })
-
-        const uname = username.toLowerCase().trim()
-
-        // Chercher dans Firebase
         try {
-          // Chercher dans tous les événements par username
-          // D'abord racine (legacy), puis events/{id}/staff
-          const snap = await findAccountSnap(uname)
-          if (!snap.empty) {
-            const data    = snap.docs[0].data()
-            const docId   = snap.docs[0].id
-            const storedPwd = data.password || data.pwd || null
-
-            if (!storedPwd) {
-              set({ loginLoading:false, loginError:"Aucun mot de passe défini. Contactez l’administrateur." })
-              return false
-            }
-            if (!(await passwordMatches(data, password))) {
-              set({ loginLoading:false, loginError:'Email ou mot de passe incorrect' })
-              return false
-            }
-
-            return await openSession(set, data, docId, uname, 'motdepasse')
-          }
+          // Le mot de passe est vérifié par le serveur, jamais dans le navigateur
+          const { token, compte } = await apiFetch('/api/connexion', {
+            body: { mode: 'motdepasse', identifiant: username.toLowerCase().trim(), motDePasse: password },
+          })
+          await openFirebaseSession(token)
+          return openSession(set, compte, 'motdepasse')
         } catch (err) {
-          console.error('Auth Firebase error:', err)
+          console.error('Connexion :', err)
+          // Messages du serveur (identifiants, trop d'essais…) affichés tels quels ; sinon panne ou réseau
+          set({ loginLoading:false, loginError: [400, 401, 403, 429].includes(err?.status) ? err.message : 'Connexion impossible pour le moment : vérifiez le réseau et réessayez.' })
+          return false
         }
-
-        set({ loginLoading:false, loginError:'Email ou mot de passe incorrect' })
-        return false
       },
 
       // Connexion avec le compte Microsoft Fest'Ylla : relie la personne à SA fiche par son e-mail.
@@ -275,8 +198,10 @@ const useAuthStore = create(
 
       logout: () => {
         const { user } = get()
-        if (user) writeAudit('DECONNEXION', { staff: user.nom, role: user.role, userType: user.role === 'benevole' ? 'benevole' : 'staff', label: `Déconnexion de ${user.nom}` }).catch(()=>{})
+        // L'audit part encore avec la session, puis la session Firebase est fermée
+        const audit = user ? writeAudit('DECONNEXION', { staff: user.nom, role: user.role, userType: user.role === 'benevole' ? 'benevole' : 'staff', label: `Déconnexion de ${user.nom}` }).catch(()=>{}) : Promise.resolve()
         set({ user:null, token:null, loginError:null, espaceChoisi:'' })
+        audit.finally(() => closeFirebaseSession())
       },
 
       checkSession: () => {
@@ -289,87 +214,29 @@ const useAuthStore = create(
         } catch { set({ user:null, token:null }); return false }
       },
 
-      // Réinitialiser son propre mot de passe (simulation)
+      // Changer son propre mot de passe (la session prouve l'identité)
       resetOwnPassword: async (newPassword) => {
-        const { user } = get()
-        if (!user) return false
-        if (!newPassword || newPassword.length < 6) return false
-        // On essaie d'abord le path attendu, puis le fallback racine si ça échoue.
-        // Purge aussi passwordHash legacy pour ne pas que verifyPassword bloque le nouveau.
-        const tryPaths = []
-        if (user.eventId) tryPaths.push(doc(db, 'events', user.eventId, 'staff', user.id))
-        tryPaths.push(doc(db, 'staff', user.id))
-        for (const ref of tryPaths) {
-          try {
-            // updateDoc échoue si le doc n'existe pas → c'est notre indicateur pour passer au suivant
-            await updateDoc(ref, { password: newPassword, passwordHash: null })
-            try { await writeAudit('RESET_PWD_SELF', { staff: user.nom, userType: 'staff', label: `${user.nom} a changé son mot de passe` }) } catch {}
-            return true
-          } catch (e) {
-            // doc inexistant à ce path → on essaie le suivant
-            continue
-          }
-        }
-        return false
+        if (!get().user || !newPassword || newPassword.length < 6) return false
+        try { await apiFetch('/api/mot-de-passe', { body: { mode: 'changer', nouveau: newPassword } }); return true }
+        catch (e) { console.warn('resetOwnPassword', e); return false }
       },
 
-      // Demande de réinitialisation depuis Login (utilisateur qui a oublié son mdp)
-      // → crée un document dans password-reset-requests visible par l'admin
+      // Demande de réinitialisation depuis Login (mot de passe oublié) : traitée par le serveur,
+      // qui ne révèle jamais si le compte existe
       requestPasswordReset: async (identifier) => {
         const id = (identifier || '').toLowerCase().trim()
         if (!id) return { ok: false, reason: 'empty' }
-        try {
-          // On tente de retrouver l'utilisateur pour stocker un message utile à l'admin
-          // (mais on ne révèle JAMAIS à l'appelant si le compte existe — anti-énumération)
-          let foundUserInfo = null
-          // Cherche racine
-          let snap = await getDocs(query(collection(db, 'staff'), where('username', '==', id)))
-          if (snap.empty) snap = await getDocs(query(collection(db, 'staff'), where('email', '==', id)))
-          if (!snap.empty) {
-            const d = snap.docs[0].data()
-            foundUserInfo = { staffId: snap.docs[0].id, eventId: null, nom: d.prenom ? d.prenom + ' ' + d.nom : d.nom, role: d.role, email: d.email || '' }
-          }
-          // Cherche dans events si pas trouvé
-          if (!foundUserInfo) {
-            const eventsSnap = await getDocs(collection(db, 'events'))
-            for (const evDoc of eventsSnap.docs) {
-              const a = await getDocs(query(collection(db, 'events', evDoc.id, 'staff'), where('username', '==', id)))
-              const found = !a.empty ? a : (await getDocs(query(collection(db, 'events', evDoc.id, 'staff'), where('email', '==', id))))
-              if (!found.empty) {
-                const d = found.docs[0].data()
-                foundUserInfo = { staffId: found.docs[0].id, eventId: evDoc.id, nom: d.prenom ? d.prenom + ' ' + d.nom : d.nom, role: d.role, email: d.email || '' }
-                break
-              }
-            }
-          }
-          // Crée la demande, qu'on ait trouvé ou pas (pour ne pas révéler l'existence)
-          await addDoc(collection(db, 'password-reset-requests'), {
-            identifier:  id,
-            createdAt:   serverTimestamp(),
-            status:      'pending',
-            // Si on a trouvé, on pré-rempli pour faciliter le travail admin
-            ...(foundUserInfo ? { staffId: foundUserInfo.staffId, staffNom: foundUserInfo.nom, staffRole: foundUserInfo.role, staffEmail: foundUserInfo.email, eventId: foundUserInfo.eventId } : {}),
-          })
-          // Toujours répondre OK : on ne donne aucun indice sur l'existence du compte
-          return { ok: true }
-        } catch (e) {
-          return { ok: false, reason: 'firestore-error' }
-        }
+        try { await apiFetch('/api/connexion', { body: { mode: 'reinitialisation', identifiant: id } }); return { ok: true } }
+        catch { return { ok: false, reason: 'firestore-error' } }
       },
 
-      // Admin : réinitialiser le mdp d'un membre du staff
+      // Admin : nouveau mot de passe pour un membre de l'équipe (fiche de l'événement, sinon racine)
       resetStaffPassword: async (staffId, newPassword, evId) => {
         if (!newPassword || newPassword.length < 6) return false
-        const tryPaths = []
-        if (evId) tryPaths.push(doc(db, 'events', evId, 'staff', staffId))
-        tryPaths.push(doc(db, 'staff', staffId))
-        for (const ref of tryPaths) {
-          try {
-            await updateDoc(ref, { password: newPassword, passwordHash: null })
-            const { user } = get()
-            try { await writeAudit('RESET_PWD_STAFF', { targetId: staffId, staff: user?.nom, userType: 'admin', label: `Réinitialisation mot de passe staff #${staffId}` }) } catch {}
-            return true
-          } catch { continue }
+        const paths = [...(evId ? [`events/${evId}/staff/${staffId}`] : []), `staff/${staffId}`]
+        for (const cible of paths) {
+          try { await setPasswordFor(cible, newPassword); return true }
+          catch (e) { if (e.status !== 404) { console.warn('resetStaffPassword', e); return false } }
         }
         return false
       },
@@ -396,15 +263,11 @@ const useAuthStore = create(
         return false
       },
 
-      // Revérifie le mot de passe de la personne connectée (actions destructrices)
+      // Revérifie le mot de passe de la personne connectée (actions destructrices), par le serveur
       verifyOwnPassword: async (password) => {
-        const { user } = get()
-        if (!user || !password) return false
-        try {
-          const snap = await findAccountSnap((user.username || '').toLowerCase().trim())
-          const docSnap = snap.docs.find(d => d.id === user.id) || snap.docs[0]
-          return docSnap ? await passwordMatches(docSnap.data(), password) : false
-        } catch { return false }
+        if (!get().user || !password) return false
+        try { return (await apiFetch('/api/mot-de-passe', { body: { mode: 'verifier', motDePasse: password } })).ok === true }
+        catch { return false }
       },
 
       setAvatar: (src) => set(s => ({ user: s.user ? { ...s.user, avatar:src } : null })),

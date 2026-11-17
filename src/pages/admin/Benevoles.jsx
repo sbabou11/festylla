@@ -16,7 +16,8 @@ import {
   onSnapshot, serverTimestamp, query, orderBy,
 } from 'firebase/firestore'
 import { nowStr } from '../../utils/helpers'
-import { hashPassword } from '../../utils/kpis'
+import { setPasswordFor } from '../../store/useAuthStore'
+import { friendlyError } from '../../utils/errors'
 import { addAuditLog } from '../../firebase/service'
 import { genUsername } from '../../store/useAuthStore'
 import { Plus, Trash2, Users, AlertTriangle, Search, SearchX, CalendarDays, BarChart3, RotateCcw } from 'lucide-react'
@@ -56,15 +57,14 @@ export default function Benevoles() {
   const createBenevole = async (data) => {
     // Générer les identifiants de connexion
     const username = genUsername(data.prenom + ' ' + data.nom)
+    // Mot de passe de départ inchangé (identifiant + 123), mais enregistré par le serveur en empreinte
     const password = username + '123'
-    const passwordHash = await hashPassword(password)
+    const { password: _p, passwordHash: _h, motDePasseHash: _m, ...fields } = data
     const docRef = await addDoc(
       currentEventId ? collection(db, 'events', currentEventId, 'benevoles') : collection(db, 'benevoles'),
       {
-        ...data,
+        ...fields,
         username,
-        password,
-        passwordHash,
         consommation: { repas:0, boisson:0, eau:0 },
         historique:   [],
         role:         'benevole',
@@ -72,6 +72,10 @@ export default function Benevoles() {
         createdAt:    serverTimestamp(),
       }
     )
+    if (currentEventId) {
+      try { await setPasswordFor(`events/${currentEventId}/benevoles/${docRef.id}`, password) }
+      catch (e) { toast.error(friendlyError(e, 'Le bénévole est créé, mais son mot de passe n\'a pas été enregistré.')) }
+    }
     await addAuditLog('CREATION_BENEV', {
       benevoleNom: `${data.prenom} ${data.nom}`,
       username, poste: data.poste || '',
@@ -97,12 +101,10 @@ export default function Benevoles() {
       { action:`Modification créneaux → ${Object.values(data.droits).reduce((a,v)=>a+v,0)} droits`, date:nowStr() }
     ]
     const bRef = currentEventId ? doc(db, 'events', currentEventId, 'benevoles', old.id) : doc(db, 'benevoles', old.id)
-    // Re-hasher le mdp si modifié
-    let updatePayload = { ...data, consommation:newConso, historique:hist }
-    if (data.password && data.password !== old.password) {
-      updatePayload.passwordHash = await hashPassword(data.password)
-    }
-    await updateDoc(bRef, updatePayload)
+    // Aucun mot de passe n'est écrit d'ici : un nouveau mot de passe passe par le serveur
+    const { password: newPwd, passwordHash: _h, motDePasseHash: _m, ...fields } = data
+    await updateDoc(bRef, { ...fields, consommation:newConso, historique:hist })
+    if (newPwd && currentEventId) await setPasswordFor(`events/${currentEventId}/benevoles/${old.id}`, newPwd)
     await addAuditLog('MODIF_BENEV', {
       benevoleId: old.id, benevoleNom: `${data.prenom} ${data.nom}`,
       userType: 'admin',

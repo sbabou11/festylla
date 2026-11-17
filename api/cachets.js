@@ -10,6 +10,7 @@
  *     kpis: { totalPrevu, totalPaye, totalAPayer, nbCachets, nbSignes },
  *   }
  */
+const { requireCaller } = require('./_auth/server')
 
 module.exports = async (req, res) => {
   // CORS
@@ -17,6 +18,8 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') { res.status(204).end(); return }
+  // Sécurité, lot 1 : réservé aux personnes connectées à YllaCash
+  if (!(await requireCaller(req, res, { roles: ['equipe'] }))) return
   if (req.method !== 'POST')    { res.status(405).end(); return }
 
   // Parse body

@@ -9,9 +9,10 @@
  * Bucket : FIREBASE_STORAGE_BUCKET ou VITE_FIREBASE_STORAGE_BUCKET.
  *
  * GET /api/archive-file?path=events/<id>/menu/<article>/<fichier>
- * Seuls les fichiers rangés sous events/ sont accessibles.
+ * Seuls les fichiers rangés sous events/ sont accessibles, et seulement aux administrateurs connectés.
  */
 const admin = require('firebase-admin')
+const { requireCaller } = require('./_auth/server')
 
 let app = null
 function getBucket() {
@@ -29,6 +30,9 @@ function getBucket() {
 
 module.exports = async (req, res) => {
   if (req.method !== 'GET') { res.status(405).json({ error: 'Method Not Allowed' }); return }
+  // Sécurité, lot 1 : réservé aux administrateurs (archivage des éditions)
+  const caller = await requireCaller(req, res, { roles: ['admin', 'super_admin'] })
+  if (!caller) return
   const path = String((req.query && req.query.path) || '')
   if (!/^events\/[\w-]+\/[^\0]+$/.test(path) || path.includes('..')) {
     res.status(400).json({ error: 'Chemin de fichier refusé' }); return

@@ -20,7 +20,7 @@ import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleT
 import { APP_VERSION_LABEL, APP_FULL_LABEL } from '../../utils/buildInfo'
 import CheckUpdateButton from '../../components/CheckUpdateButton'
 import PageTransition from '../../components/PageTransition'
-import { hashPassword } from '../../utils/kpis'
+import { apiFetch } from '../../firebase/session'
 import { friendlyError } from '../../utils/errors'
 import {
   currentOrNext, myShifts, relativeLabel, canCheckIn, fmtHour,
@@ -199,32 +199,11 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     setPwdMsg(null)
     // Champs requis et longueur : contrôlés dans BenevoleProfil avant l'appel
 
-    // Vérifier le mot de passe actuel
-    const currentPwd = benev?.password || (benev?.username + '123')
-    if (pwdForm.current !== currentPwd) {
-      setPwdMsg({ ok:false, text:'Mot de passe actuel incorrect.' }); return
-    }
-
     setPwdLoading(true)
     try {
-      if (demo) {
-        setBenev(b => ({ ...b, password: pwdForm.new1 }))
-      } else {
-        const bRef = eventId
-          ? doc(db, 'events', eventId, 'benevoles', docId)
-          : doc(db, 'benevoles', docId)
-        const newHash = await hashPassword(pwdForm.new1)
-        await updateDoc(bRef, { password: pwdForm.new1, passwordHash: newHash })
-        const auditColPwd = eventId ? collection(db, 'events', eventId, 'audit') : collection(db, 'audit')
-        const nowPwd = new Date()
-        await addDoc(auditColPwd, {
-          action: 'CHANGEMENT_PWD_BENEV', benevoleId: docId,
-          benevoleNom: benevNom,
-          userType: 'benevole',
-          label: `Changement mot de passe bénévole`,
-          date: nowPwd.toLocaleString('fr-FR'), timestamp: nowPwd.toISOString(),
-          createdAt: serverTimestamp(),
-        })
+      if (!demo) {
+        // Vérification de l'ancien mot de passe et enregistrement : par le serveur (session du bénévole)
+        await apiFetch('/api/mot-de-passe', { body: { mode: 'changer', ancien: pwdForm.current, nouveau: pwdForm.new1 } })
       }
       setPwdMsg({ ok:true, text:'Mot de passe modifié avec succès !' })
       setPwdForm({ current:'', new1:'', new2:'' })

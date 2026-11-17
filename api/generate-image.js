@@ -11,8 +11,8 @@
  *   HF_MAX_PER_ITEM   = nombre max de générations par article (défaut 8)
  *   HF_MAX_PER_EVENT  = nombre max de générations par événement (défaut 300)
  *
- * Sécurité : l'appli n'a pas de jeton de connexion vérifiable côté serveur. La fonction
- * ne reçoit donc que l'identifiant d'un article existant ; elle construit elle-même la
+ * Sécurité : réservé à l'équipe connectée qui gère la carte (jeton de session vérifié).
+ * La fonction ne reçoit que l'identifiant d'un article existant ; elle construit elle-même la
  * description à partir de la fiche, et les plafonds ci-dessus bornent la dépense.
  *
  * POST /api/generate-image, corps JSON :
@@ -26,6 +26,7 @@
  */
 
 const admin = require('firebase-admin')
+const { requireCaller, canManage } = require('./_auth/server')
 const crypto = require('crypto')
 
 const HF_BASE = 'https://api.higgsfield.ai'
@@ -109,6 +110,10 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
   if (req.method === 'OPTIONS') { res.status(204).end(); return }
+  // Sécurité, lot 1 : réservé à l'équipe qui gère la carte (admin ou rôle ayant la page « menu »)
+  const caller = await requireCaller(req, res, { roles: ['equipe'] })
+  if (!caller) return
+  if (!(await canManage(getDb(), caller, 'menu'))) { res.status(403).json({ error: "Ce compte n'a pas les droits pour gérer la carte." }); return }
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method Not Allowed' }); return }
 
   try {

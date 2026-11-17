@@ -210,7 +210,7 @@ export default function Staff() {
         await addAuditLog('MODIF_STAFF', { staffId: docId, staffNom: memberForm.nom.trim(), role: memberForm.role, userType: 'admin', label: `Modification staff : ${memberForm.nom.trim()}` })
       } else {
         const autoUsername = memberForm.username?.trim() || genUsername(memberForm.nom)
-        await addStaff({
+        const created = await addStaff({
           nom:      memberForm.nom.trim(),
           username: autoUsername.toLowerCase(),
           email:    cleanEmail(memberForm.email),
@@ -219,8 +219,9 @@ export default function Staff() {
           avatar:   null,
           eventIds: forcedEventIds,
           eventId:  forcedEventIds[0] || currentEventId || null,
-          password: memberForm.pwd?.length >= 6 ? memberForm.pwd : null,
         })
+        // Le mot de passe est enregistré par le serveur, en empreinte (jamais en clair dans la base)
+        if (memberForm.pwd?.length >= 6) await resetStaffPassword(created.id, memberForm.pwd, null)
         await addAuditLog('CREATION_STAFF', { staffNom: memberForm.nom.trim(), role: memberForm.role, username: autoUsername, userType: 'admin', label: `Création staff : ${memberForm.nom.trim()} (${memberForm.role})` })
       }
       setMemberForm(null)

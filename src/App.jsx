@@ -21,6 +21,7 @@ import BottomNav from './components/BottomNav'
 import Studio   from './components/Studio'
 import Avatar   from './components/Avatar'
 import UpdateBanner from './components/UpdateBanner'
+import { hasYllaSession } from './firebase/session'
 import ArchiveBanner from './components/ArchiveBanner'
 import { useTheme }      from './hooks/useTheme'
 import { useOffline }    from './hooks/useOffline'
@@ -195,7 +196,8 @@ const EspaceSelector = lazy(() => import('./pages/auth/EspaceSelector'))
 const BenevoleApp  = lazy(() => import('./pages/public/BenevoleApp'))
 const SoldePage    = lazy(() => import('./pages/public/SoldePage'))
 const Inscription  = lazy(() => import('./pages/public/Inscription'))
-const DemoLogin    = lazy(() => import('./pages/auth/DemoLogin'))
+// Page de démonstration (identifiants affichés) : développement uniquement
+const DemoLogin    = import.meta.env.DEV ? lazy(() => import('./pages/auth/DemoLogin')) : null
 const LivePlanning = lazy(() => import('./pages/public/LivePlanning'))
 const EspaceArtiste = lazy(() => import('./pages/public/EspaceArtiste'))
 const UiGallery     = import.meta.env.DEV ? lazy(() => import('./pages/dev/UiGallery')) : null
@@ -218,7 +220,7 @@ export default function App() {
       {/* Pages publiques (sans connexion staff) */}
       <Route path="/live"        element={page(<LivePlanning />)} />
       <Route path="/artiste"     element={page(<EspaceArtiste />)} />
-      <Route path="/demo"        element={page(<DemoLogin />)} />
+      {DemoLogin && <Route path="/demo" element={page(<DemoLogin />)} />}
       <Route path="/benevole"    element={page(<BenevoleApp />)} />
       {/* Borne self-service au stand : /borne?ev=<eventId>&stand=<numéro> */}
       <Route path="/borne"       element={page(<Borne />)} />
@@ -282,7 +284,12 @@ function StaffApp() {
   // espaceChoisi vient du store (reset automatique au login/logout)
   const setEspaceChoisi = (val) => setEspaceStore(val)
 
-  useEffect(() => { if (user) checkSession() }, [])
+  useEffect(() => {
+    if (!user) return
+    checkSession()
+    // Session ouverte avant la connexion par le serveur (ou expirée) : on demande de se reconnecter
+    hasYllaSession().then(ok => { if (!ok) logout() })
+  }, [])
 
   // Synchroniser l'eventId dans service.js — immédiatement + à chaque changement
   const { currentEventId: evId } = useEventStore()
