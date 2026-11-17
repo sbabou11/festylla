@@ -255,3 +255,13 @@
 .progressFill { height: 100%; background: var(--brand); transition: width var(--dur-slow, 250ms) ease; }
 .progressLabel { font-size: var(--fs-12); color: var(--muted); }
 .restoreRow { display: flex; justify-content: flex-end; }
+
+/* ── Liaisons (clés des sites et d'Event Manager) ─────────── */
+.liaisonRow { width: 100%; display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md, 8px); }
+.liaisonNom { font-weight: 700; font-size: var(--fs-14); overflow-wrap: anywhere; }
+.liaisonActions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.liaisonForm { display: flex; gap: 8px; width: 100%; }
+.liaisonForm input { flex: 1; min-width: 0; }
+.fieldError { margin: 0; font-size: var(--fs-12); color: var(--red-dark, #a32d2d); }
+.cleShown { width: 100%; display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--radius-md, 8px); background: var(--gold-light, #fdf3dc); color: var(--gold-dark, #7a5200); font-size: var(--fs-13); }
+.cleText { display: block; padding: 8px; border-radius: 6px; background: var(--bg); color: var(--text); font-family: var(--font-mono, monospace); font-size: var(--fs-12); overflow-wrap: anywhere; user-select: all; }

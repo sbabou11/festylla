@@ -10,6 +10,7 @@ import React, { useRef, useState } from 'react'
 import { Archive, Download, FileArchive, ShieldCheck, Trash2, Upload, AlertTriangle, CheckCircle } from 'lucide-react'
 import { Button, Dialog, HoldButton, toast } from '../../../ui'
 import { friendlyError } from '../../../utils/errors'
+import { apiFetch } from '../../../firebase/session'
 import {
   buildArchive, downloadBlob, verifyArchiveForPurge, purgeEvent, restoreArchive,
 } from '../../../archive/archiveService'
@@ -212,6 +213,48 @@ export function RemoveArchiveDialog({ event, onClose }) {
         vous pourrez rouvrir l'archive à tout moment.
       </p>
       <Progress p={progress}/>
+    </Dialog>
+  )
+}
+
+/**
+ * SecuriteDialog — règles strictes de la base pour un événement (sécurité, lot 3)
+ * Fermer : seules les personnes connectées, chacune selon son rôle, lisent et écrivent.
+ * Rouvrir : retour au mode ancien, en secours si un écran ne fonctionne plus le jour J.
+ */
+export function SecuriteDialog({ event, onClose }) {
+  const [busy, setBusy] = useState(false)
+  const [migration, setMigration] = useState(null)
+  const fermee = event?.securite === 'fermee'
+  const run = async (body, done) => {
+    setBusy(true)
+    try { const r = await apiFetch('/api/securite', { body }); done?.(r) }
+    catch (e) { toast.error(friendlyError(e, 'L\'opération n\'a pas abouti.')) }
+    finally { setBusy(false) }
+  }
+  return (
+    <Dialog open={!!event} onClose={() => !busy && onClose()} title={`Sécurité de « ${event?.nom || ''} »`}
+      footer={<Button variant="secondary" onClick={onClose} disabled={busy}>Fermer</Button>}>
+      <div className={s.dialogStack}>
+        <section className={s.archiveStep}>
+          <h3 className={s.archiveStepTitle}>Base de données {fermee ? 'protégée' : 'en mode ancien'}</h3>
+          <p className={s.dialogText}>
+            {fermee
+              ? 'Seules les personnes connectées lisent et modifient les données, chacune selon son rôle. Les visiteurs ne voient que leur propre compte.'
+              : 'Les données courantes de cet événement sont encore lisibles sans connexion, comme avant. L\'équipe, les bénévoles et les clés des liens sont déjà protégés.'}
+          </p>
+          {fermee
+            ? <Button variant="secondary" disabled={busy} onClick={() => run({ mode: 'ouvrir', ev: event.id }, () => { toast.info('Retour au mode ancien') ; onClose() })}>Revenir au mode ancien</Button>
+            : <HoldButton tone="danger" icon={ShieldCheck} onConfirm={() => run({ mode: 'fermer', ev: event.id }, () => { toast.success('Règles strictes activées') ; onClose() })}>Maintenir pour protéger la base</HoldButton>}
+          <p className={s.dialogHint}>À essayer d'abord sur un événement de test : vérifiez la caisse, la borne, l'écran, l'espace bénévole et un compte spectateur.</p>
+        </section>
+        <section className={s.archiveStep}>
+          <h3 className={s.archiveStepTitle}>Mots de passe en clair</h3>
+          <p className={s.dialogText}>Convertit tout de suite les mots de passe encore enregistrés en clair (équipe et bénévoles, tous les événements). Les mots de passe restent les mêmes pour chacun.</p>
+          <Button variant="secondary" disabled={busy} onClick={() => run({ mode: 'migrer-mots-de-passe' }, setMigration)}>Convertir maintenant</Button>
+          {migration && <p className={s.archiveSummary}><CheckCircle size={14} aria-hidden="true"/> {migration.converties} converti{migration.converties > 1 ? 's' : ''} ; {migration.dejaProteges} déjà protégé{migration.dejaProteges > 1 ? 's' : ''}{migration.anciennesEmpreintes ? ` ; ${migration.anciennesEmpreintes} à l'ancien format, convertis à la prochaine connexion` : ''}.</p>}
+        </section>
+      </div>
     </Dialog>
   )
 }

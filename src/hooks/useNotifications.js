@@ -15,7 +15,7 @@ import { db }         from '../firebase/config'
 import useEventStore  from '../store/useEventStore'
 import {
   collection, addDoc, onSnapshot, query,
-  orderBy, serverTimestamp, writeBatch, doc,
+  orderBy, serverTimestamp, writeBatch, doc, where,
 } from 'firebase/firestore'
 
 // ── Helper pour écrire une notif depuis n'importe où ─────────────
@@ -69,6 +69,9 @@ export const NOTIF_TYPES = {
 }
 
 // ── Hook ──────────────────────────────────────────────────────────
+// Notifications visibles par tous les spectateurs, bénévoles et artistes (changements de programme)
+export const PUBLIC_NOTIF_TYPES = Object.keys(NOTIF_TYPES).filter(k => NOTIF_TYPES[k].audience === 'planning')
+
 export function useNotifications({ specId = null, isStaff = false, staffId = null, staffRole = null, eventId: explicitEventId = null, creneauId = null } = {}) {
   const [notifications, setNotifications] = useState([])
   const [permGranted, setPermGranted]     = useState(false)
@@ -133,10 +136,7 @@ export function useNotifications({ specId = null, isStaff = false, staffId = nul
       ? collection(db, 'events', currentEventId, 'notifications')
       : collection(db, 'notifications')
 
-    const unsub = onSnapshot(
-      query(notifCol, orderBy('createdAt', 'desc')),
-      snap => {
-        const all = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+    const process = (all) => {
 
         // Filtrer selon le profil
         const relevant = all.filter(n => {
@@ -186,11 +186,29 @@ export function useNotifications({ specId = null, isStaff = false, staffId = nul
           if (n.timestamp && new Date(n.timestamp).getTime() < sessionStart.current) return
           sendPushRef.current?.(n.titre, n.message)
         })
-      },
-      err => console.warn('notifications listener error:', err)
-    )
+    }
 
-    return unsub
+    // Sécurité, lot 3 : l'équipe lit toute la collection ; un spectateur, un bénévole ou un artiste
+    // ne lit que ce qui le concerne, par des requêtes filtrées (les règles de la base l'exigent)
+    const docsOf = (snap) => snap.docs.map(d => ({ ...d.data(), id: d.id }))
+    if (isStaff) {
+      return onSnapshot(query(notifCol, orderBy('createdAt', 'desc')), snap => process(docsOf(snap)),
+        err => console.warn('notifications listener error:', err))
+    }
+    const filters = []
+    if (specId) filters.push(where('specId', '==', specId), where('benevoleId', '==', specId))
+    if (creneauId) filters.push(where('creneauId', '==', creneauId))
+    if (specId || creneauId) filters.push(where('type', 'in', PUBLIC_NOTIF_TYPES))
+    if (!filters.length) { setNotifications([]); return }
+    const parts = new Map()
+    const unsubs = filters.map((f, i) => onSnapshot(query(notifCol, f), snap => {
+      parts.set(i, docsOf(snap))
+      const merged = new Map()
+      for (const list of parts.values()) for (const n of list) merged.set(n.id, n)
+      const ms = (n) => n.createdAt?.toMillis?.() || (n.timestamp ? new Date(n.timestamp).getTime() : 0)
+      process([...merged.values()].sort((a, b) => ms(b) - ms(a)))
+    }, () => {}))
+    return () => unsubs.forEach(u => u())
   }, [specId, isStaff, currentEventId, creneauId])
 
   // Marquer tout comme lu
@@ -200,13 +218,18 @@ export function useNotifications({ specId = null, isStaff = false, staffId = nul
     const notifCol = currentEventId
       ? collection(db, 'events', currentEventId, 'notifications')
       : collection(db, 'notifications')
+    // Les notifications communes (programme) ne sont marquées lues que sur cet appareil :
+    // seule l'équipe, ou le destinataire d'une notification personnelle, peut l'écrire
+    const mine = (n) => isStaff || (specId && (n.specId === specId || n.benevoleId === specId)) || (creneauId && n.creneauId === creneauId && !PUBLIC_NOTIF_TYPES.includes(n.type))
     try {
       const batch = writeBatch(db)
-      nonLus.forEach(n => batch.update(doc(notifCol, n.id), { lu: true }))
+      const toWrite = nonLus.filter(mine)
+      toWrite.forEach(n => batch.update(doc(notifCol, n.id), { lu: true }))
+      if (!toWrite.length) { setNotifications(prev => prev.map(n => ({ ...n, lu: true }))); return }
       await batch.commit()
       setNotifications(prev => prev.map(n => ({ ...n, lu: true })))
     } catch {}
-  }, [notifications, currentEventId])
+  }, [notifications, currentEventId, isStaff, specId, creneauId])
 
   return {
     notifications,

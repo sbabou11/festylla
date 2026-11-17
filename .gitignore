@@ -9,3 +9,6 @@ node_modules/
 
 # Exports de données (budget, rapports) : ne pas versionner
 exports/
+
+# Journaux de l'émulateur Firebase (tests des règles)
+*-debug.log

@@ -23,7 +23,8 @@ import {
 import useAppStore   from '../store/useAppStore'
 import useEventStore from '../store/useEventStore'
 
-export function useFirestore() {
+// enabled : faux tant que personne de l'équipe n'est connecté (sécurité, lot 3 : rien n'est lu avant)
+export function useFirestore({ enabled = true } = {}) {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(null)
 
@@ -44,7 +45,7 @@ export function useFirestore() {
     // typiquement en < 100ms. Ce fallback ne sert qu'en mode dégradé (navigation
     // privée sans IndexedDB) ou première utilisation totale.
     const fallback = setTimeout(() => setLoading(false), 1500)
-    if (!currentEventId) {
+    if (!currentEventId || !enabled) {
       clearTimeout(fallback)
       setLoading(false) // pas d'event → pas la peine d'attendre
       return
@@ -76,13 +77,14 @@ export function useFirestore() {
     }).catch(() => {})
 
     return () => { clearTimeout(fallback); subs.forEach(u => u?.()) }
-  }, [currentEventId])
+  }, [currentEventId, enabled])
 
   // Rôles — globaux
   useEffect(() => {
+    if (!enabled) return
     const unsub = watchRoles(data => setRoles(data))
     return unsub
-  }, [])
+  }, [enabled])
 
   return { loading, error }
 }

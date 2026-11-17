@@ -8,10 +8,10 @@
  * sans nom ni code de billet : seulement la référence anonyme `ref` reçue du site.
  * Appelée chaque minute par GitHub Actions (cron-reminders.yml), et juste après un contrôle.
  *
- * REQUIS — Variables d'environnement Vercel (saisies par l'administrateur) :
- *   YLLA_EM_URL  = adresse complète, jeton compris : https://gestion.maisonylla.com/api/public/billetterie/<jeton>
- *   YLLA_EM_KEY  = clé de la liaison « YllaCash → Event Manager »
- * Sans ces variables, rien n'est envoyé et les entrées restent en attente.
+ * Règle d'échange v1.3 : adresse fixe, et une clé Event Manager par événement, saisie dans la
+ * fenêtre « Liaisons » de l'événement (rangée dans liaisons-em/{événement}, lisible par le serveur seul).
+ * Sans clé pour un événement, ses entrées restent en attente.
+ * YLLA_EM_URL (facultatif) remplace l'adresse, pour un essai.
  */
 const { prepareEntrees, nextAttempt, isSettingError, newMessageId } = require('./_billets/core')
 const { getDb } = require('./_billets/admin')
@@ -35,9 +35,10 @@ async function sendToEventManager(url, key, body) {
   } finally { clearTimeout(t) }
 }
 
+const EM_URL = 'https://gestion.maisonylla.com/api/public/billetterie'
+
 module.exports = async (req, res) => {
-  const url = process.env.YLLA_EM_URL, key = process.env.YLLA_EM_KEY
-  if (!url || !key) { res.status(200).json({ ok: true, skipped: 'Liaison Event Manager non configurée : les entrées restent en attente.' }); return }
+  const url = process.env.YLLA_EM_URL || EM_URL
 
   let db
   try { db = getDb() } catch (e) { res.status(500).json({ error: e.message }); return }
@@ -48,6 +49,9 @@ module.exports = async (req, res) => {
 
   for (const ev of events.docs) {
     if (ev.data().deleted || ev.data().archive?.readOnly) continue
+    const emSnap = await db.collection('liaisons-em').doc(ev.id).get()
+    const key = emSnap.exists ? emSnap.data().cle : null
+    if (!key) continue
     const col = db.collection('events').doc(ev.id).collection('entrees')
     const snap = await col.where('envoi.statut', '==', 'attente').get()
     if (snap.empty) continue
@@ -84,6 +88,10 @@ module.exports = async (req, res) => {
     }
     if (ok) summary.envoyees += toSend.length
     else summary.echecs.push({ event: ev.id, status: r.status, detail: r.text })
+    // Suivi affiché dans la fenêtre « Liaisons »
+    await emSnap.ref.update(ok
+      ? { dernierEnvoiOk: require('firebase-admin').firestore.FieldValue.serverTimestamp(), dernierEchec: null }
+      : { dernierEchec: `${r.status || 'réseau'} : ${r.text}`.slice(0, 200) }).catch(() => {})
   }
   res.status(200).json({ ok: true, ...summary })
 }

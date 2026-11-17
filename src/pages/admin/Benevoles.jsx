@@ -7,12 +7,12 @@
  * - Prévention des abus (alertes dépassement)
  * Sous-composants, constantes et PDF dans ./benevoles/
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import useEventStore from '../../store/useEventStore'
 import {
-  collection, addDoc, updateDoc, deleteDoc, doc,
+  collection, addDoc, updateDoc, deleteDoc, doc, setDoc,
   onSnapshot, serverTimestamp, query, orderBy,
 } from 'firebase/firestore'
 import { nowStr } from '../../utils/helpers'
@@ -43,11 +43,31 @@ export default function Benevoles() {
   const [pendingDel, setPendingDel]     = useState(null)
   const [pendingReset, setPendingReset] = useState(null)
 
+  // Annuaire des bénévoles (prénom, nom, poste) lu par l'espace bénévole pour afficher les noms du
+  // planning : les fiches complètes restent réservées à l'équipe (sécurité, lot 3)
+  const annuaireRef = useRef({})
+  const syncAnnuaire = (docs) => {
+    if (!currentEventId) return
+    const seen = new Set()
+    for (const d of docs) {
+      const { prenom = '', nom = '', poste = '' } = d.data()
+      const entry = { prenom, nom, poste }
+      const key = JSON.stringify(entry)
+      seen.add(d.id)
+      if (annuaireRef.current[d.id] === key) continue
+      annuaireRef.current[d.id] = key
+      setDoc(doc(db, 'events', currentEventId, 'benevoles-annuaire', d.id), entry).catch(() => { delete annuaireRef.current[d.id] })
+    }
+    for (const id of Object.keys(annuaireRef.current)) {
+      if (!seen.has(id)) { delete annuaireRef.current[id]; deleteDoc(doc(db, 'events', currentEventId, 'benevoles-annuaire', id)).catch(() => {}) }
+    }
+  }
+
   // Écoute temps réel Firebase
   useEffect(() => {
     const unsub = onSnapshot(
       query(currentEventId ? collection(db, 'events', currentEventId, 'benevoles') : collection(db, 'benevoles'), orderBy('createdAt', 'desc')),
-      snap => { setBenevoles(snap.docs.map(d => ({ ...d.data(), id: d.id }))); setLoading(false) },
+      snap => { setBenevoles(snap.docs.map(d => ({ ...d.data(), id: d.id }))); setLoading(false); syncAnnuaire(snap.docs) },
       () => setLoading(false)
     )
     return unsub

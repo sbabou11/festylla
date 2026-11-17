@@ -10,7 +10,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import useEventStore, { isArchiveEvent } from '../../store/useEventStore'
-import { ArchiveDialog, RestoreDialog, RemoveArchiveDialog } from './evenements/ArchiveDialogs'
+import { ArchiveDialog, RestoreDialog, RemoveArchiveDialog, SecuriteDialog } from './evenements/ArchiveDialogs'
+import LiaisonsDialog from './evenements/LiaisonsDialog'
 import { compressImage } from '../../utils/imageUtils'
 import useAuthStore  from '../../store/useAuthStore'
 import useAppStore   from '../../store/useAppStore'
@@ -18,7 +19,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { friendlyError } from '../../utils/errors'
 import {
   Plus, Pencil, Trash2, Copy, X, Save,
-  Calendar, MapPin, CheckCircle, ArrowRight, Upload, Info, Archive, Eye, FolderOpen,
+  Calendar, MapPin, CheckCircle, ArrowRight, Upload, Info, Archive, Eye, FolderOpen, Shield, Link2,
 } from 'lucide-react'
 import { Button, Empty, Skeleton, Dialog, HoldButton, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './evenements/evenements.module.css'
@@ -53,7 +54,7 @@ const EventIcon = ({ event, size = 'md' }) => {
 }
 
 // ── Carte événement ──────────────────────────────────────────────
-const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, onArchive, onCloseArchive, isMobile }) => {
+const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, onArchive, onCloseArchive, onSecurite, onLiaisons, isMobile }) => {
   const couleur = event.couleur || '#1a6b7a'
   const archived = isArchiveEvent(event)
   return (
@@ -108,6 +109,10 @@ const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, o
           iconOnly={isMobile} aria-label={`Modifier ${event.nom}`}>Modifier</Button>
         <Button variant="secondary" size="sm" icon={Copy} iconOnly title="Dupliquer"
           aria-label={`Dupliquer ${event.nom}`} onClick={() => onDuplicate(event)}/>
+        <Button variant="secondary" size="sm" icon={Link2} iconOnly title="Liaisons : clés des sites de billetterie et d'Event Manager"
+          aria-label={`Liaisons de ${event.nom}`} onClick={() => onLiaisons(event)}/>
+        <Button variant="secondary" size="sm" icon={Shield} iconOnly title={event.securite === 'fermee' ? 'Base protégée' : 'Sécurité de la base'}
+          aria-label={`Sécurité de ${event.nom}`} onClick={() => onSecurite(event)}/>
         <Button variant="secondary" size="sm" icon={Archive} iconOnly={isMobile} className={s.pushRight}
           aria-label={`Archiver ${event.nom}`} title="Télécharger une archive, puis supprimer si besoin" onClick={() => onArchive(event)}>Archiver</Button>
         <Button variant="danger" size="sm" icon={Trash2} iconOnly
@@ -285,6 +290,8 @@ export default function Evenements() {
   const [archiving,    setArchiving]    = useState(null)   // événement à archiver
   const [restoring,    setRestoring]    = useState(false)
   const [closingArch,  setClosingArch]  = useState(null)   // archive à refermer
+  const [securite,     setSecurite]     = useState(null)   // événement dont on règle la sécurité
+  const [liaisons,     setLiaisons]     = useState(null)   // événement dont on gère les clés de liaison
 
   useEffect(() => {
     const unsub = watchEvents()
@@ -394,6 +401,8 @@ export default function Evenements() {
               onDuplicate={handleDuplicate}
               onArchive={setArchiving}
               onCloseArchive={setClosingArch}
+              onSecurite={setSecurite}
+              onLiaisons={setLiaisons}
               isMobile={isMobile}
             />
           ))}
@@ -450,6 +459,8 @@ export default function Evenements() {
       <ArchiveDialog event={archiving} onClose={() => setArchiving(null)}/>
       <RestoreDialog open={restoring} onClose={() => setRestoring(false)} onRestored={(id) => selectEvent(id)}/>
       <RemoveArchiveDialog event={closingArch} onClose={() => setClosingArch(null)}/>
+      <SecuriteDialog event={securite} onClose={() => setSecurite(null)}/>
+      <LiaisonsDialog event={liaisons} onClose={() => setLiaisons(null)}/>
 
       {/* Suppression (irréversible côté interface) */}
       <Dialog open={!!pendingDel} onClose={() => setPendingDel(null)} title="Supprimer cet événement ?"

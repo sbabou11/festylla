@@ -270,12 +270,14 @@ function StaffApp() {
   const routerNavigate = useNavigate()
   const { theme, toggleDark }          = useTheme()
   const { isOffline, syncNow, toggleSimulate } = useOffline()
-  const { loading, error }             = useFirestore()
+  // Données de l'équipe : seulement une fois quelqu'un de l'équipe connecté (sécurité, lot 3)
+  const staffSession = !!user && user.role !== 'benevole'
+  const { loading, error }             = useFirestore({ enabled: staffSession })
   React.useEffect(() => { preloadLibs() }, []) // Préchargement PDF/XLS en background
   const { staff, spectateurs, logs, roles } = useAppStore()
   const { isMobile, isTablet }         = useBreakpoint()
   const { currentEventId: notifEventId } = useEventStore()
-  const { notifications, nonLuCount, marquerToutLu } = useNotifications({ isStaff: true, staffId: user?.id, staffRole: user?.role, eventId: notifEventId })
+  const { notifications, nonLuCount, marquerToutLu } = useNotifications({ isStaff: staffSession, staffId: user?.id, staffRole: user?.role, eventId: notifEventId })
   useFCM() // Push notifications natives
 
   // Hub depuis lequel on est arrivé : affiche la flèche retour dans la barre du haut

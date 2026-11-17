@@ -157,7 +157,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   // Liste de tous les bénévoles (pour afficher les noms dans le planning d'auto-inscription)
   useEffect(() => {
     if (!eventId || demo) return
-    const unsub = onSnapshot(benevCol(), snap => {
+    // Sécurité, lot 3 : annuaire (prénom, nom, poste) tenu par l'équipe, jamais les fiches complètes
+    const unsub = onSnapshot(collection(db, 'events', eventId, 'benevoles-annuaire'), snap => {
       setBenevoles(snap.docs.map(d => ({ id: d.id, ...d.data() })))
     }, () => setBenevoles([]))
     return () => unsub()

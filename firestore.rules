@@ -1,27 +1,247 @@
 rules_version = '2';
 
-// Règles Firestore pour YllaCash — état actuel (avant Firebase Auth)
+// Règles Firestore de YllaCash — sécurité, lot 3 (décision de l'organisateur du 17/11/2026)
 //
-// Étant donné que l'app n'implémente pas encore signInWithEmailAndPassword
-// ou signInAnonymously, request.auth est toujours null. Des règles
-// exigeant request.auth bloqueraient toute l'app.
+// Qui est qui : chaque session est ouverte par le serveur (api/connexion, api/session) avec
+// un jeton portant `yc` et :
+//   type 'staff'      équipe (role : admin, super_admin, billetterie, stand, consultation, rôle personnalisé)
+//   type 'benevole'   bénévole (fiche : events/{ev}/benevoles/{id})
+//   type 'spectateur' compte spectateur (specId : FY-…, specDoc : identifiant du document)
+//   type 'artiste'    espace d'un créneau (creneauId)
+//   type 'borne'      tablette de commande d'un stand
+//   type 'ecran'      écran public des commandes prêtes
+//   eventIds          événements autorisés
 //
-// Les règles ci-dessous sont permissives : lecture/écriture libre. La
-// version "cible" avec rôles + custom claims est conservée dans
-// `firestore.rules.future_with_auth` pour le jour où l'auth Firebase
-// sera intégrée à l'app.
-//
-// Sécurité actuelle assurée par :
-//   - Obscurité de l'ID événement (UUID non énumérable)
-//   - Audit log de toutes les opérations sensibles
-//   - Logique métier dans le code client (vérif rôles via Firestore staff/)
-//
-// À durcir dès que possible.
+// Mise en service progressive : un événement n'est fermé que si son document porte
+// `securite: 'fermee'`. Tant qu'il ne l'est pas, ses données courantes restent ouvertes comme avant
+// (mode « ancien ») ; les données sensibles (équipe, bénévoles, clés de liens, entrées, journal des
+// connexions) et les collections racine sont protégées dans tous les cas.
+// Le serveur (Firebase Admin) n'est pas soumis à ces règles.
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+
+    // ── Qui appelle ──────────────────────────────────────────────────────────
+    function yc() { return request.auth != null && request.auth.token.yc == 1; }
+    function type() { return request.auth.token.type; }
+    function isStaff() { return yc() && type() == 'staff'; }
+    function isAdmin() { return isStaff() && request.auth.token.role in ['admin', 'super_admin']; }
+    // Équipe de cet événement (une fiche sans événement précis voit tous les événements, comme avant)
+    function staffIn(ev) {
+      return isStaff() && (isAdmin() || request.auth.token.eventIds.size() == 0 || ev in request.auth.token.eventIds);
+    }
+    function inEvent(ev) { return yc() && ev in request.auth.token.eventIds; }
+    function sess(t, ev) { return inEvent(ev) && type() == t; }
+    function benevoleId() { return request.auth.token.fiche.split('/')[3]; }
+    function changes() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function onlyChanges(keys) { return changes().hasOnly(keys); }
+
+    // Événement fermé (sécurité active) ou encore en mode ancien
+    function closed(ev) {
+      return get(/databases/$(database)/documents/events/$(ev)).data.get('securite', '') == 'fermee';
+    }
+    function legacy(ev) { return !closed(ev); }
+
+    // ── Événements ───────────────────────────────────────────────────────────
+    match /events/{ev} {
+      // Nom, dates, logo : affichés par les pages publiques (planning, inscription)
+      allow get: if true;
+      allow list: if isStaff();
+      allow create, delete: if isAdmin();
+      // L'équipe change l'événement actif sur ses appareils ; les administrateurs modifient tout
+      allow update: if isAdmin() || (isStaff() && onlyChanges(['actif']));
+
+      // ── Toujours protégé, même en mode ancien ────────────────────────────
+      match /staff/{id} {
+        allow read: if staffIn(ev);
+        allow write: if isAdmin() || (staffIn(ev) && request.auth.token.fiche == 'events/' + ev + '/staff/' + id
+                                      && onlyChanges(['avatar', 'fcmTokens', 'nom']));
+      }
+      match /benevoles/{id} {
+        allow read: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id);
+        allow create, delete: if staffIn(ev);
+        allow update: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id && onlyChanges(['consommation', 'historique']));
+      }
+      match /benevoles-annuaire/{id} {
+        allow read: if staffIn(ev) || sess('benevole', ev);
+        allow write: if staffIn(ev);
+      }
+      match /liens/{id} {
+        allow read, write: if staffIn(ev);
+      }
+      match /billetterie-recus/{id} {
+        allow read: if staffIn(ev);
+        allow write: if false;
+      }
+      match /entrees/{id} {
+        allow read, create, update: if staffIn(ev) || sess('benevole', ev);
+        allow delete: if isAdmin();
+      }
+
+      // ── Données de l'événement ───────────────────────────────────────────
+      match /settings/{id} {
+        allow read: if true;   // thème et nom affichés par les pages publiques
+        allow write: if staffIn(ev);
+      }
+      match /planning/{id} {
+        allow read: if true;   // programme public (/live)
+        allow write: if staffIn(ev) || legacy(ev);
+        // L'artiste relie son compte spectateur et enregistre ses notifications
+        allow update: if sess('artiste', ev) && request.auth.token.creneauId == id
+                         && onlyChanges(['artistFcmTokens', 'linkedSpecId', 'linkedSpecNom']);
+      }
+      match /menu/{id} {
+        allow read: if yc() && inEvent(ev) || staffIn(ev) || legacy(ev);
+        allow create, delete: if staffIn(ev) || legacy(ev);
+        // Réservations et commandes : le stock bouge depuis les pages des visiteurs et des bénévoles
+        allow update: if staffIn(ev) || legacy(ev) || (inEvent(ev) && onlyChanges(['stock']));
+      }
+      match /categories/{id} {
+        allow read: if inEvent(ev) || staffIn(ev) || legacy(ev);
+        allow write: if staffIn(ev) || legacy(ev);
+      }
+      match /spectateurs/{doc} {
+        allow read: if staffIn(ev) || legacy(ev)
+                    || (sess('spectateur', ev) && resource.data.id == request.auth.token.specId)
+                    || sess('borne', ev) || sess('artiste', ev)
+                    // Contrôle des billets à l'entrée (un code inconnu doit pouvoir répondre « Billet inconnu »)
+                    || (sess('benevole', ev) && (resource == null || resource.data.keys().hasAny(['billet'])));
+        allow create: if staffIn(ev) || legacy(ev);
+        allow delete: if staffIn(ev) || legacy(ev);
+        allow update: if staffIn(ev) || legacy(ev)
+                      // Borne : paiement d'une commande (solde)
+                      || (sess('borne', ev) && onlyChanges(['solde']))
+                      // Bénévole au contrôle : seulement le registre des entrées du billet
+                      || (sess('benevole', ev) && onlyChanges(['billet'])
+                          && request.resource.data.billet.diff(resource.data.billet).affectedKeys().hasOnly(['entrees']));
+      }
+      match /transactions/{id} {
+        allow read: if staffIn(ev) || legacy(ev)
+                    || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId);
+        allow create: if staffIn(ev) || legacy(ev) || sess('borne', ev)
+                      || (sess('spectateur', ev) && request.resource.data.specId == request.auth.token.specId
+                          && request.resource.data.type in ['reservation', 'annulation'])
+                      || (sess('benevole', ev) && request.resource.data.benevoleId == benevoleId());
+        allow update, delete: if staffIn(ev) || legacy(ev);
+      }
+      match /reservations/{id} {
+        allow read: if staffIn(ev) || legacy(ev)
+                    || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId)
+                    || (sess('benevole', ev) && resource.data.benevoleId == benevoleId())
+                    || (sess('ecran', ev) && resource.data.status == 'ready');
+        allow create: if staffIn(ev) || legacy(ev)
+                      || (sess('spectateur', ev) && request.resource.data.specId == request.auth.token.specId)
+                      || (sess('benevole', ev) && request.resource.data.benevoleId == benevoleId());
+        allow update: if staffIn(ev) || legacy(ev)
+                      || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId)
+                      || (sess('benevole', ev) && resource.data.benevoleId == benevoleId());
+        allow delete: if staffIn(ev) || legacy(ev);
+      }
+      match /commandes/{id} {
+        allow read: if staffIn(ev) || legacy(ev) || sess('borne', ev)
+                    || (sess('ecran', ev) && resource.data.status == 'ready');
+        allow create: if staffIn(ev) || legacy(ev) || sess('borne', ev);
+        allow update, delete: if staffIn(ev) || legacy(ev);
+      }
+      match /_counters/{id} {
+        allow read, write: if staffIn(ev) || legacy(ev) || sess('borne', ev) || sess('benevole', ev);
+      }
+      match /notifications/{id} {
+        allow read: if staffIn(ev) || legacy(ev)
+                    || (inEvent(ev) && (resource.data.type in ['PLANNING_MODIF']
+                        || (type() == 'spectateur' && resource.data.specId == request.auth.token.specId)
+                        || (type() == 'benevole' && (resource.data.specId == benevoleId() || resource.data.benevoleId == benevoleId()))
+                        || (type() == 'artiste' && resource.data.creneauId == request.auth.token.creneauId)));
+        allow create: if staffIn(ev) || legacy(ev) || inEvent(ev);
+        allow update: if staffIn(ev) || legacy(ev)
+                      || (inEvent(ev) && onlyChanges(['lu']) && resource.data.type != 'PLANNING_MODIF'
+                          && ((type() == 'spectateur' && resource.data.specId == request.auth.token.specId)
+                              || (type() == 'benevole' && (resource.data.specId == benevoleId() || resource.data.benevoleId == benevoleId()))
+                              || (type() == 'artiste' && resource.data.creneauId == request.auth.token.creneauId)));
+        allow delete: if staffIn(ev) || legacy(ev);
+      }
+      match /audit/{id} {
+        allow read: if staffIn(ev) || legacy(ev);
+        allow create: if staffIn(ev) || legacy(ev) || inEvent(ev);
+        allow update, delete: if false;
+      }
+      match /volunteer-posts/{id} {
+        allow read: if staffIn(ev) || legacy(ev) || sess('benevole', ev);
+        allow write: if staffIn(ev) || legacy(ev);
+      }
+      match /volunteer-shifts/{id} {
+        allow read: if staffIn(ev) || legacy(ev) || sess('benevole', ev);
+        allow create, delete: if staffIn(ev) || legacy(ev);
+        // Auto-inscription et pointage des bénévoles
+        allow update: if staffIn(ev) || legacy(ev) || (sess('benevole', ev) && onlyChanges(['postes', 'libres', 'pending', 'presences']));
+      }
+      match /artist-reservations/{id} {
+        allow read: if staffIn(ev) || legacy(ev)
+                    || (sess('artiste', ev) && resource.data.creneauId == request.auth.token.creneauId);
+        allow create: if staffIn(ev) || legacy(ev)
+                      || (sess('artiste', ev) && request.resource.data.creneauId == request.auth.token.creneauId);
+        allow update: if staffIn(ev) || legacy(ev)
+                      || (sess('artiste', ev) && resource.data.creneauId == request.auth.token.creneauId);
+        allow delete: if staffIn(ev) || legacy(ev);
+      }
+      match /artist-consumptions/{id} {
+        allow read: if staffIn(ev) || legacy(ev)
+                    || (sess('artiste', ev) && resource.data.creneauId == request.auth.token.creneauId);
+        allow write: if staffIn(ev) || legacy(ev);
+      }
+      // Messagerie et talkie de l'équipe (bénévoles compris)
+      match /team-chat/{id} {
+        allow read, write: if staffIn(ev) || legacy(ev) || sess('benevole', ev);
+      }
+      match /team-chat-typing/{id} {
+        allow read, write: if staffIn(ev) || legacy(ev) || sess('benevole', ev);
+      }
+      match /walkie-state/{id} {
+        allow read, write: if staffIn(ev) || legacy(ev) || sess('benevole', ev);
+      }
+      match /walkie-chunks/{id} {
+        allow read, write: if staffIn(ev) || legacy(ev) || sess('benevole', ev);
+      }
+      // Tout le reste (finances, cachets, exposants, clôtures, rappels, analyses…) : équipe seulement
+      // (Les règles s'additionnent : les collections protégées ci-dessus sont exclues d'ici,
+      // sinon cette règle générale leur rendrait des droits qu'on leur a retirés.)
+      match /{other}/{id} {
+        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire'])
+                              && (staffIn(ev) || legacy(ev));
+      }
+    }
+
+    // ── Collections racine ───────────────────────────────────────────────────
+    match /staff/{id} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || (isStaff() && request.auth.token.fiche == 'staff/' + id && onlyChanges(['avatar', 'fcmTokens', 'nom']));
+    }
+    match /roles/{id} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+    match /password-reset-requests/{id} {
+      allow read, update, delete: if isAdmin();
+      allow create: if false;   // créées par le serveur (api/connexion)
+    }
+    match /securite-connexions/{id} {
+      allow read, write: if false;   // compteurs d'essais, serveur seulement
+    }
+    // Clés de liaison des sites (empreintes) et clés Event Manager : serveur seulement,
+    // jamais lisibles depuis un navigateur, même celui d'un administrateur (règle d'échange v1.3)
+    match /liaisons/{id} {
+      allow read, write: if false;
+    }
+    match /liaisons-em/{id} {
+      allow read, write: if false;
+    }
+    match /users/{uid}/{rest=**} {
+      allow read, write: if isStaff();   // disposition de l'accueil
+    }
+    // Anciennes données d'avant les événements, et tout le reste : équipe seulement.
+    // (Les règles s'additionnent : on exclut ici les collections traitées plus haut.)
+    match /{coll}/{id} {
+      allow read, write: if isStaff() && !(coll in ['events', 'staff', 'roles', 'password-reset-requests', 'securite-connexions', 'users', 'liaisons', 'liaisons-em']);
     }
   }
 }

@@ -1,18 +1,21 @@
 rules_version = '2';
 
-// Règles Firebase Storage pour YllaCash — état actuel (avant Firebase Auth)
+// Règles Firebase Storage pour YllaCash — sécurité, lot 3
 //
-// Même logique que pour firestore.rules : l'app n'utilise pas Firebase
-// Auth pour le moment, donc request.auth est null. Des règles exigeant
-// l'authentification bloqueraient tous les uploads (photos d'articles,
-// justificatifs de finances, etc.).
-//
-// À durcir avec l'auth Firebase + check de rôle dans un lot futur.
+// Les photos du menu, justificatifs, décharges et documents sont affichés par leur adresse de
+// téléchargement (avec jeton), qui fonctionne quelles que soient ces règles.
+// Ces règles protègent la liste des fichiers et l'envoi : seule l'équipe connectée
+// (session ouverte par le serveur) peut envoyer, remplacer ou supprimer un fichier.
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function isStaff() {
+      return request.auth != null && request.auth.token.yc == 1 && request.auth.token.type == 'staff';
+    }
     match /{allPaths=**} {
-      allow read, write: if true;
+      allow read: if isStaff();
+      allow write: if isStaff() && request.resource.size < 15 * 1024 * 1024;
+      allow delete: if isStaff();
     }
   }
 }

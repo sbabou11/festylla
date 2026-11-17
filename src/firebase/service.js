@@ -1119,11 +1119,13 @@ export const creerReservationArtiste = async (creneau, items, evId = null) => {
   return ref.id
 }
 
-export const watchArtistReservations = (callback, evId = null) => {
+// creneauId : l'espace artiste ne lit que ses propres réservations (exigé par les règles, lot 3)
+export const watchArtistReservations = (callback, evId = null, creneauId = null) => {
   const eventId = evId || getEventId()
   if (!eventId) return () => {}
   const col = collection(db, 'events', eventId, 'artist-reservations')
-  return onSnapshot(col, snap => callback(snap.docs.map(d => ({ ...d.data(), id: d.id }))))
+  const q = creneauId ? query(col, where('creneauId', '==', creneauId)) : col
+  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ ...d.data(), id: d.id }))), () => callback([]))
 }
 
 export const servirReservationArtiste = async (resa, staffNom, staffId, evId = null) => {

@@ -38,7 +38,7 @@ function checkAuth(header, expected) {
 function validateMessage(msg) {
   if (!msg || typeof msg !== 'object') return 'Corps JSON attendu.'
   if (!HEX32.test(msg.id || '')) return 'Identifiant de message « id » invalide (32 caractères hexadécimaux).'
-  if (!EVENT_ID.test(msg.evenement || '')) return 'Identifiant d\'événement « evenement » invalide.'
+  // v1.3 : l'événement n'est plus envoyé, c'est la clé de liaison qui le désigne
   if (msg.type === 'vente') {
     if (!Array.isArray(msg.billets) || !msg.billets.length) return 'Une vente doit contenir au moins un billet.'
     for (const b of msg.billets) {
@@ -66,8 +66,12 @@ const clean = (v, max = 80) => String(v || '').replace(/\s+/g, ' ').trim().slice
  * Traite un message déjà authentifié et validé.
  * Renvoie { status, body } : 200/201 { ok }, 200 { ok, duplicate }, 404 { error }.
  */
-async function handleMessage(store, msg) {
-  const ev = msg.evenement
+/**
+ * ev : événement de la clé de liaison ; source : nom de cette clé (« festylla.com »),
+ * gardé sur chaque compte créé et sur chaque message reçu (règle d'échange v1.3, §2).
+ */
+async function handleMessage(store, msg, { ev, source = '' } = {}) {
+  if (!EVENT_ID.test(ev || '')) throw new Error('Événement de la clé manquant')
   return store.runTransaction(async (tx) => {
     const event = await tx.get(`events/${ev}`)
     if (!event.exists) return { status: 404, body: { error: `Événement inconnu dans YllaCash : ${ev}` } }
@@ -94,6 +98,7 @@ async function handleMessage(store, msg) {
           tx.set(path, {
             id: `FY-${b.code}`,
             nom: clean(`${clean(b.prenom)} ${clean(b.nom)}`, 120),
+            source: clean(source, 60),
             solde: 0,
             avatar: null,
             createdAt: store.now(),
@@ -122,8 +127,9 @@ async function handleMessage(store, msg) {
       }
     }
 
-    tx.set(recuPath, { type: msg.type, commande: clean(msg.commande, 40), le: clean(msg.le, 40), recuLe: store.now() })
+    tx.set(recuPath, { type: msg.type, commande: clean(msg.commande, 40), le: clean(msg.le, 40), source: clean(source, 60), recuLe: store.now() })
     return {
+      created,
       status: msg.type === 'vente' && created ? 201 : 200,
       body: { ok: true, ...(msg.type === 'vente' ? { crees: created, retablis: restored } : { annules: cancelled, inconnus: unknown }) },
     }

@@ -132,7 +132,7 @@ export default function EspaceArtiste() {
         return tb - ta
       })
       setReservations(mine)
-    }, eventId)
+    }, eventId, creneauId)
     return unsub
   }, [eventId, creneauId])
 
