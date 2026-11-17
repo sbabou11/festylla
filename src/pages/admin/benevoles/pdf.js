@@ -12,6 +12,9 @@ const loadJsPDF = () => new Promise((resolve, reject) => {
   document.head.appendChild(s)
 })
 
+// Lien personnel avec clé (sécurité, lot 2) : il ouvre l'espace du bénévole sans mot de passe
+import { linkFor } from '../../../firebase/publicSession'
+
 const generateBenevrolePDF = async (b, eventMeta, eventId) => {
   const jsPDF = await loadJsPDF()
   const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
@@ -22,7 +25,7 @@ const generateBenevrolePDF = async (b, eventMeta, eventId) => {
   let qrDataUrl = null
   try {
     const QRCode = await import('qrcode')
-    const url = `${window.location.origin}/benevole?id=${b.id}${eventId ? '&ev=' + eventId : ''}`
+    const url = (eventId ? await linkFor(eventId, 'benevole', b.id) : `${window.location.origin}/benevole?id=${b.id}`)
     qrDataUrl = await QRCode.default.toDataURL(url, { width: 200, margin: 1, color: { dark: BRAND, light: '#fff' } })
   } catch {}
 
@@ -72,10 +75,10 @@ const generateBenevrolePDF = async (b, eventMeta, eventId) => {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(11)
   doc.text(`Nom d'utilisateur : ${b.username || '—'}`, 30, boxY + 18)
-  doc.text(`Mot de passe : ${b.password || (b.username + '123') || '—'}`, 30, boxY + 25)
+  doc.text(`Mot de passe de départ : ${b.username ? b.username + '123' : '—'}`, 30, boxY + 25)
 
   // ── Lien ──
-  const url = `${window.location.origin}/benevole?id=${b.id}${eventId ? '&ev=' + eventId : ''}`
+  const url = (eventId ? await linkFor(eventId, 'benevole', b.id) : `${window.location.origin}/benevole?id=${b.id}`)
   doc.setFontSize(9)
   doc.setTextColor(26, 107, 122)
   doc.text('Lien : ' + url, W / 2, 175, { align: 'center', maxWidth: W - 30 })

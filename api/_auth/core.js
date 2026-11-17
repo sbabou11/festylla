@@ -69,6 +69,9 @@ function validateNewPassword(plain) {
 const MIN = 60 * 1000
 const LIMIT = { fails: 8, windowMs: 15 * MIN, blockMs: 15 * MIN }
 
+// Pages publiques (code d'un compte, lien personnel) : plus d'essais permis, blocage plus long
+const PUBLIC_LIMIT = { fails: 15, windowMs: 15 * MIN, blockMs: 30 * MIN }
+
 /** Le compteur bloque-t-il une nouvelle tentative ? Renvoie le nombre de minutes restantes, ou 0. */
 function blockedMinutes(rec, nowMs) {
   if (!rec || !rec.bloqueJusquaMs || rec.bloqueJusquaMs <= nowMs) return 0
@@ -76,11 +79,11 @@ function blockedMinutes(rec, nowMs) {
 }
 
 /** Nouveau compteur après un échec */
-function afterFailure(rec, nowMs) {
-  const fresh = !rec || typeof rec.debutMs !== 'number' || nowMs - rec.debutMs > LIMIT.windowMs
+function afterFailure(rec, nowMs, limit = LIMIT) {
+  const fresh = !rec || typeof rec.debutMs !== 'number' || nowMs - rec.debutMs > limit.windowMs
   const echecs = fresh ? 1 : (rec.echecs || 0) + 1
   const debutMs = fresh ? nowMs : rec.debutMs
-  return { echecs, debutMs, bloqueJusquaMs: echecs >= LIMIT.fails ? nowMs + LIMIT.blockMs : 0 }
+  return { echecs, debutMs, bloqueJusquaMs: echecs >= limit.fails ? nowMs + limit.blockMs : 0 }
 }
 
 /** Clé de compteur : on ne garde jamais l'adresse réseau ni l'identifiant en clair */
@@ -100,6 +103,33 @@ function sessionFor(account) {
   return { uid, claims: { yc: 1, type: kind, role, eventIds, fiche: account.path } }
 }
 
+// ── Sessions des pages publiques (lot 2) ────────────────────────────────────
+const KEY = /^[0-9a-f]{20,64}$/
+const isKey = (v) => KEY.test(String(v || ''))
+/** Comparaison de clés sans fuite par le temps de réponse */
+const sameKey = (a, b) => isKey(a) && isKey(b) && sameText(a, b)
+const newKey = () => crypto.randomBytes(16).toString('hex')
+
+/** Clé attendue pour ouvrir un compte spectateur : celle du billet, sinon celle du compte créé sur place */
+const accountKey = (spec) => (spec && (spec.billet && spec.billet.cle)) || (spec && spec.cle) || ''
+
+function spectatorSession(eventId, docId, spec) {
+  return {
+    uid: `spectateur:${eventId}:${docId}`.slice(0, 128),
+    claims: { yc: 1, type: 'spectateur', role: 'spectateur', eventIds: [eventId], specId: spec.id, specDoc: docId },
+  }
+}
+
+/** Liens personnels et appareils : bénévole et artiste (id = fiche ou créneau), borne et écran (un par événement) */
+const LINK_KINDS = ['benevole', 'artiste', 'borne', 'ecran']
+const linkDocId = (kind, id) => (kind === 'borne' || kind === 'ecran') ? kind : `${kind}-${id}`
+
+function deviceSession(kind, eventId, id) {
+  const claims = { yc: 1, type: kind, role: kind, eventIds: [eventId] }
+  if (kind === 'artiste') claims.creneauId = id
+  return { uid: `${kind}:${eventId}${kind === 'artiste' ? ':' + id : ''}`.slice(0, 128), claims }
+}
+
 /** Ce que le navigateur reçoit de la fiche : jamais de mot de passe ni d'empreinte */
 function publicAccount(account) {
   const d = { ...account.data }
@@ -109,5 +139,6 @@ function publicAccount(account) {
 
 module.exports = {
   hashPassword, checkPassword, hasPassword, passwordFields, validateNewPassword, legacyHash,
-  blockedMinutes, afterFailure, counterKey, sessionFor, publicAccount, LIMIT,
+  blockedMinutes, afterFailure, counterKey, sessionFor, publicAccount, LIMIT, PUBLIC_LIMIT,
+  isKey, sameKey, newKey, accountKey, spectatorSession, LINK_KINDS, linkDocId, deviceSession,
 }

@@ -162,7 +162,9 @@ export const createSpectateur = async (nom, soldeEuros, staffNom = 'Billetterie'
   const id    = uid()
   const solde = toCents(soldeEuros)
   const eid   = getEventId()
-  await addDoc(collection(db, 'events', eid, 'spectateurs'), { id, nom, solde, avatar: null, createdAt: serverTimestamp() })
+  // Clé du compte (sécurité, mesure 3) : contenue dans le QR remis au spectateur, elle ouvre son espace
+  const cle   = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
+  await addDoc(collection(db, 'events', eid, 'spectateurs'), { id, nom, solde, avatar: null, cle, createdAt: serverTimestamp() })
   if (solde > 0) {
     // Dans les transactions de l'événement (auparavant écrite à la racine, invisible des totaux)
     const now = new Date()
@@ -175,6 +177,7 @@ export const createSpectateur = async (nom, soldeEuros, staffNom = 'Billetterie'
     })
   }
   await audit('CREATION_SPECTATEUR', { specId: id, specNom: nom, montant: solde, staff: staffNom, moyen, userType: 'spectateur', label: `Nouveau spectateur : ${nom}` })
+  createSpectateur.derniereCle = cle   // lue par l'écran « Nouveau spectateur » pour son QR
   return id
 }
 

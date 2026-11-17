@@ -4,11 +4,13 @@
  */
 import { getSettings } from '../../../firebase/service'
 import { toast } from '../../../ui'
+import { linkFor } from '../../../firebase/publicSession'
 import { APP_VERSION_LABEL } from '../../../utils/buildInfo'
 
 export default async function printArtisteSheet(form, creneauId, eventId) {
-  const url = window.location.origin + '/artiste?ev=' + eventId + '&cr=' + creneauId
-  const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=' + encodeURIComponent(JSON.stringify({ ev: eventId, cr: creneauId, type: 'artiste' }))
+  // Lien avec clé (sécurité, lot 2). Le QR est dessiné ici même : la clé n'est envoyée à aucun service extérieur.
+  const url = await linkFor(eventId, 'artiste', creneauId)
+  const qrUrl = await (await import('qrcode')).default.toDataURL(url, { width: 400, margin: 1 })
 
   // Charger thème + meta événement
   let brand = '#1a6b7a'

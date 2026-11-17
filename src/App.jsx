@@ -22,6 +22,7 @@ import Studio   from './components/Studio'
 import Avatar   from './components/Avatar'
 import UpdateBanner from './components/UpdateBanner'
 import { hasYllaSession } from './firebase/session'
+import LinkGate from './components/LinkGate'
 import ArchiveBanner from './components/ArchiveBanner'
 import { useTheme }      from './hooks/useTheme'
 import { useOffline }    from './hooks/useOffline'
@@ -219,13 +220,14 @@ export default function App() {
     <Routes>
       {/* Pages publiques (sans connexion staff) */}
       <Route path="/live"        element={page(<LivePlanning />)} />
-      <Route path="/artiste"     element={page(<EspaceArtiste />)} />
+      {/* Sécurité, lot 2 : ces pages ne s'ouvrent qu'avec un lien valable (&k=…) */}
+      <Route path="/artiste"     element={page(<LinkGate kind="artiste" idParam="cr"><EspaceArtiste /></LinkGate>)} />
       {DemoLogin && <Route path="/demo" element={page(<DemoLogin />)} />}
-      <Route path="/benevole"    element={page(<BenevoleApp />)} />
+      <Route path="/benevole"    element={page(<LinkGate kind="benevole" idParam="id"><BenevoleApp /></LinkGate>)} />
       {/* Borne self-service au stand : /borne?ev=<eventId>&stand=<numéro> */}
-      <Route path="/borne"       element={page(<Borne />)} />
+      <Route path="/borne"       element={page(<LinkGate kind="borne"><Borne /></LinkGate>)} />
       {/* Écran TV des commandes prêtes : /ecran?ev=<eventId> */}
-      <Route path="/ecran"       element={page(<EcranPublic />)} />
+      <Route path="/ecran"       element={page(<LinkGate kind="ecran"><EcranPublic /></LinkGate>)} />
       <Route path="/inscription" element={page(<Inscription />)} />
       <Route path="/register"    element={page(<Inscription />)} />
       <Route path="/solde"       element={page(<SoldePage />)} />

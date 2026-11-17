@@ -3,6 +3,9 @@ import React, { useRef, useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
+import { soldeUrl } from '../../firebase/publicSession'
+import { createSpectateur as svcCreateSpectateur } from '../../firebase/service'
+import useEventStore from '../../store/useEventStore'
 import QrCode from '../../components/QrCode'
 import useAuthStore from '../../store/useAuthStore'
 import { Field, focusFirstInvalid } from '../../ui'
@@ -10,6 +13,7 @@ import { Field, focusFirstInvalid } from '../../ui'
 export default function Nouveau() {
   const { createSpectateur } = useAppStore()
   const { user } = useAuthStore()
+  const { currentEventId } = useEventStore()
   const [moyen, setMoyen]   = useState('especes')
   const [nom, setNom]       = useState('')
   const [solde, setSolde]   = useState(0)
@@ -29,7 +33,7 @@ export default function Nouveau() {
     setError('')
     try {
       const id = await createSpectateur(nom.trim(), solde, user?.nom || 'Billetterie', { moyen: solde > 0 ? moyen : null })
-      setCreated({ id, nom: nom.trim(), solde: solde * 100 })
+      setCreated({ id, nom: nom.trim(), solde: solde * 100, cle: svcCreateSpectateur.derniereCle || '' })
       setNom(''); setSolde(0); setFormKey(k => k + 1)
     } catch (err) {
       setError(friendlyError(err, "Le compte spectateur n'a pas été créé."))
@@ -82,7 +86,8 @@ export default function Nouveau() {
           <div style={{ ...card, textAlign:'center' }}>
             <div style={{ fontSize:13, fontWeight:600, marginBottom:12, color:'var(--brand-dark)' }}>✓ QR code créé !</div>
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, padding:12, background:'var(--bg2)', borderRadius:10, marginBottom:12 }}>
-              <QrCode value={created.id} size={120} />
+              {/* L'adresse contient la clé : le spectateur ouvre son espace en scannant ; les stands y lisent le code */}
+              <QrCode value={soldeUrl(currentEventId, created.id, created.cle)} size={120} />
               <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'monospace' }}>{created.id}</div>
               <div style={{ fontSize:18, fontWeight:700, color:'var(--brand-dark)' }}>{fmt(created.solde)}</div>
               <div style={{ fontSize:12, color:'var(--muted)' }}>{created.nom}</div>

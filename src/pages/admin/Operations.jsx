@@ -9,6 +9,7 @@
  *   - Bandeau d'urgence pour les résas en attente trop longtemps
  */
 
+import { linkFor } from '../../firebase/publicSession'
 import React, { useMemo, useEffect, useState } from 'react'
 import {
   PlusCircle, ShoppingCart, Package, List, Bookmark,
@@ -457,7 +458,9 @@ export default function Operations({ onNavigate }) {
               <ActionCompacte
                 onClick={() => {
                   if (!currentEventId) return
-                  window.open(`/ecran?ev=${currentEventId}`, '_blank', 'noopener')
+                  // Lien d'appareil avec clé (sécurité, lot 2) : c'est ce lien qu'on ouvre sur la tablette
+                  const w = window.open('about:blank', '_blank')
+                  linkFor(currentEventId, 'ecran').then(u => { if (w) w.location.href = u }).catch(() => w?.close())
                 }}
                 icon={<Monitor size={20}/>}
                 label="Écran public"
@@ -471,7 +474,9 @@ export default function Operations({ onNavigate }) {
               <ActionCompacte
                 onClick={() => {
                   if (!currentEventId) return
-                  window.open(`/borne?ev=${currentEventId}`, '_blank', 'noopener')
+                  // Lien d'appareil avec clé (sécurité, lot 2) : c'est ce lien qu'on ouvre sur la tablette
+                  const w = window.open('about:blank', '_blank')
+                  linkFor(currentEventId, 'borne').then(u => { if (w) w.location.href = u }).catch(() => w?.close())
                 }}
                 icon={<ShoppingBag size={20}/>}
                 label="Borne self-service"

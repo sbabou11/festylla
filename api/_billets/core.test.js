@@ -30,7 +30,7 @@ const ID = 'a'.repeat(32), ID2 = 'b'.repeat(32), ID3 = 'c'.repeat(32)
 const vente = (id = ID) => ({
   id, type: 'vente', evenement: 'EV1', commande: '1058', le: '2027-03-12T10:41:07+01:00',
   billets: [
-    { code: 'K7Q3NP', ref: '9c1f4e0a7b2d6c35', prenom: 'Awa', nom: 'Exemple', pass: 'Pass 2 jours', jours: 2, prix: 10 },
+    { code: 'K7Q3NP', ref: '9c1f4e0a7b2d6c35', cle: 'f'.repeat(32), prenom: 'Awa', nom: 'Exemple', pass: 'Pass 2 jours', jours: 2, prix: 10 },
     { code: 'AB2C3D', ref: '04be71d2c9a8f360', prenom: 'Malik', nom: 'Exemple', pass: 'Pass 1 jour', jours: 1, prix: 6.5 },
   ],
 })
@@ -47,6 +47,8 @@ describe('liaison site → YllaCash : identification', () => {
     expect(validateMessage({ ...vente(), id: 'court' })).toMatch(/id/)
     expect(validateMessage({ ...vente(), billets: [{ ...vente().billets[0], ref: 'zz' }] })).toMatch(/ref/)
     expect(validateMessage({ ...vente(), type: 'autre' })).toMatch(/inconnu/)
+    expect(validateMessage({ ...vente(), billets: [{ ...vente().billets[0], cle: 'pas-hexa' }] })).toMatch(/cle/)
+    expect(validateMessage({ ...vente(), billets: [{ ...vente().billets[0], cle: '' }] })).toBeNull()
     expect(validateMessage(vente())).toBeNull()
   })
 })
@@ -58,7 +60,7 @@ describe('réception des ventes et annulations', () => {
     expect(r).toEqual({ status: 201, body: { ok: true, crees: 2, retablis: 0 } })
     expect(store.docs.get(SPEC)).toMatchObject({
       id: 'FY-K7Q3NP', nom: 'Awa Exemple', solde: 0,
-      billet: { code: 'K7Q3NP', ref: '9c1f4e0a7b2d6c35', pass: 'Pass 2 jours', jours: 2, prix: 1000, commande: '1058', annule: false, entrees: {} },
+      billet: { code: 'K7Q3NP', ref: '9c1f4e0a7b2d6c35', cle: 'f'.repeat(32), pass: 'Pass 2 jours', jours: 2, prix: 1000, commande: '1058', annule: false, entrees: {} },
     })
     expect(store.docs.get('events/EV1/spectateurs/FY-AB2C3D').billet.prix).toBe(650)
   })

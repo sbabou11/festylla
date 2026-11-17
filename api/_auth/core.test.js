@@ -60,3 +60,37 @@ describe('session', () => {
     expect(sessionFor({ ...acc, kind: 'benevole', data: { role: 'admin' } }).claims.role).toBe('benevole')
   })
 })
+
+describe('sessions des pages publiques', () => {
+  const { sameKey, accountKey, spectatorSession, deviceSession, linkDocId, newKey, afterFailure, blockedMinutes, PUBLIC_LIMIT } = require('./core.js')
+  it('la clé du billet prime sur celle du compte, et un ancien compte n\'en a pas', () => {
+    expect(accountKey({ billet: { cle: 'a'.repeat(32) }, cle: 'b'.repeat(32) })).toBe('a'.repeat(32))
+    expect(accountKey({ cle: 'b'.repeat(32) })).toBe('b'.repeat(32))
+    expect(accountKey({ id: 'FY-4A2B' })).toBe('')
+  })
+  it('compare les clés et refuse une clé vide ou mal formée', () => {
+    const k = newKey()
+    expect(k).toMatch(/^[0-9a-f]{32}$/)
+    expect(sameKey(k, k)).toBe(true)
+    expect(sameKey('', '')).toBe(false)
+    expect(sameKey('zz', 'zz')).toBe(false)
+    expect(sameKey(newKey(), k)).toBe(false)
+  })
+  it('une session spectateur ne porte que son compte et son événement', () => {
+    expect(spectatorSession('EV1', 'FY-K7Q3NP', { id: 'FY-K7Q3NP' })).toEqual({
+      uid: 'spectateur:EV1:FY-K7Q3NP',
+      claims: { yc: 1, type: 'spectateur', role: 'spectateur', eventIds: ['EV1'], specId: 'FY-K7Q3NP', specDoc: 'FY-K7Q3NP' },
+    })
+  })
+  it('liens d\'appareils et liens personnels', () => {
+    expect(linkDocId('borne', 'x')).toBe('borne')
+    expect(linkDocId('artiste', 'cr1')).toBe('artiste-cr1')
+    expect(deviceSession('artiste', 'EV1', 'cr1').claims).toEqual({ yc: 1, type: 'artiste', role: 'artiste', eventIds: ['EV1'], creneauId: 'cr1' })
+    expect(deviceSession('ecran', 'EV1').uid).toBe('ecran:EV1')
+  })
+  it('essayer des codes en série depuis un appareil le bloque 30 minutes', () => {
+    let rec = null
+    for (let i = 0; i < PUBLIC_LIMIT.fails; i++) rec = afterFailure(rec, 1000 + i, PUBLIC_LIMIT)
+    expect(blockedMinutes(rec, 2000)).toBe(30)
+  })
+})

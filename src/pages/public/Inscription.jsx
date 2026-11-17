@@ -8,9 +8,11 @@
  * Mobile d'abord : colonne de 440px max, styles dans inscription/Inscription.module.css.
  */
 
+import { apiFetch, openFirebaseSession } from '../../firebase/session'
+import { soldeUrl } from '../../firebase/publicSession'
 import React, { useState, useEffect, useRef } from 'react'
 import { db } from '../../firebase/config'
-import { collection, addDoc, serverTimestamp, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 import QRCode from 'qrcode'
 import ThemeToggle from '../../components/ThemeToggle'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
@@ -21,7 +23,6 @@ import { Button, Field, Skeleton, SuccessCheck, focusFirstInvalid } from '../../
 import s from './inscription/Inscription.module.css'
 
 // Génère un ID unique de type FY-XXXX
-const genId = () => 'FY-' + Math.random().toString(36).slice(2, 6).toUpperCase()
 
 // Couleur du QR (image exportée, indépendante du thème)
 const BRAND   = '#1a6b7a'
@@ -56,8 +57,8 @@ export default function Inscription() {
   // Générer l'image QR dès qu'on a l'ID
   useEffect(() => {
     if (!spec?.id) return
-    const soldeUrl = `${window.location.origin}/solde?id=${spec.id}${eventId ? '&ev=' + eventId : ''}`
-    QRCode.toDataURL(soldeUrl, {
+    // Le QR contient la clé du compte (mesure 3) : il ouvre le compte sans rien taper
+    QRCode.toDataURL(soldeUrl(eventId, spec.id, spec.cle), {
       width: 240,
       margin: 2,
       color: { dark: BRAND, light: '#ffffff' },
@@ -75,35 +76,15 @@ export default function Inscription() {
     setStep('creating')
 
     try {
-      // Générer un ID unique non encore utilisé
-      let id, exists = true
-      let tries = 0
-      while (exists && tries < 10) {
-        id = genId()
-        const specCol = eventId
-          ? collection(db, 'events', eventId, 'spectateurs')
-          : collection(db, 'spectateurs')
-        const snap = await getDocs(query(specCol, where('id', '==', id)))
-        exists = !snap.empty
-        tries++
-      }
-
-      // Créer le compte dans Firebase
-      const specColWrite = eventId
-        ? collection(db, 'events', eventId, 'spectateurs')
-        : collection(db, 'spectateurs')
-      await addDoc(specColWrite, {
-        id,
-        nom:       fullNom,
-        solde:     0,
-        avatar:    null,
-        createdAt: serverTimestamp(),
-      })
-
-      setSpec({ id, nom: fullNom })
+      // Sécurité, lot 2 : le compte est créé par le serveur (code unique, clé, limite par appareil)
+      const r = await apiFetch('/api/inscription', { body: { ev: eventId, prenom: prenom.trim(), nom: nom.trim() } })
+      await openFirebaseSession(r.token)
+      const { id, cle } = r.compte
+      try { localStorage.setItem(`yllacash-cle-${eventId}-${id}`, cle) } catch {}
+      setSpec({ id, nom: fullNom, cle })
       setStep('done')
     } catch (e) {
-      setErr('Erreur de connexion. Réessayez.')
+      setErr(e?.status ? e.message : 'Erreur de connexion. Réessayez.')
       setStep('form')
     }
   }
@@ -161,7 +142,7 @@ export default function Inscription() {
 
       // URL en bas du QR
       doc.setFontSize(7); doc.setTextColor(100, 100, 110)
-      doc.text(window.location.origin + '/solde?id=' + spec.id + (eventId ? '&ev=' + eventId : ''), W / 2, 133, { align: 'center' })
+      doc.text(window.location.origin + '/solde?id=' + spec.id + (eventId ? '&ev=' + eventId : ''), W / 2, 133, { align: 'center' }) // adresse lisible, sans la clé (le QR la contient)
 
       // Pied de page
       doc.setFillColor(255, 248, 242)
@@ -184,7 +165,7 @@ export default function Inscription() {
   }
 
   const creating = step === 'creating'
-  const soldeHref = `/solde?id=${spec?.id}${eventId ? '&ev=' + eventId : ''}`
+  const soldeHref = spec ? soldeUrl(eventId, spec.id, spec.cle).replace(window.location.origin, '') : '/solde'
 
   return (
     <div className={s.page}>

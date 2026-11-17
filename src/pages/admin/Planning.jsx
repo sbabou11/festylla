@@ -4,6 +4,7 @@
  * Vue liste (détail, statut, avantages) ou frise horaire glissable.
  * Accessible aux rôles admin et super_admin
  */
+import useLink from '../../hooks/useLink'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import clsx from 'clsx'
 import useAppStore from '../../store/useAppStore'
@@ -467,7 +468,8 @@ export default function Planning({ onNavigate }) {
     { value: 'timeline', label: <span className={s.viewIcon}><GanttChart size={14} aria-hidden="true" />Frise</span> },
   ]
   const typeItems = [{ value: 'tous', label: '🎭 Tous' }, ...TYPES.map(t => ({ value: t.value, label: `${t.icon} ${t.label}` }))]
-  const lienArtiste = editing ? window.location.origin + '/artiste?ev=' + currentEventId + '&cr=' + editing : ''
+  // Lien de l'espace artiste, avec sa clé (sécurité, lot 2)
+  const lienArtiste = useLink(editing && editing !== 'new' ? currentEventId : null, 'artiste', editing || '')
 
   // État vide commun à la liste et à la frise : premier créneau ou filtres trop stricts
   const q = search.trim()
@@ -832,8 +834,8 @@ export default function Planning({ onNavigate }) {
                   aria-label="Lien espace artiste"
                   className={clsx(s.input, s.mono)}/>
                 <Button size="sm" icon={Copy} onClick={() => {
-                  const url = window.location.origin + '/artiste?ev=' + currentEventId + '&cr=' + editing
-                  navigator.clipboard?.writeText(url).then(() => setSuccess('Lien copié !'))
+                  if (!lienArtiste) return
+                  navigator.clipboard?.writeText(lienArtiste).then(() => setSuccess('Lien copié !'))
                   setTimeout(() => setSuccess(''), 2000)
                 }}>
                   Copier

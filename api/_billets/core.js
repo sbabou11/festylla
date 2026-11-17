@@ -44,6 +44,8 @@ function validateMessage(msg) {
     for (const b of msg.billets) {
       if (!b || !CODE.test(b.code || '')) return `Code de billet invalide : ${b && b.code}`
       if (!HEX16.test(b.ref || '')) return `Référence anonyme « ref » invalide pour le billet ${b.code}.`
+      // Clé du compte YllaCash (règle d'échange v1.2) : vide pour les billets d'essai émis avant
+      if (b.cle && !/^[0-9a-f]{20,64}$/.test(b.cle)) return `Clé « cle » invalide pour le billet ${b.code}.`
       if (!String(b.prenom || '').trim() && !String(b.nom || '').trim()) return `Nom du titulaire absent pour le billet ${b.code}.`
       if (!Number.isInteger(b.jours) || b.jours < 1 || b.jours > 30) return `Nombre de jours invalide pour le billet ${b.code}.`
       if (typeof b.prix !== 'number' || !Number.isFinite(b.prix) || b.prix < 0) return `Prix invalide pour le billet ${b.code}.`
@@ -83,8 +85,10 @@ async function handleMessage(store, msg) {
       for (const b of msg.billets) {
         const path = `events/${ev}/spectateurs/FY-${b.code}`
         if (current[b.code].exists) {
-          // Vente renvoyée (rétablissement) : on ne touche ni au solde ni aux entrées
-          tx.set(path, { billet: { annule: false } }, { merge: true })
+          // Vente renvoyée (rétablissement) : on ne touche ni au solde ni aux entrées ; la clé déjà
+          // enregistrée n'est jamais remplacée, mais un billet d'essai sans clé reçoit la sienne
+          const known = current[b.code].data && current[b.code].data.billet
+          tx.set(path, { billet: { annule: false, ...(!(known && known.cle) && b.cle ? { cle: b.cle } : {}) } }, { merge: true })
           restored++
         } else {
           tx.set(path, {
@@ -100,6 +104,7 @@ async function handleMessage(store, msg) {
               jours: b.jours,
               prix: Math.round(b.prix * 100),
               commande: clean(msg.commande, 40),
+              cle: b.cle || '',
               annule: false,
               entrees: {},
             },

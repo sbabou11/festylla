@@ -122,7 +122,8 @@ export default function Spectateurs({ onNavigate }) {
 
       // Génère les QR codes en parallèle (en base64) — un par spectateur
       const cards = await Promise.all(list.map(async s => {
-        const soldeUrl = `${window.location.origin}/solde?id=${s.id}${evId ? '&ev=' + evId : ''}`
+        // Carte imprimée : le QR contient la clé du compte (mesure 3) quand il en a une
+        const soldeUrl = `${window.location.origin}/solde?id=${s.id}${evId ? '&ev=' + evId : ''}${(s.billet?.cle || s.cle) ? '&k=' + (s.billet?.cle || s.cle) : ''}`
         const qrDataUrl = await QRCode.toDataURL(soldeUrl, { width: 400, margin: 1, color: { dark: '#003048', light: '#FFFFFF' } })
         return { spec: s, soldeUrl, qrDataUrl }
       }))

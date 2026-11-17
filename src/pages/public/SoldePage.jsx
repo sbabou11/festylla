@@ -4,6 +4,7 @@
  * barre d'onglets en bas : Solde | Commander | Mes résas | Programme.
  * La logique Firestore (compte, transactions, réservations) est celle de la v4.
  */
+import { ensureSpectatorSession, soldeUrl } from '../../firebase/publicSession'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
@@ -72,6 +73,8 @@ export default function SoldePage({ demo = null }) {
   useTheme()
   const params  = new URLSearchParams(window.location.search)
   const urlId   = (params.get('id') || '').toUpperCase()
+  // Clé du billet ou du compte (mesure 3) : présente dans le lien et le QR, retenue par le téléphone
+  const urlKey  = (params.get('k') || '').toLowerCase()
   const eventId = params.get('ev') || null
   const fromArtiste = params.get('from') === 'artiste'
   const artisteCreneauId = params.get('cr') || null
@@ -181,6 +184,11 @@ export default function SoldePage({ demo = null }) {
     if (!id) return
     setLoading(true); setErr(''); clearListeners()
     try {
+      // Sécurité, lot 2 : le compte ne s'ouvre qu'après accord du serveur (clé, limite d'essais)
+      if (!demo && eventId) {
+        const s = await ensureSpectatorSession({ ev: eventId, id, cle: id === urlId ? urlKey : '' })
+        if (!s.ok) { setErr(s.error); setLoading(false); return }
+      }
       const snap = await getDocs(query(specCol(db), where('id','==',id)))
       if (snap.empty) { setErr('Aucun compte trouvé pour : ' + id); setLoading(false); return }
       const d = snap.docs[0]
@@ -207,7 +215,7 @@ export default function SoldePage({ demo = null }) {
 
   useEffect(() => {
     if (!spec?.id) return
-    const url = `${window.location.origin}/solde?id=${spec.id}${eventId ? '&ev='+eventId : ''}`
+    const url = soldeUrl(eventId, spec.id)
     QRCode.toDataURL(url, { width:400, margin:2, color:{ dark:themeColor, light:'#ffffff' } })
       .then(u => setQrDataUrl(u)).catch(() => {})
   }, [spec?.id])

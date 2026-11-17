@@ -184,7 +184,10 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   // QR code
   useEffect(() => {
     if (!docId) return
-    const url = `${window.location.origin}/benevole?id=${docId}${eventId && !demo ? '&ev=' + eventId : ''}`
+    // Lien personnel : avec sa clé si l'appareil la connaît (ouverture par le lien)
+    let cle = ''
+    try { cle = localStorage.getItem(`yllacash-lien-benevole-${eventId}-${docId}`) || '' } catch {}
+    const url = `${window.location.origin}/benevole?id=${docId}${eventId && !demo ? '&ev=' + eventId : ''}${cle && !demo ? '&k=' + cle : ''}`
     QRCode.toDataURL(url, { width: 400, margin: 2, color: { dark: '#003048', light: '#fff' } })
       .then(setQrDataUrl).catch(() => {})
   }, [docId])

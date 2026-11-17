@@ -6,6 +6,7 @@ import React, { useState } from 'react'
 import clsx from 'clsx'
 import { Trash2, Pencil, AlertTriangle, ChevronDown, FileDown, RotateCcw, Check } from 'lucide-react'
 import QrCode from '../../../components/QrCode'
+import useLink from '../../../hooks/useLink'
 import { Button, Badge } from '../../../ui'
 import { JOURS, CRENEAUX, ITEM_CFG, countCreneaux } from './constants'
 import s from './benevoles.module.css'
@@ -35,6 +36,8 @@ const Jauge = ({ item, label, consomme, total, Icon }) => {
 
 export default function CarteBenevole({ b, onEdit, onDelete, onConsommer, onReset, onGeneratePDF, currentEventId }) {
   const [open, setOpen]   = useState(false)
+  // Lien personnel avec clé : chargé seulement quand la carte est dépliée
+  const lienBenevole = useLink(open ? currentEventId : null, 'benevole', b.id)
   const conso  = b.consommation || {}
   const droits = b.droits || {}
   const hasAbus = Object.keys(droits).some(k => (conso[k]||0) > (droits[k]||0))
@@ -86,7 +89,7 @@ export default function CarteBenevole({ b, onEdit, onDelete, onConsommer, onRese
           {/* QR code */}
           <div className={s.qrRow}>
             <div className={s.qrBox}>
-              <QrCode value={`${window.location.origin}/benevole?id=${b.id}${currentEventId?'&ev='+currentEventId:''}`} size={100}/>
+              {lienBenevole ? <QrCode value={lienBenevole} size={100}/> : <div style={{ width:100, height:100 }} aria-busy="true"/>}
               <div className={s.mono}>BNV-{b.id?.slice(-6)}</div>
             </div>
             <div className={s.grow}>
