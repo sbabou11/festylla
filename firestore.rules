@@ -60,7 +60,8 @@ service cloud.firestore {
       match /benevoles/{id} {
         allow read: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id);
         allow create, delete: if staffIn(ev);
-        allow update: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id && onlyChanges(['consommation', 'historique']));
+        // consoJours : consommations par journée des fiches venues d'Event Manager (lot C)
+        allow update: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id && onlyChanges(['consommation', 'consoJours', 'historique']));
       }
       match /benevoles-annuaire/{id} {
         allow read: if staffIn(ev) || sess('benevole', ev);
@@ -88,6 +89,14 @@ service cloud.firestore {
       match /programme-em/{id} {
         allow read: if true;
         allow write: if isAdmin();
+      }
+      // Artistes venus d'Event Manager (lot C) : écrits par le serveur ; l'équipe les lit,
+      // l'artiste lit sa fiche et y relie son compte spectateur ou ses notifications
+      match /artistes/{id} {
+        allow read: if staffIn(ev) || legacy(ev) || (sess('artiste', ev) && request.auth.token.creneauId == id);
+        allow write: if isAdmin();
+        allow update: if sess('artiste', ev) && request.auth.token.creneauId == id
+                         && onlyChanges(['artistFcmTokens', 'linkedSpecId', 'linkedSpecNom']);
       }
       match /planning/{id} {
         allow read: if true;   // programme public (/live)
@@ -212,7 +221,7 @@ service cloud.firestore {
       // (Les règles s'additionnent : les collections protégées ci-dessus sont exclues d'ici,
       // sinon cette règle générale leur rendrait des droits qu'on leur a retirés.)
       match /{other}/{id} {
-        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire', 'programme-em'])
+        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire', 'programme-em', 'artistes'])
                               && (staffIn(ev) || legacy(ev));
       }
     }

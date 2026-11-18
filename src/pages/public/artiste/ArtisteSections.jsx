@@ -212,7 +212,7 @@ export function ResasTab({ reservations, onCancel, onReserve }) {
 }
 
 /* ── Programme ──────────────────────────────────────────── */
-export function ProgrammeTab({ planning, creneauId }) {
+export function ProgrammeTab({ planning, creneauId, artisteNom = null }) {
   return (
     <Section title="Programme du festival">
       {planning.length === 0 ? (
@@ -226,7 +226,7 @@ export function ProgrammeTab({ planning, creneauId }) {
           }).map(p => {
             const pt = TYPES[p.type] || TYPES.autre
             const Icon = pt.icon
-            const isMe = p.id === creneauId
+            const isMe = p.id === creneauId || (!!artisteNom && p.artiste === artisteNom)
             const isAnnulePrg = p.statut === 'annule'
             return (
               <li key={p.id} className={clsx(s.row, isMe && s.rowMe, isAnnulePrg && s.rowOff)}>

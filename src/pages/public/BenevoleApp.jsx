@@ -42,6 +42,7 @@ import BenevolePlanning from '../../components/BenevolePlanning'
 import QrScanner from '../../components/QrScanner'
 import EntreeControl from '../../components/EntreeControl'
 import { parisNow } from '../../billets/entree'
+import { festDay, quotasDuJour, isEmFiche, dayLabel, nextDay } from '../../em/jour'
 import useAuthStore from '../../store/useAuthStore'
 import { useTheme } from '../../hooks/useTheme'
 import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, SuccessCheck, toast } from '../../ui'
@@ -223,11 +224,13 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     .filter(i => i.nom)
 
   // Vérifier quota disponible par type
-  const quotaRestant = (type) => {
-    const droits = benev?.droits || {}
-    const conso  = benev?.consommation || {}
-    return Math.max(0, (droits[type] || 0) - (conso[type] || 0))
-  }
+  // Fiche venue d'Event Manager : droits du jour (journée finie à 6 h), sinon totaux de l'événement
+  const em     = isEmFiche(benev)
+  const jour   = festDay(now)
+  const quotas = quotasDuJour(benev, jour)
+  const quotaRestant = (type) => Math.max(0, (quotas.droits[type] || 0) - (quotas.conso[type] || 0))
+  // Champ de consommation à faire évoluer pour une commande d'une journée donnée
+  const consoPath = (type, j = jour) => em ? `consoJours.${j}.${type}` : `consommation.${type}`
 
   // Annuler une réservation (après confirmation dans la fenêtre)
   const annulerResa = async (resaId, code) => {
@@ -270,7 +273,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         if (Object.keys(grouped).length) {
           const updates = {}
           Object.entries(grouped).forEach(([type, qty]) => {
-            updates[`consommation.${type}`] = increment(-qty)
+            updates[consoPath(type, resa.jourConso || festDay(resa.createdAt))] = increment(-qty)
           })
           await updateDoc(bRef, updates)
         }
@@ -344,6 +347,11 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       if (demo) {
         setResas(rs => [{ id: 'd' + Date.now(), code, items: itemsWithPrice, total, status: 'processing', date: nowStr() }, ...rs])
         setBenev(b => {
+          if (em) {
+            const conso = { ...(b.consoJours?.[jour] || {}) }
+            Object.entries(grouped).forEach(([t, q]) => { conso[t] = (conso[t] || 0) + q })
+            return { ...b, consoJours: { ...(b.consoJours || {}), [jour]: conso } }
+          }
           const conso = { ...(b.consommation || {}) }
           Object.entries(grouped).forEach(([t, q]) => { conso[t] = (conso[t] || 0) + q })
           return { ...b, consommation: conso }
@@ -371,6 +379,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         assignedStaff: 'Auto (bénévole)',
         date:       nowStr(),
         isBenev:    true,
+        ...(em ? { jourConso: jour } : {}),   // journée dont le quota est utilisé (rendu à l'annulation)
         createdAt:  serverTimestamp(),
         processingAt: serverTimestamp(),
       })
@@ -394,7 +403,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         : doc(db, 'benevoles', docId)
       const updates = {}
       Object.entries(grouped).forEach(([type, qty]) => {
-        updates[`consommation.${type}`] = increment(qty)
+        updates[consoPath(type)] = increment(qty)
       })
       await updateDoc(bRef, updates)
 
@@ -546,15 +555,19 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const rel = slot ? relativeLabel(slot.range, now) : null
 
   // Contrôle des billets : affecté aujourd'hui à un poste marqué « contrôle les billets »
-  const canControl = !demo && myShifts(shifts, myId).some(x => x.shift.date === parisNow().jour && postsById[x.postId]?.controleBillets)
+  // Contrôle des billets : jours envoyés par Event Manager, sinon postes « contrôle les billets » du planning
+  const canControl = !demo && (em
+    ? (benev.controleBillets || []).includes(jour)
+    : myShifts(shifts, myId).some(x => x.shift.date === parisNow().jour && postsById[x.postId]?.controleBillets))
+  const demain = em ? quotasDuJour(benev, nextDay(jour)).droits : null
 
   const NAV = [
     { id: 'accueil',   label: 'Accueil',  icon: Home },
     ...(canControl ? [{ id: 'entree', label: 'Entrée', icon: Ticket }] : []),
-    { id: 'planning',  label: 'Planning', icon: CalendarDays },
+    ...(em ? [] : [{ id: 'planning',  label: 'Planning', icon: CalendarDays }]),   // planning dans Event Manager
     { id: 'commander', label: 'Conso',    icon: ShoppingCart },
     { id: 'mes-resas', label: 'Résas',    icon: Bookmark, badge: readyResas.length || pendingResas || 0 },
-    { id: 'profil',    label: 'Profil',   icon: User },
+    ...(em ? [] : [{ id: 'profil',    label: 'Profil',   icon: User }]),           // entrée par lien, sans mot de passe
   ]
 
   return (
@@ -596,7 +609,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
               {/* Bonjour + QR */}
               <section className={s.hello}>
                 <div className={s.helloText}>
-                  <span>Bénévole{benev.poste ? ` · ${benev.poste}` : ''}</span>
+                  <span>Bénévole{em ? ` · ${dayLabel(jour)}` : benev.poste ? ` · ${benev.poste}` : ''}</span>
                   <h1>Bonjour {benev.prenom || benev.nom}</h1>
                   <small className={s.helloId}>BNV-{docId?.slice(-6)}</small>
                 </div>
@@ -618,22 +631,39 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                 </button>
               )}
 
+              {/* Contrôle des billets aujourd'hui (Event Manager) */}
+              {em && canControl && (
+                <button type="button" className={s.ready} onClick={() => setTab('entree')}>
+                  <Ticket size={18}/>
+                  <span>
+                    <b>Vous contrôlez les billets aujourd'hui</b>
+                    <span>Ouvrez l'onglet Entrée pour scanner les billets</span>
+                  </span>
+                  <ChevronRight size={18}/>
+                </button>
+              )}
+
               {/* Quotas en bocaux */}
               <section className={s.card}>
                 <div className={s.cardHead}>
-                  <h2>Mes quotas</h2>
+                  <h2>{em ? 'Mes quotas du jour' : 'Mes quotas'}</h2>
                   <span className={s.muted}>Ce qu'il vous reste</span>
                 </div>
                 <div className={s.jars}>
                   {Object.entries(TYPE_CFG).map(([type, cfg]) => (
                     <Jar key={type}
                       value={quotaRestant(type)}
-                      max={benev.droits?.[type] || 0}
+                      max={quotas.droits[type] || 0}
                       label={cfg.label} color={cfg.tone} icon={cfg.icon}/>
                   ))}
                 </div>
+                {em && !(quotas.droits.repas || quotas.droits.boisson || quotas.droits.eau) && (
+                  <p className={s.muted}>Pas de repas ni de boissons prévus aujourd'hui.</p>
+                )}
+                {em && <p className={s.hint}>Valables jusqu'à 6 h du matin. Ce qui n'est pas utilisé ne passe pas au lendemain.</p>}
               </section>
 
+              {!em && (<>
               {/* Mon créneau sur le ruban horaire */}
               <section className={s.card}>
                 <div className={s.cardHead}>
@@ -687,6 +717,22 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                   </div>
                 )}
               </section>
+
+              </>)}
+
+              {em && (
+                <section className={s.card}>
+                  <div className={s.cardHead}>
+                    <h2>Demain</h2>
+                    <span className={s.muted}>{dayLabel(nextDay(jour))}</span>
+                  </div>
+                  <p className={s.muted}>
+                    {demain && (demain.repas || demain.boisson || demain.eau)
+                      ? `${demain.repas || 0} repas, ${demain.boisson || 0} boisson${(demain.boisson || 0) > 1 ? 's' : ''}, ${demain.eau || 0} eau${(benev.controleBillets || []).includes(nextDay(jour)) ? ' · contrôle des billets' : ''}`
+                      : 'Rien de prévu.'}
+                  </p>
+                </section>
+              )}
 
               <DernieresCommandes resas={resas} setTab={setTab}/>
 

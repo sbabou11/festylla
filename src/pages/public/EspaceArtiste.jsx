@@ -21,6 +21,9 @@ import { Button, Dialog, Sheet, Empty, Field, Skeleton, toast, focusFirstInvalid
 import { TYPES, fmtHour, fmtDate } from './artiste/artisteUtils'
 import { DroitsTab, ConsosTab, ReserverTab, ResasTab, ProgrammeTab } from './artiste/ArtisteSections'
 import s from './artiste/EspaceArtiste.module.css'
+import { watchProgramme } from '../../programme/watchProgramme'
+import { adaptArtisteEm, duJour } from '../../em/artiste'
+import { festDay, dayLabel } from '../../em/jour'
 import useArtistReminders from '../../hooks/useArtistReminders'
 import useArtistFCM from '../../hooks/useArtistFCM'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
@@ -36,7 +39,9 @@ export default function EspaceArtiste() {
   const eventId   = params.get('ev')
   const creneauId = params.get('cr')
 
-  const [creneau,      setCreneau]      = useState(null)
+  const [creneauPl,    setCreneauPl]    = useState(undefined)   // créneau du planning de YllaCash
+  const [ficheEm,      setFicheEm]      = useState(undefined)   // fiche d'artiste venue d'Event Manager (lot C)
+  const [offerts,      setOfferts]      = useState([])          // articles offerts aux artistes (fiches Event Manager)
   const [planning,     setPlanning]     = useState([])
   const [consumptions, setConsumptions] = useState([])
   const [reservations, setReservations] = useState([])
@@ -82,26 +87,32 @@ export default function EspaceArtiste() {
     getDoc(doc(db, 'events', eventId)).then(s => s.exists() && setEventMeta(s.data())).catch(() => {})
   }, [eventId])
 
-  // Écouter le créneau (temps réel — modif admin se propage)
+  // Écouter le créneau du planning, ou la fiche d'artiste d'Event Manager (temps réel)
   useEffect(() => {
     if (!eventId || !creneauId) { setLoading(false); setNotFound(true); return }
-    const refDoc = doc(db, 'events', eventId, 'planning', creneauId)
-    const unsub  = onSnapshot(refDoc, snap => {
-      if (snap.exists()) { setCreneau({ ...snap.data(), id: snap.id }); setNotFound(false) }
-      else { setNotFound(true) }
-      setLoading(false)
-    }, err => { console.error(err); setLoading(false); setNotFound(true) })
-    return unsub
+    const listen = (name, set) => onSnapshot(doc(db, 'events', eventId, name, creneauId),
+      snap => set(snap.exists() ? { ...snap.data(), id: snap.id } : null),
+      () => set(null))
+    const u1 = listen('planning', setCreneauPl)
+    const u2 = listen('artistes', setFicheEm)
+    return () => { u1(); u2() }
   }, [eventId, creneauId])
+  useEffect(() => {
+    if (creneauPl === undefined || ficheEm === undefined) return
+    setNotFound(!creneauPl && !ficheEm)
+    setLoading(false)
+  }, [creneauPl, ficheEm])
 
-  // Écouter toute la planning pour l'onglet Programme
+  // Articles offerts aux artistes (fiches d'Event Manager)
+  useEffect(() => {
+    if (!eventId || !ficheEm) return
+    return onSnapshot(doc(db, 'events', eventId, 'settings', 'artistes'), snap => setOfferts(snap.data()?.articles || []), () => {})
+  }, [eventId, !!ficheEm])
+
+  // Programme (onglet Programme) : celui d'Event Manager si l'événement y est relié
   useEffect(() => {
     if (!eventId) return
-    const col = collection(db, 'events', eventId, 'planning')
-    const unsub = onSnapshot(col, snap => {
-      setPlanning(snap.docs.map(d => ({ ...d.data(), id: d.id })))
-    })
-    return unsub
+    return watchProgramme(eventId, setPlanning)
   }, [eventId])
 
   // Écouter les consommations du créneau
@@ -146,6 +157,11 @@ export default function EspaceArtiste() {
     return unsub
   }, [eventId])
 
+  // Fiche d'Event Manager : présentée comme un créneau, pour la journée en cours (coupure à 6 h)
+  const jour = festDay()
+  const creneau = ficheEm ? adaptArtisteEm(ficheEm, { jour, offerts, menu, programme: planning }) : (creneauPl || null)
+  const fiche = ficheEm ? 'artistes' : 'planning'
+
   // Système de rappels JS (balance et prestation) pour l'artiste in-app
   // Ne se déclenche que quand l'app est ouverte. Pour les push système quand
   // l'app est fermée, voir /api/process-reminders.js + cron GitHub Actions.
@@ -153,7 +169,7 @@ export default function EspaceArtiste() {
 
   // Enregistrement FCM artiste : permet au cron serveur d'envoyer des push
   // même quand l'app est fermée. Token stocké sur le créneau planning.
-  const { status: fcmStatus, enable: enableFCM } = useArtistFCM({ eventId, creneauId })
+  const { status: fcmStatus, enable: enableFCM } = useArtistFCM({ eventId, creneauId, collectionName: fiche })
 
   // Tick toutes les minutes : force un re-render pour que les éléments
   // dépendant du temps (bandeau balance qui disparaît après la fin, etc.)
@@ -212,13 +228,14 @@ export default function EspaceArtiste() {
   const TypeIcon = ti.icon
   const av = creneau.avantages || { drinks: 0, meals: 0, eaux: 0, drinkIds: [], mealIds: [], eauIds: [] }
 
-  // Compteurs : consos servies + items en résa pending
-  const pendingResa = reservations.filter(r => r.statut === 'pending')
+  // Compteurs : consos servies + items en résa pending (fiche Event Manager : la journée seulement)
+  const consosJour  = duJour(consumptions, creneau, 'servedAt')
+  const pendingResa = duJour(reservations, creneau, 'createdAt').filter(r => r.statut === 'pending')
   const pendingItems = pendingResa.flatMap(r => r.items || [])
 
-  const consDrinks = consumptions.filter(c => c.type === 'drink').length
-  const consMeals  = consumptions.filter(c => c.type === 'meal').length
-  const consEaux   = consumptions.filter(c => c.type === 'eau').length
+  const consDrinks = consosJour.filter(c => c.type === 'drink').length
+  const consMeals  = consosJour.filter(c => c.type === 'meal').length
+  const consEaux   = consosJour.filter(c => c.type === 'eau').length
 
   const pendingDrinks = pendingItems.filter(i => i.type === 'drink').length
   const pendingMeals  = pendingItems.filter(i => i.type === 'meal').length
@@ -324,7 +341,7 @@ export default function EspaceArtiste() {
     if (!v) { setLinkTried(true); focusFirstInvalid(linkFormRef.current); return }
     setLinkLoading(true); setLinkErr('')
     try {
-      await linkArtistToSpec(creneauId, v, eventId)
+      await linkArtistToSpec(creneauId, v, eventId, fiche)
       setShowLinkModal(false)
       setLinkInput('')
     } catch (e) {
@@ -337,7 +354,7 @@ export default function EspaceArtiste() {
   // Déliaison : confirmée dans la fenêtre « Délier votre compte spectateur ? »
   const handleUnlinkSpec = async () => {
     try {
-      await unlinkArtistFromSpec(creneauId, eventId)
+      await unlinkArtistFromSpec(creneauId, eventId, fiche)
     } catch (e) {
       toast.error(friendlyError(e, "Le compte n'a pas pu être délié."), { action: { label: 'Réessayer', onClick: () => handleUnlinkSpec() } })
     }
@@ -409,8 +426,10 @@ export default function EspaceArtiste() {
             </div>
           </div>
           <div className={s.meta}>
-            <span><CalendarDays size={14} aria-hidden="true"/>{fmtDate(creneau.debut)}</span>
-            <span><Clock size={14} aria-hidden="true"/>{fmtHour(creneau.debut)} → {fmtHour(creneau.fin)}</span>
+            <span><CalendarDays size={14} aria-hidden="true"/>{creneau._em ? dayLabel(creneau._jour) : fmtDate(creneau.debut)}</span>
+            {creneau._em && !creneau.debut
+              ? <span><Clock size={14} aria-hidden="true"/>Vous ne jouez pas ce jour-là</span>
+              : <span><Clock size={14} aria-hidden="true"/>{fmtHour(creneau.debut)} → {fmtHour(creneau.fin)}</span>}
             {creneau.scene && <span><MapPin size={14} aria-hidden="true"/>{creneau.scene}</span>}
           </div>
         </section>
@@ -484,7 +503,7 @@ export default function EspaceArtiste() {
             onSeeResas={() => setTab('resas')}/>
         )}
         {tab === 'resas' && <ResasTab reservations={reservations} onCancel={setCancelAsk} onReserve={() => setTab('reserver')}/>}
-        {tab === 'programme' && <ProgrammeTab planning={planning} creneauId={creneauId}/>}
+        {tab === 'programme' && <ProgrammeTab planning={planning} creneauId={creneauId} artisteNom={creneau._em ? creneau.artiste : null}/>}
         </PageTransition>
 
         <footer className={s.footer}>

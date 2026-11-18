@@ -18,6 +18,7 @@ const BENEV = { uid: 'benevole:b1', type: 'benevole', role: 'benevole', fiche: `
 const SPEC = { uid: 'spectateur:FY-K7Q3NP', type: 'spectateur', role: 'spectateur', specId: 'FY-K7Q3NP', specDoc: 'FY-K7Q3NP' }
 const AUTRE_SPEC = { uid: 'spectateur:FY-AB2C3D', type: 'spectateur', role: 'spectateur', specId: 'FY-AB2C3D', specDoc: 'FY-AB2C3D' }
 const ARTISTE = { uid: 'artiste:cr1', type: 'artiste', role: 'artiste', creneauId: 'cr1' }
+const ARTISTE_EM = { uid: 'artiste:em-a7', type: 'artiste', role: 'artiste', creneauId: 'em-a7' }
 const BORNE = { uid: 'borne', type: 'borne', role: 'borne' }
 const ECRAN = { uid: 'ecran', type: 'ecran', role: 'ecran' }
 
@@ -48,6 +49,8 @@ beforeEach(async () => {
     await p(`events/${EV}/menu/m1`, { nom: 'Bissap', prix: 300, stock: 10 })
     await p(`events/${EV}/planning/cr1`, { artiste: 'DJ', avantages: {} })
     await p(`events/${EV}/programme-em/p12`, { artiste: 'Awa', source: 'event-manager' })
+    await p(`events/${EV}/artistes/em-a7`, { nom: 'Awa', source: 'event-manager', avantagesJours: { '2027-05-15': { repas: 2 } } })
+    await p(`events/${EV}/artistes/em-a8`, { nom: 'Sola', source: 'event-manager' })
     await p(`events/${EV}/liens/borne`, { cle: 'a'.repeat(32) })
     await p(`events/${EV}/finances/f1`, { montant: 100 })
     await p(`events/${EV}/settings/global`, { theme: {} })
@@ -111,6 +114,8 @@ describe('bénévole', () => {
     await assertFails(getDoc(doc(db, `events/${EV}/benevoles/b2`)))
     await assertFails(getDocs(collection(db, `events/${EV}/benevoles`)))
     await assertSucceeds(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { consommation: { repas: 1 } }))
+    await assertSucceeds(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { 'consoJours.2027-05-15.repas': 1 }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { droitsJours: { '2027-05-15': { repas: 9 } } }))
     await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { droits: { repas: 99 } }))
   })
   it('contrôle un billet : note l\'entrée, sans pouvoir annuler le billet ni toucher au solde', async () => {
@@ -134,6 +139,19 @@ describe('artiste, borne et écran', () => {
     const db = as(ARTISTE)
     await assertSucceeds(updateDoc(doc(db, `events/${EV}/planning/cr1`), { artistFcmTokens: ['t'] }))
     await assertFails(updateDoc(doc(db, `events/${EV}/planning/cr1`), { avantages: { boissons: 99 } }))
+  })
+  it("l'artiste d'Event Manager lit sa seule fiche et n'en change pas les avantages", async () => {
+    const db = as(ARTISTE_EM)
+    await assertSucceeds(getDoc(doc(db, `events/${EV}/artistes/em-a7`)))
+    await assertFails(getDoc(doc(db, `events/${EV}/artistes/em-a8`)))
+    await assertSucceeds(updateDoc(doc(db, `events/${EV}/artistes/em-a7`), { linkedSpecId: 'FY-K7Q3NP', linkedSpecNom: 'Awa' }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/artistes/em-a7`), { avantagesJours: { '2027-05-15': { repas: 99 } } }))
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), `events/${EV}/artistes/em-a7`)))
+  })
+  it("les fiches d'artistes d'Event Manager : lues par l'équipe, écrites par le serveur (et l'administrateur pour l'archive)", async () => {
+    await assertSucceeds(getDocs(collection(as(STAND), `events/${EV}/artistes`)))
+    await assertFails(updateDoc(doc(as(STAND), `events/${EV}/artistes/em-a7`), { avantagesJours: {} }))
+    await assertSucceeds(setDoc(doc(as(ADMIN), `events/${EV}/artistes/em-a9`), { nom: 'Restauré' }))
   })
   it('la borne lit un compte et débite son solde, sans rien d\'autre', async () => {
     const db = as(BORNE)

@@ -106,8 +106,10 @@ module.exports = async (req, res) => {
         return
       }
       if (kind === 'artiste') {
-        const cr = await db.collection('events').doc(ev).collection('planning').doc(id).get()
-        if (!cr.exists) { await fail(404, 'Créneau introuvable.'); return }
+        // Créneau du planning de YllaCash, ou fiche d'artiste venue d'Event Manager (lot C)
+        const evRef = db.collection('events').doc(ev)
+        const [cr, fiche] = await Promise.all([evRef.collection('planning').doc(id).get(), evRef.collection('artistes').doc(id).get()])
+        if (!cr.exists && !(fiche.exists && fiche.data().actif !== false)) { await fail(404, 'Artiste introuvable.'); return }
       }
       const { uid, claims } = deviceSession(kind, ev, id)
       res.status(200).json({ token: await admin.auth().createCustomToken(uid, claims) })

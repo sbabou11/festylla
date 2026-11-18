@@ -5,6 +5,7 @@
  */
 import React, { useMemo } from 'react'
 import BenevoleApp from '../public/BenevoleApp'
+import { festDay, nextDay } from '../../em/jour'
 
 const pad = (n) => String(n).padStart(2, '0')
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
@@ -63,7 +64,15 @@ function buildDemo() {
   }
 }
 
+// ?em=1 : fiche venue d'Event Manager (droits par jour, lot C)
+function emVariant(demo) {
+  const j = festDay(), k = nextDay(j)
+  return { ...demo, benev: { ...demo.benev, source: 'event-manager', poste: '',
+    droitsJours: { [j]: { repas: 1, boisson: 2, eau: 3 }, [k]: { repas: 2, boisson: 2, eau: 2 } },
+    consoJours: { [j]: { repas: 0, boisson: 1, eau: 1 } }, controleBillets: [j] } }
+}
+
 export default function DevBenevole() {
-  const demo = useMemo(buildDemo, [])
+  const demo = useMemo(() => new URLSearchParams(window.location.search).get('em') ? emVariant(buildDemo()) : buildDemo(), [])
   return <BenevoleApp demo={demo} />
 }

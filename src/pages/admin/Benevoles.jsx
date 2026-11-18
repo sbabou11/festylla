@@ -7,6 +7,7 @@
  * - Prévention des abus (alertes dépassement)
  * Sous-composants, constantes et PDF dans ./benevoles/
  */
+import { useEquipeEm, BenevolesEm } from './em/EquipeEm'
 import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
@@ -31,7 +32,7 @@ import SyntheseBenevoles from './benevoles/SyntheseBenevoles'
 import s from './benevoles/benevoles.module.css'
 
 // ── Page principale ───────────────────────────────────────────────
-export default function Benevoles() {
+function BenevolesYllaCash() {
   const { currentEventId } = useEventStore()
   const [benevoles, setBenevoles] = useState([])
   const [loading, setLoading]     = useState(true)
@@ -318,4 +319,9 @@ export default function Benevoles() {
       </Dialog>
     </div>
   )
+}
+
+// Événement relié à Event Manager (lot C) : page en lecture, avec les liens personnels
+export default function Benevoles(props) {
+  return useEquipeEm() ? <BenevolesEm/> : <BenevolesYllaCash {...props}/>
 }

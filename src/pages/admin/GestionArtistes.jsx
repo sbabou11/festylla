@@ -9,13 +9,14 @@
  * Affiche aussi des KPIs synthétiques pour donner une vue d'ensemble.
  */
 
+import { useEquipeEm, ArtistesEm } from './em/EquipeEm'
 import React, { useState, useEffect, useMemo } from 'react'
 import { CalendarDays, Banknote, ChevronRight, Music2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { watchPlanning, watchCachets } from '../../firebase/service'
 import useEventStore from '../../store/useEventStore'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 
-export default function GestionArtistes({ onNavigate }) {
+function GestionArtistesYllaCash({ onNavigate }) {
   const { events, currentEventId } = useEventStore()
   const currentEvent = events.find(e => e.id === currentEventId && !e.deleted)
   const { isMobile } = useBreakpoint()
@@ -287,4 +288,9 @@ function PancartePrincipale({ onClick, isMobile, gradient, icon, titre, descript
       </div>
     </button>
   )
+}
+
+// Événement relié à Event Manager (lot C) : page en lecture, avec les liens personnels
+export default function GestionArtistes(props) {
+  return useEquipeEm() ? <ArtistesEm/> : <GestionArtistesYllaCash {...props}/>
 }

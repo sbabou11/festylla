@@ -184,4 +184,24 @@ function programmeDocs(programme) {
   })
 }
 
-module.exports = { normalizeSnapshot, comptes, lectureDue, classify, nextLecture, parisToMs, programmeDocs, INTERVAL_MS, LIMITS }
+/** Droits par jour → { 'AAAA-MM-JJ': { repas, boisson, eau } } (les clés de YllaCash : « boisson » au singulier) */
+const parJour = (list) => Object.fromEntries((list || []).map(d => [d.jour, { repas: d.repas, boisson: d.boissons, eau: d.eau }]))
+
+/**
+ * Bénévoles et artistes de l'instantané, au format des fiches de YllaCash (lot C).
+ * Identifiants préfixés « em- » : jamais confondus avec les fiches saisies dans YllaCash.
+ */
+function equipeDocs(data) {
+  return {
+    benevoles: data.benevoles.map(b => ({
+      docId: 'em-' + docId(b.id),
+      data: { emId: b.id, prenom: b.prenom, nom: b.nom, droitsJours: parJour(b.droits), controleBillets: b.controleBillets },
+    })),
+    artistes: data.artistes.map(a => ({
+      docId: 'em-' + docId(a.id),
+      data: { emId: a.id, nom: a.nom, statut: a.statut, jours: a.jours, avantagesJours: parJour(a.avantages) },
+    })),
+  }
+}
+
+module.exports = { normalizeSnapshot, comptes, lectureDue, classify, nextLecture, parisToMs, programmeDocs, equipeDocs, INTERVAL_MS, LIMITS }

@@ -99,12 +99,16 @@ function memoryDb(initial) {
   const ref = (path) => ({
     id: path.split('/').pop(),
     get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
-    set: async (v) => { docs.set(path, v) },
     update: async (v) => { docs.set(path, { ...docs.get(path), ...v }) },
+    set: async (v, opt) => { docs.set(path, opt?.merge ? { ...docs.get(path), ...v } : v) },
     delete: async () => { docs.delete(path) },
     collection: (c) => col(`${path}/${c}`),
   })
   const col = (base) => ({
+    where: (field, op, value) => ({ get: async () => {
+      const all = await col(base).get()
+      return { docs: all.docs.filter(d => d.data()[field] === value) }
+    } }),
     doc: (id) => ref(`${base}/${id}`),
     get: async () => ({ docs: [...docs.keys()].filter(k => k.startsWith(base + '/') && !k.slice(base.length + 1).includes('/'))
       .map(k => ({ id: k.split('/').pop(), ref: ref(k), data: () => docs.get(k) })) }),
@@ -170,5 +174,28 @@ describe('refreshEvent', () => {
     writes.length = 0
     await refreshEvent(db, 'ev1', { now: 3000, force: true, toDate: (ms) => ms, fetchImpl: reply(200, { ...next, version: 'e'.repeat(32) }) })
     expect(writes.filter(k => k.includes('programme-em'))).toEqual([])
+  })
+
+  it("publie bénévoles et artistes sans écraser les consommations, et retire ceux qui disparaissent", async () => {
+    await refreshEvent(db, 'ev1', { now: 1000, toDate: (ms) => ms, fetchImpl: reply(200, sample()) })
+    expect(db.docs.get('events/ev1/benevoles/em-u31')).toMatchObject({
+      prenom: 'Malik', source: 'event-manager', actif: true, createdAt: 1000,
+      droitsJours: { '2027-05-15': { repas: 1, boisson: 2, eau: 3 } }, controleBillets: ['2027-05-15'],
+    })
+    expect(db.docs.get('events/ev1/benevoles-annuaire/em-u31')).toEqual({ prenom: 'Malik', nom: 'Exemple', poste: '' })
+    expect(db.docs.get('events/ev1/artistes/em-a7')).toMatchObject({ nom: 'Awa Exemple', avantagesJours: { '2027-05-15': { repas: 2, boisson: 4, eau: 4 } } })
+    expect(db.docs.get('events/ev1').emEquipe).toEqual({ majMs: 1000, benevoles: 1, artistes: 1 })
+
+    // L'appli a noté une consommation ; Event Manager change les droits puis retire Malik
+    db.docs.set('events/ev1/benevoles/em-u31', { ...db.docs.get('events/ev1/benevoles/em-u31'), consoJours: { '2027-05-15': { repas: 1 } } })
+    db.docs.set('events/ev1/benevoles/b-local', { prenom: 'Saisi dans YllaCash' })
+    const next = sample(); next.version = 'f'.repeat(32); next.benevoles[0].droits[0].repas = 2
+    await refreshEvent(db, 'ev1', { now: 2000, force: true, toDate: (ms) => ms, fetchImpl: reply(200, next) })
+    expect(db.docs.get('events/ev1/benevoles/em-u31')).toMatchObject({ consoJours: { '2027-05-15': { repas: 1 } }, droitsJours: { '2027-05-15': { repas: 2 } } })
+    next.version = 'e'.repeat(32); next.benevoles = []
+    await refreshEvent(db, 'ev1', { now: 3000, force: true, toDate: (ms) => ms, fetchImpl: reply(200, next) })
+    expect(db.docs.get('events/ev1/benevoles/em-u31')).toMatchObject({ actif: false, consoJours: { '2027-05-15': { repas: 1 } } })
+    expect(db.docs.has('events/ev1/benevoles-annuaire/em-u31')).toBe(false)
+    expect(db.docs.get('events/ev1/benevoles/b-local')).toEqual({ prenom: 'Saisi dans YllaCash' })
   })
 })

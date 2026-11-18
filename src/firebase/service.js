@@ -542,7 +542,8 @@ export const annulerReservation = async (resaId, staffNom = '—', staffId = nul
     if (Object.keys(quotaUpdates).length > 0) {
       const updateData = {}
       Object.entries(quotaUpdates).forEach(([type, qty]) => {
-        updateData[`consommation.${type}`] = increment(-qty)
+        // Fiche d'Event Manager : quota de la journée de la commande (lot C)
+        updateData[resa.jourConso ? `consoJours.${resa.jourConso}.${type}` : `consommation.${type}`] = increment(-qty)
       })
       await updateDoc(bRef, updateData)
     }
@@ -1064,7 +1065,8 @@ export const deleteCreneau = async (id) => {
 }
 
 // Lier le créneau artiste à un compte spectateur (par son ID public, ex: SPEC-12345)
-export const linkArtistToSpec = async (creneauId, specId, evId = null) => {
+// fiche : 'planning' (créneau saisi dans YllaCash) ou 'artistes' (fiche venue d'Event Manager, lot C)
+export const linkArtistToSpec = async (creneauId, specId, evId = null, fiche = 'planning') => {
   const eventId = evId || getEventId()
   if (!eventId) throw new Error('Aucun événement actif')
   if (!specId) throw new Error('Numéro spectateur requis')
@@ -1073,15 +1075,15 @@ export const linkArtistToSpec = async (creneauId, specId, evId = null) => {
   const snap = await getDocs(query(collection(db, 'events', eventId, 'spectateurs'), where('id', '==', cleanId)))
   if (snap.empty) throw new Error('Aucun compte spectateur trouvé avec ce numéro.')
   const specData = snap.docs[0].data()
-  const crRef = doc(db, 'events', eventId, 'planning', creneauId)
+  const crRef = doc(db, 'events', eventId, fiche, creneauId)
   await updateDoc(crRef, { linkedSpecId: cleanId, linkedSpecNom: specData.nom || null })
   return { specId: cleanId, specNom: specData.nom || null }
 }
 
-export const unlinkArtistFromSpec = async (creneauId, evId = null) => {
+export const unlinkArtistFromSpec = async (creneauId, evId = null, fiche = 'planning') => {
   const eventId = evId || getEventId()
   if (!eventId) throw new Error('Aucun événement actif')
-  const crRef = doc(db, 'events', eventId, 'planning', creneauId)
+  const crRef = doc(db, 'events', eventId, fiche, creneauId)
   await updateDoc(crRef, { linkedSpecId: null, linkedSpecNom: null })
 }
 

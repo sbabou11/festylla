@@ -12,10 +12,16 @@
  * Et, lisibles par tous (pages publiques) :
  *   events/{événement}/programme-em/{passage}   le programme, au format des créneaux du planning
  *   events/{événement}.emProgramme             { majMs, nb } : l'espace spectateur et /live lisent alors ce programme
+ * Et pour l'équipe (lot C) :
+ *   events/{événement}/benevoles/em-…   fiches des bénévoles (droits et contrôle des billets par jour) ;
+ *                                       les consommations du jour (consoJours) écrites par l'appli sont gardées
+ *   events/{événement}/benevoles-annuaire/em-…   prénom et nom, pour l'espace bénévole
+ *   events/{événement}/artistes/em-…    fiches des artistes (avantages par jour)
+ *   events/{événement}.emEquipe          { majMs, benevoles, artistes } : les pages Bénévoles et Artistes passent en lecture
  * Si Event Manager ne répond pas, la copie précédente reste : le festival continue.
  * YLLA_EM_LECTURE_URL (facultatif) remplace l'adresse, pour un essai.
  */
-const { normalizeSnapshot, comptes, lectureDue, classify, nextLecture, programmeDocs } = require('./instantane')
+const { normalizeSnapshot, comptes, lectureDue, classify, nextLecture, programmeDocs, equipeDocs } = require('./instantane')
 
 // Comparaison indépendante de l'ordre des champs (Firestore ne le garde pas)
 const stable = (v) => (v && typeof v === 'object' && !Array.isArray(v)
@@ -44,6 +50,44 @@ async function syncProgramme(db, ev, programme, { now, toDate }) {
   for (const op of ops) await op()
   await evRef.update({ emProgramme: { majMs: now, nb: programme.length } })
   return ops.length
+}
+
+/**
+ * Fiches des bénévoles et des artistes : ajoute ou met à jour (sans toucher aux consommations),
+ * et marque « retirée » une fiche venue d'Event Manager qui n'y est plus (son historique reste).
+ */
+async function syncFiches(col, wanted, { now, toDate, annuaire }) {
+  const existing = await col.where('source', '==', 'event-manager').get()
+  const byId = new Map(existing.docs.map(d => [d.id, d]))
+  let n = 0
+  for (const { docId, data } of wanted) {
+    const cur = byId.get(docId)
+    byId.delete(docId)
+    const next = { ...data, source: 'event-manager', actif: true }
+    if (cur) {
+      const c = cur.data()
+      const same = Object.keys(next).every(k => stable(c[k]) === stable(next[k]))
+      if (!same) { await cur.ref.set({ ...next, majMs: now }, { merge: true }); n++ }
+    } else {
+      await col.doc(docId).set({ ...next, majMs: now, createdAt: toDate(now) }, { merge: true }); n++
+    }
+    if (annuaire && (!cur || cur.data().prenom !== data.prenom || cur.data().nom !== data.nom)) {
+      await annuaire.doc(docId).set({ prenom: data.prenom, nom: data.nom, poste: '' })
+    }
+  }
+  for (const [id, d] of byId) {
+    if (d.data().actif !== false) { await d.ref.set({ actif: false, majMs: now }, { merge: true }); n++ }
+    if (annuaire) await annuaire.doc(id).delete()
+  }
+  return n
+}
+
+async function syncEquipe(db, ev, data, { now, toDate }) {
+  const evRef = db.collection('events').doc(ev)
+  const { benevoles, artistes } = equipeDocs(data)
+  await syncFiches(evRef.collection('benevoles'), benevoles, { now, toDate, annuaire: evRef.collection('benevoles-annuaire') })
+  await syncFiches(evRef.collection('artistes'), artistes, { now, toDate })
+  await evRef.update({ emEquipe: { majMs: now, benevoles: benevoles.length, artistes: artistes.length } })
 }
 
 const defaultToDate = (ms) => require('firebase-admin').firestore.Timestamp.fromMillis(ms)
@@ -95,6 +139,7 @@ async function refreshEvent(db, ev, { force = false, now = Date.now(), fetchImpl
     if (n.ok) {
       await db.collection('em-instantanes').doc(ev).set({ ...n.data, lueMs: now })
       await syncProgramme(db, ev, n.data.programme, { now, toDate })
+      await syncEquipe(db, ev, n.data, { now, toDate })
       result = { kind: 'ok', version: n.data.version, comptes: comptes(n.data) }
     } else {
       result = { kind: 'format', detail: n.error }
@@ -116,4 +161,4 @@ async function refreshEvent(db, ev, { force = false, now = Date.now(), fetchImpl
   return { lu: true, lecture }
 }
 
-module.exports = { refreshEvent, fetchSnapshot, syncProgramme, EM_LECTURE_URL }
+module.exports = { refreshEvent, fetchSnapshot, syncProgramme, syncEquipe, EM_LECTURE_URL }

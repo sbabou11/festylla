@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import { Button, Badge, Empty, Jar, SuccessCheck } from '../../ui'
 import s from './ArtistServeMode.module.css'
+import { adaptArtisteEm, duJour, isEmArtiste } from '../../em/artiste'
+import { festDay } from '../../em/jour'
 
 const TYPES = {
   musical:           { icon: Music,        tone: 'brand' },
@@ -75,6 +77,20 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
     return unsub
   }, [eventId])
 
+  // Artistes venus d'Event Manager (lot C) et articles qui leur sont offerts
+  const [fichesEm, setFichesEm] = useState([])
+  const [offerts, setOfferts]   = useState([])
+  useEffect(() => {
+    if (!eventId) return
+    const u1 = onSnapshot(collection(db, 'events', eventId, 'artistes'),
+      snap => setFichesEm(snap.docs.map(d => ({ ...d.data(), id: d.id })).filter(a => a.actif !== false)), () => {})
+    const u2 = onSnapshot(doc(db, 'events', eventId, 'settings', 'artistes'), snap => setOfferts(snap.data()?.articles || []), () => {})
+    return () => { u1(); u2() }
+  }, [eventId])
+  const jour = festDay()
+  const artistesEm = useMemo(() => fichesEm.map(a => adaptArtisteEm(a, { jour, offerts, menu })), [fichesEm, jour, offerts, menu])
+  const tous = useMemo(() => [...artistesEm, ...planning], [artistesEm, planning])
+
   // Écouter les réservations artistes en attente
   useEffect(() => {
     if (!eventId) return
@@ -101,9 +117,16 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
     return unsub
   }, [eventId, creneau?.id])
 
+  // Fiche d'Event Manager : suivie par la liste ci-dessus
+  useEffect(() => {
+    if (!isEmArtiste(creneau)) return
+    const a = artistesEm.find(x => x.id === creneau.id)
+    if (a && JSON.stringify(a) !== JSON.stringify(creneau)) setCreneau(a)
+  }, [artistesEm])
+
   // Écouter le créneau lui-même en temps réel (modif admin → mise à jour live)
   useEffect(() => {
-    if (!eventId || !creneau?.id) return
+    if (!eventId || !creneau?.id || isEmArtiste(creneau)) return
     const refDoc = doc(db, 'events', eventId, 'planning', creneau.id)
     const unsub  = onSnapshot(refDoc, snap => {
       if (snap.exists()) {
@@ -125,8 +148,8 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
       crId = raw.trim()
     }
     if (!crId) { setErr('QR invalide'); return }
-    // On recherche dans le planning déjà chargé (temps réel) — pas besoin de getDoc
-    const found = planning.find(p => p.id === crId)
+    // On recherche dans les artistes et le planning déjà chargés (temps réel) — pas besoin de getDoc
+    const found = tous.find(p => p.id === crId)
     if (found) {
       setCreneau(found)
     } else {
@@ -149,17 +172,19 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return []
     const q = searchQuery.toLowerCase().trim()
-    return planning.filter(p =>
+    return tous.filter(p =>
       (p.artiste || '').toLowerCase().includes(q) ||
       (p.titre   || '').toLowerCase().includes(q)
     ).slice(0, 8)
-  }, [searchQuery, planning])
+  }, [searchQuery, tous])
 
   // Calculs droits
   const av = creneau?.avantages || { drinks: 0, meals: 0, eaux: 0, drinkIds: [], mealIds: [], eauIds: [] }
-  const consDrinks = consumptions.filter(c => c.type === 'drink').length
-  const consMeals  = consumptions.filter(c => c.type === 'meal').length
-  const consEaux   = consumptions.filter(c => c.type === 'eau').length
+  // Fiche d'Event Manager : seulement ce qui a été servi dans la journée (coupure à 6 h)
+  const consosJour = duJour(consumptions, creneau, 'servedAt')
+  const consDrinks = consosJour.filter(c => c.type === 'drink').length
+  const consMeals  = consosJour.filter(c => c.type === 'meal').length
+  const consEaux   = consosJour.filter(c => c.type === 'eau').length
   const remainDrinks = Math.max(0, (av.drinks || 0) - consDrinks)
   const remainMeals  = Math.max(0, (av.meals  || 0) - consMeals)
   const remainEaux   = Math.max(0, (av.eaux   || 0) - consEaux)
@@ -226,7 +251,8 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
 
   // Vérification du jour
   const today = new Date()
-  const isToday = creneau ? isSameDay(creneau.debut, today) : true
+  // Fiche d'Event Manager : les avantages affichés sont déjà ceux du jour
+  const isToday = creneau ? (isEmArtiste(creneau) || isSameDay(creneau.debut, today)) : true
   const canServe = isToday || forceServeAnyDay
   const isAnnule = creneau?.statut === 'annule'
   const ti       = creneau ? (TYPES[creneau.type] || TYPES.autre) : null
@@ -327,7 +353,7 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
         <div className={s.artistText}>
           <h3>{creneau.artiste}</h3>
           <div className={s.meta}>
-            <span><Clock size={12} aria-hidden="true" /> {fmtDate(creneau.debut)} · {fmtHour(creneau.debut)}</span>
+            <span><Clock size={12} aria-hidden="true" /> {isEmArtiste(creneau) && !creneau.debut ? "Avantages du jour (ne joue pas aujourd'hui)" : `${fmtDate(creneau.debut)} · ${fmtHour(creneau.debut)}`}</span>
             {creneau.scene && <span><MapPin size={12} aria-hidden="true" /> {creneau.scene}</span>}
           </div>
         </div>

@@ -44,14 +44,14 @@ function detectCapabilities() {
   }
 }
 
-export default function useArtistFCM({ eventId, creneauId, autoEnableIfGranted = true }) {
+export default function useArtistFCM({ eventId, creneauId, collectionName = 'planning', autoEnableIfGranted = true }) {
   const [status, setStatus] = useState({ state: 'idle', token: null, error: null, capabilities: null })
 
   // Enregistre le token sur le créneau planning (Firestore)
   const saveTokenToCreneau = useCallback(async (token) => {
     if (!eventId || !creneauId || !token) return false
     try {
-      const ref = doc(db, 'events', eventId, 'planning', creneauId)
+      const ref = doc(db, 'events', eventId, collectionName, creneauId)
       const snap = await getDoc(ref)
       if (!snap.exists()) {
         console.warn('[ArtistFCM] Créneau introuvable pour enregistrer le token')
@@ -67,7 +67,7 @@ export default function useArtistFCM({ eventId, creneauId, autoEnableIfGranted =
       console.warn('[ArtistFCM] Save token failed:', e.message)
       return false
     }
-  }, [eventId, creneauId])
+  }, [eventId, creneauId, collectionName])
 
   // Génère le token FCM et l'enregistre
   const generateAndSaveToken = useCallback(async () => {

@@ -2,7 +2,7 @@
 
 Version 1.1 du 18/11/2026. La 1.0 a été **validée par l'organisateur** (les quatre points du §8) ; la 1.1 ajoute au programme le type, la photo, la présentation et les liens de l'artiste (§3.1, option B choisie par l'organisateur le 18/11/2026).
 
-Avancement : Event Manager sert l'instantané (commit 7ff66af, détail dans `EventManager/docs/api-yllacash.md`). YllaCash le lit (lot A : `api/_em/`, copie dans `em-instantanes/{événement}`, réservée au serveur, état dans la fenêtre « Liaisons »). Lot B : le programme lu est publié dans `events/{événement}/programme-em` (lecture publique) et remplace le planning de YllaCash dans l'espace spectateur et sur `/live` dès que `events/{événement}.emProgramme` existe. Espaces artiste et bénévole, nettoyage et retour (§7) restent à faire.
+Avancement : Event Manager sert l'instantané (commit 7ff66af, détail dans `EventManager/docs/api-yllacash.md`). YllaCash le lit (lot A : `api/_em/`, copie dans `em-instantanes/{événement}`, réservée au serveur, état dans la fenêtre « Liaisons »). Lot B : le programme lu est publié dans `events/{événement}/programme-em` (lecture publique) et remplace le planning de YllaCash dans l'espace spectateur et sur `/live` dès que `events/{événement}.emProgramme` existe. Lot C : bénévoles et artistes publiés dans `events/{événement}/benevoles/em-…` et `artistes/em-…` (`emEquipe` sur l'événement) ; droits par journée (coupure à 6 h, non reportés), contrôle des billets les jours envoyés, accès par lien personnel ; articles des artistes choisis dans YllaCash (`settings/artistes.articles`) ; pages Bénévoles et Artistes en lecture. Nettoyage (lot D) et retour (§7) restent à faire.
 
 ## 1. Le partage des rôles (décidé par l'organisateur le 18/11/2026)
 
