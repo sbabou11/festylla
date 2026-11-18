@@ -3,6 +3,7 @@
  * Mobile : barre du bas (4 pages du rôle + « Plus » qui ouvre le menu complet)
  * Changement de page : transition douce via l'API View Transitions quand elle existe
  */
+import { pageRetiree } from './em/pages'
 import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { flushSync } from 'react-dom'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
@@ -265,7 +266,10 @@ function UrlSync({ pageId }) {
 }
 
 function StaffApp() {
-  const { user, logout, checkSession, espaceChoisi, setEspaceChoisi: setEspaceStore, canAccessPage } = useAuthStore()
+  const { user, logout, checkSession, espaceChoisi, setEspaceChoisi: setEspaceStore, canAccessPage: canAccessRole } = useAuthStore()
+  // Lot D : pages passées dans Event Manager, masquées pour un événement qui y est relié
+  const emEvent = useEventStore(st => st.events.find(e => e.id === st.currentEventId))
+  const canAccessPage = (pid) => canAccessRole(pid) && !pageRetiree(emEvent, pid)
   const location       = useLocation()
   const routerNavigate = useNavigate()
   const { theme, toggleDark }          = useTheme()

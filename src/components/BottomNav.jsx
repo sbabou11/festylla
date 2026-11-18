@@ -17,7 +17,7 @@ const FAVORITES = {
   billetterie:          ['credit', 'nouveau', 'transactions', 'cloture'],
   stand:                ['debit', 'retrait', 'reservations-admin', 'transactions'],
   consultation:         ['transactions', 'reservations-admin', 'analytics'],
-  directeur_artistique: ['planning', 'mon-profil'],
+  directeur_artistique: ['planning', 'gestion-artistes', 'mon-profil'],   // planning masqué si relié à Event Manager
 }
 
 // Libellés courts : 5 cases sur 375 px
@@ -25,7 +25,7 @@ const SHORT = {
   dashboard: 'Direct', accueil: 'Accueil', transactions: 'Flux', alertes: 'Alertes', benevoles: 'Bénévoles',
   credit: 'Recharger', nouveau: 'Nouveau', cloture: 'Clôture', debit: 'Encaisser',
   retrait: 'Retrait', 'reservations-admin': 'Réserv.', analytics: 'Analyse',
-  planning: 'Planning', 'mon-profil': 'Profil', evenements: 'Événements', spectateurs: 'Public',
+  planning: 'Planning', 'gestion-artistes': 'Artistes', 'mon-profil': 'Profil', evenements: 'Événements', spectateurs: 'Public',
 }
 
 export default function BottomNav({ role, customPages, currentPage, onNavigate, onMore, canAccess, badges = {} }) {

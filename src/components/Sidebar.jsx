@@ -20,6 +20,7 @@ import { APP_FULL_LABEL } from '../utils/buildInfo'
 import { useBreakpoint }   from '../hooks/useBreakpoint'
 import { useOfflineQueue } from '../hooks/useOfflineQueue'
 import s from './Sidebar.module.css'
+import { isEmLinked, PAGES_RETIREES_EM } from '../em/pages'
 
 export const ALL_PAGES = {
   evenements:           { icon: Calendar,        label: 'Événements' },
@@ -115,7 +116,9 @@ export default function Sidebar({
 
   const currentEvent = events.find(e => e.id === currentEventId && !e.deleted)
   const customRole   = (roles || []).find(r => r.id === view)
-  const allowed      = ROLE_PAGES[view] || customRole?.pages || ['mon-profil']
+  const emLinked     = isEmLinked(currentEvent)
+  // Lot D : pages passées dans Event Manager, masquées pour un événement qui y est relié
+  const allowed      = (ROLE_PAGES[view] || customRole?.pages || ['mon-profil']).filter(id => !(emLinked && PAGES_RETIREES_EM.includes(id)))
   // Pour les rôles qui ont accès aux hubs, on masque ces entrées du menu pour ne garder que les hubs.
   // (Elles restent accessibles via les pancartes des hubs.)
   const HUB_HIDDEN_FROM_SIDEBAR = [
@@ -150,7 +153,7 @@ export default function Sidebar({
   }
   // Le tableau de bord est fusionné dans l'Accueil : une seule entrée
   if (allowed.includes('accueil')) visibleIds = visibleIds.filter(id => id !== 'dashboard')
-  const pages        = visibleIds.map(id => ({ id, ...ALL_PAGES[id] })).filter(p => p.label)
+  const pages        = visibleIds.map(id => ({ id, ...ALL_PAGES[id], ...(emLinked && id === 'gestion-artistes' ? { label: 'Artistes' } : {}) })).filter(p => p.label)
   const childrenOf   = (hub) => (HUB_CHILDREN[hub] || [])
     .filter(id => allowed.includes(id) && !visibleIds.includes(id))
     .map(id => ({ id, ...(ALL_PAGES[id]?.label ? ALL_PAGES[id] : CHILD_PAGES[id]) }))

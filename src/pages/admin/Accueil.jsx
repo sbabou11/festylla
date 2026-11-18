@@ -21,6 +21,7 @@ import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
 import useAuthStore  from '../../store/useAuthStore'
 import useEventStore from '../../store/useEventStore'
+import { pageRetiree } from '../../em/pages'
 import useActionUsage from '../../hooks/useActionUsage'
 import useHomeLayout from '../../hooks/useHomeLayout'
 import { fmt } from '../../utils/helpers'
@@ -158,7 +159,9 @@ export default function Accueil({ onNavigate, view }) {
 
   const role = user?.role || view
   const isAdmin = role === 'admin' || role === 'super_admin'
-  const can = useCallback((page) => isAdmin || !!canAccessPage?.(page), [isAdmin, canAccessPage])
+  // Lot D : pages passées dans Event Manager (planning, cachets, finances) masquées si l'événement y est relié
+  const emEvent = events.find(e => e.id === currentEventId)
+  const can = useCallback((page) => !pageRetiree(emEvent, page) && (isAdmin || !!canAccessPage?.(page)), [isAdmin, canAccessPage, emEvent])
   // Vue « événement » (tous les chiffres) pour l'admin et les rôles qui ont l'analytics (consultation)
   const globalView = isAdmin || can('analytics')
   const canCredit = can('credit')
