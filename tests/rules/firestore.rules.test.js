@@ -53,6 +53,7 @@ beforeEach(async () => {
     await p(`securite-connexions/c1`, { echecs: 1 })
     await p(`liaisons/k1`, { ev: EV, nom: 'festylla.com', empreinte: 'a'.repeat(64) })
     await p(`liaisons-em/${EV}`, { cle: 'secret-event-manager' })
+    await p(`em-instantanes/${EV}`, { version: 'a'.repeat(32), benevoles: [] })
   })
 })
 
@@ -185,5 +186,7 @@ describe("clés de liaison (règle d'échange v1.3)", () => {
     await assertFails(getDoc(doc(as(ADMIN), `liaisons-em/${EV}`)))
     await assertFails(setDoc(doc(as(ADMIN), 'liaisons/k2'), { ev: EV, empreinte: 'b'.repeat(64) }))
     await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), `liaisons-em/${EV}`)))
+    await assertFails(getDoc(doc(as(ADMIN), `em-instantanes/${EV}`)))
+    await assertFails(setDoc(doc(as(ADMIN), `em-instantanes/${EV}`), { version: 'b'.repeat(32) }))
   })
 })

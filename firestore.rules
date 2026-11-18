@@ -235,13 +235,17 @@ service cloud.firestore {
     match /liaisons-em/{id} {
       allow read, write: if false;
     }
+    // Copie de l'instantané d'Event Manager : serveur seul (règle d'échange Event Manager ↔ YllaCash v1.0)
+    match /em-instantanes/{id} {
+      allow read, write: if false;
+    }
     match /users/{uid}/{rest=**} {
       allow read, write: if isStaff();   // disposition de l'accueil
     }
     // Anciennes données d'avant les événements, et tout le reste : équipe seulement.
     // (Les règles s'additionnent : on exclut ici les collections traitées plus haut.)
     match /{coll}/{id} {
-      allow read, write: if isStaff() && !(coll in ['events', 'staff', 'roles', 'password-reset-requests', 'securite-connexions', 'users', 'liaisons', 'liaisons-em']);
+      allow read, write: if isStaff() && !(coll in ['events', 'staff', 'roles', 'password-reset-requests', 'securite-connexions', 'users', 'liaisons', 'liaisons-em', 'em-instantanes']);
     }
   }
 }

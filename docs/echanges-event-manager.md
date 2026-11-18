@@ -1,6 +1,8 @@
 # Ylla Event Manager ↔ YllaCash : règle d'échange
 
-Version 1.0 du 18/11/2026, **validée par l'organisateur** (les quatre points du §8). Ni Event Manager ni YllaCash ne sont encore développés selon cette règle.
+Version 1.0 du 18/11/2026, **validée par l'organisateur** (les quatre points du §8).
+
+Avancement : Event Manager sert l'instantané (commit 7ff66af, détail dans `EventManager/docs/api-yllacash.md`). YllaCash le lit (lot A : `api/_em/`, copie dans `em-instantanes/{événement}`, réservée au serveur, état dans la fenêtre « Liaisons »). Programme, espaces artiste et bénévole, nettoyage et retour (§7) restent à faire.
 
 ## 1. Le partage des rôles (décidé par l'organisateur le 18/11/2026)
 

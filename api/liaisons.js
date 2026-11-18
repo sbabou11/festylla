@@ -7,7 +7,7 @@
  *  - clé Event Manager de l'événement, pour l'envoi des entrées (règle d'échange v1.3, §5).
  * Tout est rangé dans des collections racine que les règles réservent au serveur :
  *   liaisons/{identifiant de clé}  { ev, nom, empreinte, creeLe, derniereUtilisation, comptes }
- *   liaisons-em/{événement}        { cle, enregistreLe, dernierEnvoi… }
+ *   liaisons-em/{événement}        { cle, enregistreLe, dernierEnvoi…, lecture }
  *
  * POST /api/liaisons   (session d'un administrateur)
  *   { mode: 'lister', ev }
@@ -16,12 +16,20 @@
  *   { mode: 'supprimer', ev, id }
  *   { mode: 'em-enregistrer', ev, cle }
  *   { mode: 'em-retirer', ev }
+ *   { mode: 'em-actualiser', ev }          → relit l'instantané d'Event Manager tout de suite
+ * La même clé Event Manager sert à envoyer les entrées et à lire l'instantané (_em/lecture.js).
  */
 const { newKey, cleanName, EV } = require('./_billets/cles')
 const { admin, getDb, requireCaller, writeAudit } = require('./_auth/server')
 const { readBody } = require('./_billets/admin')
+const { refreshEvent } = require('./_em/lecture')
 
 const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null)
+const isoMs = (ms) => (typeof ms === 'number' ? new Date(ms).toISOString() : null)
+const lectureView = (l) => (l ? {
+  okLe: isoMs(l.okMs), essaiLe: isoMs(l.essaiMs), comptes: l.comptes || null,
+  echec: l.echec ? { type: l.echec.type, format: !!l.echec.format, depuis: isoMs(l.echec.depuisMs), detail: l.echec.detail || '' } : null,
+} : null)
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'POST attendu.' }); return }
@@ -50,7 +58,7 @@ module.exports = async (req, res) => {
         cles: list.docs.filter(d => !d.data().supprimee).map(d => ({
           id: d.id, nom: d.data().nom, creeLe: iso(d.data().creeLe), derniereUtilisation: iso(d.data().derniereUtilisation), comptes: d.data().comptes || 0,
         })).sort((a, b) => String(a.creeLe).localeCompare(String(b.creeLe))),
-        em: e && e.cle ? { fin: e.cle.slice(-4), enregistreLe: iso(e.enregistreLe), dernierEnvoiOk: iso(e.dernierEnvoiOk), dernierEchec: e.dernierEchec || null } : null,
+        em: e && e.cle ? { fin: e.cle.slice(-4), enregistreLe: iso(e.enregistreLe), dernierEnvoiOk: iso(e.dernierEnvoiOk), dernierEchec: e.dernierEchec || null, lecture: lectureView(e.lecture) } : null,
       })
       return
     }
@@ -87,6 +95,8 @@ module.exports = async (req, res) => {
       if (cle.length < 20 || cle.length > 300 || /\s/.test(cle)) { res.status(400).json({ error: 'Cette clé ne ressemble pas à une clé Event Manager.' }); return }
       await db.collection('liaisons-em').doc(ev).set({ cle, enregistreLe: now, enregistrePar: caller.uid })
       await writeAudit(db, ev, { action: 'CLE_EM_ENREGISTREE', staff: caller.uid, userType: 'admin', label: 'Clé Event Manager enregistrée' })
+      // Première lecture tout de suite : la fenêtre montre aussitôt si la clé est acceptée
+      await refreshEvent(db, ev, { force: true }).catch(e => console.error('lecture Event Manager:', e))
       res.status(200).json({ ok: true, fin: cle.slice(-4) }); return
     }
 
@@ -94,6 +104,12 @@ module.exports = async (req, res) => {
       await db.collection('liaisons-em').doc(ev).delete()
       await writeAudit(db, ev, { action: 'CLE_EM_RETIREE', staff: caller.uid, userType: 'admin', label: 'Clé Event Manager retirée' })
       res.status(200).json({ ok: true }); return
+    }
+
+    if (body.mode === 'em-actualiser') {
+      const r = await refreshEvent(db, ev, { force: true })
+      if (!r.lu) { res.status(400).json({ error: "Aucune clé Event Manager n'est enregistrée pour cet événement." }); return }
+      res.status(200).json({ ok: true, lecture: lectureView(r.lecture) }); return
     }
 
     res.status(400).json({ error: 'Mode inconnu.' })

@@ -4,14 +4,54 @@
  *
  * - Clés des sites qui envoient des billets : une par site, nommée ; la clé complète ne s'affiche
  *   qu'une fois, à la création ou au renouvellement ; renouveler ou supprimer coupe l'ancienne aussitôt.
- * - Clé Event Manager de l'événement, pour l'envoi des entrées.
+ * - Clé Event Manager de l'événement : elle sert à envoyer les entrées et à lire l'instantané
+ *   (programme, artistes, bénévoles ; règle d'échange Event Manager ↔ YllaCash v1.0, maquette du 18/11/2026).
  * Tout passe par le serveur (api/liaisons) : aucune clé n'est lisible dans la base depuis un navigateur.
  */
 import React, { useEffect, useState } from 'react'
 import { Button, Dialog, HoldButton, toast } from '../../../ui'
 import { friendlyError } from '../../../utils/errors'
 import { apiFetch } from '../../../firebase/session'
+import { RefreshCw } from 'lucide-react'
 import s from './evenements.module.css'
+
+const fmtHour = (iso) => iso ? new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : null
+const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`
+
+/** État de la lecture de l'instantané d'Event Manager (à jour, injoignable, clé refusée) */
+function LectureStatus({ lecture }) {
+  const copie = lecture?.okLe ? `La copie lue le ${fmtDate(lecture.okLe)} reste utilisée` : "Aucune copie n'a encore été lue"
+  const c = lecture?.comptes
+  if (!lecture) return (
+    <div className={s.lectureLine}>
+      <span><strong>Lecture d'Event Manager</strong></span>
+      <span className={s.dialogHint}>Pas encore lue : première lecture dans les 5 minutes.</span>
+    </div>
+  )
+  if (!lecture.echec) return (
+    <div className={s.lectureLine}>
+      <span><strong>Lecture d'Event Manager</strong> <span className={`${s.lectureBadge} ${s.lectureOk}`}>À jour</span></span>
+      <span className={s.dialogHint}>
+        Dernière lecture le {fmtDate(lecture.okLe)}
+        {c ? ` · ${plural(c.programme, 'passage', 'passages')}, ${plural(c.artistes, 'artiste', 'artistes')}, ${plural(c.benevoles, 'bénévole', 'bénévoles')}` : ''}
+      </span>
+    </div>
+  )
+  if (lecture.echec.type === 'refus') return (
+    <div className={s.lectureLine}>
+      <span><strong>Lecture d'Event Manager</strong> <span className={`${s.lectureBadge} ${s.lectureRefus}`}>Clé refusée</span></span>
+      <span className={s.dialogHint}>Event Manager refuse cette clé : elle a peut-être été renouvelée ou supprimée. Retirez-la et collez la nouvelle. {copie}.</span>
+    </div>
+  )
+  return (
+    <div className={s.lectureLine}>
+      <span><strong>Lecture d'Event Manager</strong> <span className={`${s.lectureBadge} ${s.lecturePanne}`}>{lecture.echec.format ? 'Réponse illisible' : 'Injoignable'}</span></span>
+      <span className={s.dialogHint}>
+        {lecture.echec.format ? "La réponse d'Event Manager est illisible" : 'Event Manager ne répond pas'} depuis {fmtHour(lecture.echec.depuis)}. {copie} : le festival continue. Nouvel essai toutes les 5 minutes.
+      </span>
+    </div>
+  )
+}
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null
 
@@ -91,25 +131,38 @@ export default function LiaisonsDialog({ event, onClose }) {
         </section>
 
         <section className={s.archiveStep}>
-          <h3 className={s.archiveStepTitle}>Envoi des entrées à Event Manager</h3>
-          <p className={s.dialogText}>Collez ici la clé « YllaCash » créée dans Event Manager pour cet événement.</p>
+          <h3 className={s.archiveStepTitle}>Liaison avec Event Manager</h3>
           {data?.em ? (
+            <>
+            <p className={s.dialogText}>La clé « YllaCash » sert à envoyer les entrées et à lire le programme, les artistes et les bénévoles.</p>
             <div className={s.liaisonRow}>
               <div className={s.liaisonNom}>Clé enregistrée ····{data.em.fin}</div>
-              <div className={s.dialogHint}>
-                {data.em.dernierEnvoiOk ? `Dernier envoi réussi le ${fmtDate(data.em.dernierEnvoiOk)}` : "Aucun envoi réussi pour l'instant"}
-                {data.em.dernierEchec ? ` · dernier échec : ${data.em.dernierEchec}` : ''}
+              <div className={s.lectureLine}>
+                <span><strong>Envoi des entrées</strong></span>
+                <span className={s.dialogHint}>
+                  {data.em.dernierEnvoiOk ? `Dernier envoi réussi le ${fmtDate(data.em.dernierEnvoiOk)}` : "Aucun envoi réussi pour l'instant"}
+                  {data.em.dernierEchec ? ` · dernier échec : ${data.em.dernierEchec}` : ''}
+                </span>
               </div>
+              <LectureStatus lecture={data.em.lecture}/>
               <div className={s.liaisonActions}>
+                <Button size="sm" variant="secondary" icon={RefreshCw} disabled={busy}
+                  onClick={() => act({ mode: 'em-actualiser' }, (r) => { if (r?.lecture && !r.lecture.echec) toast.success('Event Manager relu') })}>
+                  {busy ? 'Lecture…' : 'Actualiser'}
+                </Button>
                 <HoldButton tone="danger" disabled={busy} onConfirm={() => act({ mode: 'em-retirer' })}>Maintenir : retirer</HoldButton>
               </div>
             </div>
+            </>
           ) : data && (
+            <>
+            <p className={s.dialogText}>Collez la clé « YllaCash » créée dans Event Manager (Rapports › Billetterie). Elle sert à envoyer les entrées et à lire le programme, les artistes et les bénévoles.</p>
             <form className={s.liaisonForm} onSubmit={e => { e.preventDefault(); if (emCle.trim()) act({ mode: 'em-enregistrer', cle: emCle.trim() }, () => setEmCle('')) }}>
               <input className={s.confirmInput} value={emCle} onChange={e => setEmCle(e.target.value)}
                 placeholder="Clé Event Manager" aria-label="Clé Event Manager" autoComplete="off" disabled={busy}/>
               <Button type="submit" disabled={busy || !emCle.trim()}>Enregistrer</Button>
             </form>
+            </>
           )}
         </section>
       </div>

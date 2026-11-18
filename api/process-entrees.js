@@ -12,9 +12,13 @@
  * fenêtre « Liaisons » de l'événement (rangée dans liaisons-em/{événement}, lisible par le serveur seul).
  * Sans clé pour un événement, ses entrées restent en attente.
  * YLLA_EM_URL (facultatif) remplace l'adresse, pour un essai.
+ *
+ * Au même passage, relit toutes les 5 minutes l'instantané d'Event Manager de chaque événement
+ * qui a une clé (règle d'échange Event Manager ↔ YllaCash v1.0, §2 ; voir _em/lecture.js).
  */
 const { prepareEntrees, nextAttempt, isSettingError, newMessageId } = require('./_billets/core')
 const { getDb } = require('./_billets/admin')
+const { refreshEvent } = require('./_em/lecture')
 
 const TIMEOUT_MS = 10_000
 
@@ -43,7 +47,7 @@ module.exports = async (req, res) => {
   let db
   try { db = getDb() } catch (e) { res.status(500).json({ error: e.message }); return }
 
-  const summary = { events: 0, envoyees: 0, inutiles: 0, echecs: [] }
+  const summary = { events: 0, envoyees: 0, inutiles: 0, echecs: [], lectures: 0, lecturesEchouees: 0 }
   const now = Date.now()
   const events = await db.collection('events').get()
 
@@ -52,6 +56,10 @@ module.exports = async (req, res) => {
     const emSnap = await db.collection('liaisons-em').doc(ev.id).get()
     const key = emSnap.exists ? emSnap.data().cle : null
     if (!key) continue
+    try {
+      const l = await refreshEvent(db, ev.id)
+      if (l.lu) { summary.lectures++; if (l.lecture.echec) summary.lecturesEchouees++ }
+    } catch (e) { console.error('lecture Event Manager:', ev.id, e); summary.lecturesEchouees++ }
     const col = db.collection('events').doc(ev.id).collection('entrees')
     const snap = await col.where('envoi.statut', '==', 'attente').get()
     if (snap.empty) continue
