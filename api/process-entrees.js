@@ -14,11 +14,13 @@
  * YLLA_EM_URL (facultatif) remplace l'adresse, pour un essai.
  *
  * Au même passage, relit toutes les 5 minutes l'instantané d'Event Manager de chaque événement
- * qui a une clé (règle d'échange Event Manager ↔ YllaCash v1.0, §2 ; voir _em/lecture.js).
+ * qui a une clé (règle d'échange Event Manager ↔ YllaCash v1.0, §2 ; voir _em/lecture.js),
+ * et lui renvoie les consommations et le bilan (§7, v1.1 ; voir _em/envoiRetour.js).
  */
 const { prepareEntrees, nextAttempt, isSettingError, newMessageId } = require('./_billets/core')
 const { getDb } = require('./_billets/admin')
 const { refreshEvent } = require('./_em/lecture')
+const { executerRetour, firestoreIo } = require('./_em/envoiRetour')
 
 const TIMEOUT_MS = 10_000
 
@@ -60,6 +62,13 @@ module.exports = async (req, res) => {
       const l = await refreshEvent(db, ev.id)
       if (l.lu) { summary.lectures++; if (l.lecture.echec) summary.lecturesEchouees++ }
     } catch (e) { console.error('lecture Event Manager:', ev.id, e); summary.lecturesEchouees++ }
+    // Retour vers Event Manager : seulement pour un événement dont l'équipe vient d'Event Manager
+    if (ev.data().emEquipe) {
+      try {
+        const r = await executerRetour(firestoreIo(db, ev.id, { key, state: emSnap.data().retour }))
+        if (r.envoye) { summary.retours = (summary.retours || 0) + 1; if (r.echecs.length) summary.echecs.push({ event: ev.id, retour: r.echecs }) }
+      } catch (e) { console.error('retour Event Manager:', ev.id, e) }
+    }
     const col = db.collection('events').doc(ev.id).collection('entrees')
     const snap = await col.where('envoi.statut', '==', 'attente').get()
     if (snap.empty) continue

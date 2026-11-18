@@ -1,8 +1,8 @@
 # Ylla Event Manager ↔ YllaCash : règle d'échange
 
-Version 1.1 du 18/11/2026. La 1.0 a été **validée par l'organisateur** (les quatre points du §8) ; la 1.1 ajoute au programme le type, la photo, la présentation et les liens de l'artiste (§3.1, option B choisie par l'organisateur le 18/11/2026).
+Version 1.1 du 18/11/2026. La 1.0 a été **validée par l'organisateur** (les quatre points du §8) ; la 1.1 ajoute au programme le type, la photo, la présentation et les liens de l'artiste (§3.1, option B choisie par l'organisateur le 18/11/2026), et le format du retour vers Event Manager (§7, validé le même jour).
 
-Avancement : Event Manager sert l'instantané (commit 7ff66af, détail dans `EventManager/docs/api-yllacash.md`). YllaCash le lit (lot A : `api/_em/`, copie dans `em-instantanes/{événement}`, réservée au serveur, état dans la fenêtre « Liaisons »). Lot B : le programme lu est publié dans `events/{événement}/programme-em` (lecture publique) et remplace le planning de YllaCash dans l'espace spectateur et sur `/live` dès que `events/{événement}.emProgramme` existe. Lot C : bénévoles et artistes publiés dans `events/{événement}/benevoles/em-…` et `artistes/em-…` (`emEquipe` sur l'événement) ; droits par journée (coupure à 6 h, non reportés), contrôle des billets les jours envoyés, accès par lien personnel ; articles des artistes choisis dans YllaCash (`settings/artistes.articles`) ; pages Bénévoles et Artistes en lecture. Lot D : pour un événement relié, Planning, Cachets, Exposants, Finances et l'éditeur de factures sont masqués (`src/em/pages.js`), « Gestion artistes » devient « Artistes » ; rien n'est effacé, les archives et événements non reliés gardent tout. Le retour vers Event Manager (§7) reste à faire.
+Avancement : Event Manager sert l'instantané (commit 7ff66af, détail dans `EventManager/docs/api-yllacash.md`). YllaCash le lit (lot A : `api/_em/`, copie dans `em-instantanes/{événement}`, réservée au serveur, état dans la fenêtre « Liaisons »). Lot B : le programme lu est publié dans `events/{événement}/programme-em` (lecture publique) et remplace le planning de YllaCash dans l'espace spectateur et sur `/live` dès que `events/{événement}.emProgramme` existe. Lot C : bénévoles et artistes publiés dans `events/{événement}/benevoles/em-…` et `artistes/em-…` (`emEquipe` sur l'événement) ; droits par journée (coupure à 6 h, non reportés), contrôle des billets les jours envoyés, accès par lien personnel ; articles des artistes choisis dans YllaCash (`settings/artistes.articles`) ; pages Bénévoles et Artistes en lecture. Lot D : pour un événement relié, Planning, Cachets, Exposants, Finances et l'éditeur de factures sont masqués (`src/em/pages.js`), « Gestion artistes » devient « Artistes » ; rien n'est effacé, les archives et événements non reliés gardent tout. Retour (§7) : YllaCash envoie consommations et bilan (`api/_em/retour.js`, `envoiRetour.js`, appelés par la tâche de `api/process-entrees.js` ; état dans `liaisons-em/{événement}.retour`), pour les événements dont l'équipe vient d'Event Manager ; Event Manager doit encore accepter ces messages.
 
 ## 1. Le partage des rôles (décidé par l'organisateur le 18/11/2026)
 
@@ -105,7 +105,51 @@ Pages et fonctions retirées : Cachets, Exposants, Gestion des artistes, Plannin
 
 ## 7. YllaCash → Event Manager : consommations et totaux financiers (validé)
 
-YllaCash renvoie à Event Manager les consommations réelles des artistes et des bénévoles, et les totaux financiers de l'événement (recharges, ventes, remboursements) pour le « Dossier financeurs ». Format à préciser dans une version 1.1 (même clé, même adresse que les entrées, nouveaux types de messages). En attendant, l'import du Rapport Excel existant fait le lien.
+YllaCash renvoie à Event Manager les consommations réelles des artistes et des bénévoles, et les totaux financiers de l'événement pour le « Dossier financeurs ». Format validé par l'organisateur le 18/11/2026 (version 1.1). En attendant qu'il soit en place des deux côtés, l'import du Rapport Excel existant fait le lien.
+
+### 7.1 Principes
+
+- **Même adresse, même clé que les entrées** : `POST https://gestion.maisonylla.com/api/public/billetterie`, `Authorization: Bearer <clé YllaCash de l'événement>`, `Content-Type: application/json`, `x-ylla: 1`. La clé de type `yllacash` autorise désormais aussi `consommations` et `bilan`.
+- **Chaque message porte l'état complet** de ce qu'il couvre : Event Manager **remplace** ce qu'il avait reçu (rien n'est compté deux fois ; un message perdu est rattrapé par le suivant). `id` (32 caractères hexadécimaux) et doublons : comme pour les autres messages. `le` : date d'envoi, ISO 8601 avec fuseau.
+- **Rythme** : dès qu'un chiffre change, au plus toutes les 5 minutes (tâche automatique de YllaCash), puis un envoi `final: true` après chaque clôture de caisse. Réessai automatique en cas de panne, comme pour les entrées.
+- **Aucun nom** : les personnes sont désignées par l'identifiant d'Event Manager reçu dans l'instantané (§3).
+- Montants en **euros**, nombres à deux décimales. Jours `AAAA-MM-JJ` ; une journée de festival finit à 6 h du matin (heure de Paris).
+
+### 7.2 Consommations (`type: "consommations"`)
+
+```json
+{ "id": "…", "type": "consommations", "le": "2027-05-15T23:10:00+02:00",
+  "jours": ["2027-05-15"],
+  "benevoles": [ { "id": "u31", "jour": "2027-05-15", "repas": 1, "boissons": 2, "eau": 3 } ],
+  "artistes":  [ { "id": "a7",  "jour": "2027-05-15", "repas": 2, "boissons": 3, "eau": 1 } ] }
+```
+
+- Par personne et par jour, quantités réellement servies (commandes retirées ou servies au stand ; une commande annulée ne compte pas).
+- `jours` : jours couverts par le message (1 à 31). Pour chacun, Event Manager remplace toutes les consommations reçues ce jour-là par celles du message ; une personne absente du message n'a rien consommé ce jour-là.
+- Seules les personnes venues de l'instantané (identifiant d'Event Manager) sont envoyées.
+
+### 7.3 Bilan financier (`type: "bilan"`)
+
+```json
+{ "id": "…", "type": "bilan", "le": "2027-05-16T23:40:00+02:00", "final": true,
+  "recharges": 12345.50, "ventes": 9876.00, "remboursements": 120.00, "soldesRestants": 2349.50,
+  "offertsBenevoles": 131.50, "offertsArtistes": 80.00,
+  "categories": [ { "nom": "Boissons", "montant": 5000.00, "unites": 1200 } ],
+  "parJour": [ { "jour": "2027-05-15", "recharges": 7000.00, "ventes": 5200.00, "remboursements": 0.00 } ] }
+```
+
+- Totaux de tout l'événement ; Event Manager remplace le bilan précédent.
+- `ventes` : ventes payées (encaissements et retraits de réservation des spectateurs), ventilées dans `categories` par catégorie de la carte (`unites` : articles vendus).
+- `offertsBenevoles`, `offertsArtistes` : valeur **au prix de la carte** de ce qui a été offert (non compris dans `ventes`).
+- `soldesRestants` : argent rechargé et ni dépensé ni remboursé.
+- `final` : `true` pour l'envoi qui suit une clôture de caisse.
+- Ce bilan reprend ce qu'Event Manager tire aujourd'hui du « Rapport Excel » (recharges, ventes par catégorie, offerts aux bénévoles, soldes restants) : l'import du fichier devient inutile quand le bilan arrive.
+
+### 7.4 Ce que cela demande à Event Manager
+
+1. Accepter `consommations` et `bilan` sur `POST /api/public/billetterie` avec une clé de type `yllacash` (403 avec une clé de type `site`), avec les mêmes vérifications « tout ou rien » et la même protection contre les doublons.
+2. Ranger les consommations par personne et par jour, et les montrer en face des droits accordés (bénévoles) et des avantages (artistes).
+3. Ranger le dernier bilan et l'utiliser dans le budget et le « Dossier financeurs », à la place de l'import du Rapport Excel quand il est présent.
 
 ## 8. Décisions (18/11/2026)
 
@@ -113,3 +157,4 @@ YllaCash renvoie à Event Manager les consommations réelles des artistes et des
 2. Droits et avantages **par jour** (repas, boissons, eau), décidés dans Event Manager.
 3. Accès des bénévoles et des artistes **par lien personnel** (sans mot de passe YllaCash).
 4. Retour vers Event Manager des consommations et des totaux financiers (§7) : oui.
+5. Format du retour (§7, v1.1) : en continu (au plus toutes les 5 minutes) puis final après la clôture ; consommations par personne et par jour ; offerts valorisés au prix de la carte.
