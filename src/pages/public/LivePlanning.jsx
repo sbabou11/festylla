@@ -4,6 +4,7 @@
  */
 import React, { useState, useEffect } from 'react'
 import { db } from '../../firebase/config'
+import { watchProgramme } from '../../programme/watchProgramme'
 import { getSettings } from '../../firebase/service'
 import { collection, query, orderBy, onSnapshot, getDoc, doc } from 'firebase/firestore'
 import { MapPin, Clock, ChevronRight, X, Search, Rows3, Image as ImageIcon, GitCommitVertical, Ticket, LayoutGrid, GanttChart } from 'lucide-react'
@@ -507,10 +508,8 @@ export default function LivePlanning({ demo = null } = {}) {
   // Charger le planning
   useEffect(() => {
     if (!eventId || demo) return
-    const col = collection(db, 'events', eventId, 'planning')
-    const q   = query(col, orderBy('debut', 'asc'))
-    const unsub = onSnapshot(q, snap => {
-      const data = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+    // Programme d'Event Manager si l'événement y est relié, sinon planning de YllaCash
+    const unsub = watchProgramme(eventId, data => {
       setPlanning(data)
       try {
         const serializable = data.map(cr => ({

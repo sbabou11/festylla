@@ -83,6 +83,12 @@ service cloud.firestore {
         allow read: if true;   // thème et nom affichés par les pages publiques
         allow write: if staffIn(ev);
       }
+      // Programme lu dans Event Manager (règle d'échange v1.1) : public, écrit par le serveur ;
+      // les administrateurs n'y écrivent que pour archiver ou restaurer l'édition
+      match /programme-em/{id} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
       match /planning/{id} {
         allow read: if true;   // programme public (/live)
         allow write: if staffIn(ev) || legacy(ev);
@@ -206,7 +212,7 @@ service cloud.firestore {
       // (Les règles s'additionnent : les collections protégées ci-dessus sont exclues d'ici,
       // sinon cette règle générale leur rendrait des droits qu'on leur a retirés.)
       match /{other}/{id} {
-        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire'])
+        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire', 'programme-em'])
                               && (staffIn(ev) || legacy(ev));
       }
     }

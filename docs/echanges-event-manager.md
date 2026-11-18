@@ -1,8 +1,8 @@
 # Ylla Event Manager ↔ YllaCash : règle d'échange
 
-Version 1.0 du 18/11/2026, **validée par l'organisateur** (les quatre points du §8).
+Version 1.1 du 18/11/2026. La 1.0 a été **validée par l'organisateur** (les quatre points du §8) ; la 1.1 ajoute au programme le type, la photo, la présentation et les liens de l'artiste (§3.1, option B choisie par l'organisateur le 18/11/2026).
 
-Avancement : Event Manager sert l'instantané (commit 7ff66af, détail dans `EventManager/docs/api-yllacash.md`). YllaCash le lit (lot A : `api/_em/`, copie dans `em-instantanes/{événement}`, réservée au serveur, état dans la fenêtre « Liaisons »). Programme, espaces artiste et bénévole, nettoyage et retour (§7) restent à faire.
+Avancement : Event Manager sert l'instantané (commit 7ff66af, détail dans `EventManager/docs/api-yllacash.md`). YllaCash le lit (lot A : `api/_em/`, copie dans `em-instantanes/{événement}`, réservée au serveur, état dans la fenêtre « Liaisons »). Lot B : le programme lu est publié dans `events/{événement}/programme-em` (lecture publique) et remplace le planning de YllaCash dans l'espace spectateur et sur `/live` dès que `events/{événement}.emProgramme` existe. Espaces artiste et bénévole, nettoyage et retour (§7) restent à faire.
 
 ## 1. Le partage des rôles (décidé par l'organisateur le 18/11/2026)
 
@@ -54,11 +54,30 @@ Event Manager n'a aujourd'hui ni envoi sortant ni file d'attente. Plutôt que d'
 }
 ```
 
-- **programme** : uniquement ce qui est public. Ni cachet, ni contact, ni note interne.
+- **programme** : uniquement ce qui est public. Ni cachet, ni contact, ni note interne. Voir aussi §3.1.
 - **artistes** : seulement ceux qui ont des avantages (statut `confirme` ou `contrat`). Ni cachet, ni contrat, ni contact.
 - **benevoles** : seulement ceux qui ont des droits ou un contrôle des billets. Ni téléphone, ni e-mail, ni compétences.
 - **controleBillets** : les jours où le bénévole est affecté à un poste marqué « contrôle les billets ». Il remplace le réglage `controleBillets` des postes de YllaCash (règle billetterie §3.4, à mettre à jour).
 - Jours au format `AAAA-MM-JJ`, heures `HH:MM`, heure de Paris.
+
+### 3.1 Programme : champs ajoutés en version 1.1
+
+Pour garder l'écran du programme tel qu'il est aujourd'hui (filtres par type, photo, fiche de l'artiste), chaque passage du programme porte en plus :
+
+```json
+{ "id": "p12", "jour": "2027-05-15", "debut": "20:30", "fin": "21:30", "scene": "Grande scène",
+  "titre": "Concert", "artiste": "Awa Exemple",
+  "type": "musical",
+  "photo": "https://gestion.maisonylla.com/…/awa.jpg",
+  "presentation": "Chanteuse et guitariste, entre folk et musiques mandingues.",
+  "liens": { "instagram": "https://instagram.com/…", "site": "https://…" } }
+```
+
+- **type** : `musical`, `litteraire`, `cinematographique` ou `autre` (par défaut `autre`).
+- **photo** : adresse `https://` d'une image **publique** (lisible sans clé par le téléphone des spectateurs), ou `""`. 1 200 px au plus de préférence.
+- **presentation** : texte public, 600 caractères au plus, ou `""`.
+- **liens** : liens publics de l'artiste, seulement en `https://`, parmi `spotify`, `instagram`, `facebook`, `tiktok`, `youtube`, `site`. Les liens vides sont omis.
+- Ces champs sont facultatifs : sans eux, YllaCash affiche le passage avec une icône neutre.
 
 ## 4. Ce que YllaCash en fait
 

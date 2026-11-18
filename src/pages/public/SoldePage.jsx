@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
+import { watchProgramme } from '../../programme/watchProgramme'
 import { getSettings } from '../../firebase/service'
 import {
   collection, query, where, getDocs, addDoc, onSnapshot,
@@ -144,18 +145,14 @@ export default function SoldePage({ demo = null }) {
   // Charger le planning en temps réel si eventId connu
   useEffect(() => {
     if (!eventId) return
-    const { onSnapshot: onSnap, query: q, collection: col, orderBy: ob } = { onSnapshot, query, collection, orderBy }
-    const unsub = onSnapshot(
-      query(collection(db, 'events', eventId, 'planning'), orderBy('debut', 'asc')),
-      snap => {
-      const data = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+    // Programme d'Event Manager si l'événement y est relié, sinon planning de YllaCash
+    const unsub = watchProgramme(eventId, data => {
       setPlanningData(data)
       try { localStorage.setItem('yllacash-planning-' + eventId, JSON.stringify(data.map(cr => ({
         ...cr, debut: cr.debut?.toDate ? cr.debut.toDate().toISOString() : cr.debut,
         fin: cr.fin?.toDate ? cr.fin.toDate().toISOString() : cr.fin
       })))) } catch {}
-    }
-    )
+    })
     return unsub
   }, [eventId])
 

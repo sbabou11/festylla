@@ -47,6 +47,7 @@ beforeEach(async () => {
     await p(`events/${EV}/reservations/r2`, { specId: 'FY-AB2C3D', status: 'pending' })
     await p(`events/${EV}/menu/m1`, { nom: 'Bissap', prix: 300, stock: 10 })
     await p(`events/${EV}/planning/cr1`, { artiste: 'DJ', avantages: {} })
+    await p(`events/${EV}/programme-em/p12`, { artiste: 'Awa', source: 'event-manager' })
     await p(`events/${EV}/liens/borne`, { cle: 'a'.repeat(32) })
     await p(`events/${EV}/finances/f1`, { montant: 100 })
     await p(`events/${EV}/settings/global`, { theme: {} })
@@ -72,6 +73,8 @@ describe('sans session (visiteur anonyme, programme malveillant)', () => {
   })
   it('voit le programme et le thème publics', async () => {
     await assertSucceeds(getDocs(collection(anon(), `events/${EV}/planning`)))
+    await assertSucceeds(getDocs(collection(anon(), `events/${EV}/programme-em`)))
+    await assertFails(setDoc(doc(anon(), `events/${EV}/programme-em/p13`), { artiste: 'Faux' }))
     await assertSucceeds(getDoc(doc(anon(), `events/${EV}/settings/global`)))
     await assertSucceeds(getDoc(doc(anon(), `events/${EV}`)))
   })
@@ -152,6 +155,10 @@ describe('équipe', () => {
     await assertSucceeds(getDoc(doc(as(STAND), `events/${EV}/finances/f1`)))
     await assertFails(updateDoc(doc(as(STAND), `events/${EV}/staff/s1`), { role: 'admin' }))
     await assertSucceeds(updateDoc(doc(as(ADMIN), `events/${EV}/staff/s1`), { role: 'billetterie' }))
+  })
+  it("le programme d'Event Manager ne se modifie pas depuis YllaCash, sauf archivage par un administrateur", async () => {
+    await assertFails(updateDoc(doc(as(STAND), `events/${EV}/programme-em/p12`), { artiste: 'Autre' }))
+    await assertSucceeds(setDoc(doc(as(ADMIN), `events/${EV}/programme-em/p12`), { artiste: 'Awa', source: 'event-manager' }))
   })
   it('personne ne lit les compteurs d\'essais, réservés au serveur', async () => {
     await assertFails(getDoc(doc(as(ADMIN), 'securite-connexions/c1')))

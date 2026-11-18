@@ -20,7 +20,7 @@ export const ARCHIVE_COLLECTIONS = [
   'cachets', 'categories', 'clotures', 'commandes', 'expositions', 'finances', 'menu', 'notifications',
   'planning', 'reservations', 'scheduled-reminders', 'settings', 'spectateurs', 'staff', 'team-chat',
   'team-chat-typing', 'transactions', 'volunteer-posts', 'volunteer-shifts', 'walkie-chunks', 'walkie-state',
-  'entrees', 'billetterie-recus', 'liens', 'benevoles-annuaire',
+  'entrees', 'billetterie-recus', 'liens', 'benevoles-annuaire', 'programme-em',
 ]
 
 // Champs jamais archivés : mots de passe du personnel et des bénévoles

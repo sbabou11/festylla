@@ -10,7 +10,10 @@
  */
 
 const INTERVAL_MS = 5 * 60_000
-const LIMITS = { programme: 3000, artistes: 1000, benevoles: 3000, jours: 31 }
+// La copie tient dans un seul document Firestore (1 Mo) : le programme, plus lourd, est borné plus bas
+const LIMITS = { programme: 500, artistes: 1000, benevoles: 3000, jours: 31 }
+const TYPES = ['musical', 'litteraire', 'cinematographique', 'autre']
+const LINKS = ['spotify', 'instagram', 'facebook', 'tiktok', 'youtube', 'site']
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const HOUR = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -33,6 +36,16 @@ const perDay = (v) => {
     if (r.repas || r.boissons || r.eau) out.set(x.jour, r)
   }
   return [...out.values()].sort((a, b) => a.jour.localeCompare(b.jour)).slice(0, LIMITS.jours)
+}
+const httpsUrl = (v) => {
+  const t = text(v, 500)
+  if (!t) return ''
+  try { const u = new URL(t); return u.protocol === 'https:' ? u.href : '' } catch { return '' }
+}
+const links = (v) => {
+  const out = {}
+  if (isObj(v)) for (const k of LINKS) { const u = httpsUrl(v[k]); if (u) out[k] = u }
+  return out
 }
 const uniqueById = (list) => {
   const seen = new Set()
@@ -58,6 +71,9 @@ function normalizeSnapshot(json) {
       id: id(p.id), jour: p.jour,
       debut: HOUR.test(p.debut || '') ? p.debut : '', fin: HOUR.test(p.fin || '') ? p.fin : '',
       scene: text(p.scene, 80), titre: text(p.titre, 120), artiste: text(p.artiste, 120),
+      // Version 1.1 (§3.1) : facultatifs
+      type: TYPES.includes(p.type) ? p.type : 'autre',
+      photo: httpsUrl(p.photo), presentation: text(p.presentation, 600), liens: links(p.liens),
     }
   })).sort((a, b) => (a.jour + a.debut).localeCompare(b.jour + b.debut))
 
@@ -126,4 +142,46 @@ function nextLecture(prev, result, now) {
   }
 }
 
-module.exports = { normalizeSnapshot, comptes, lectureDue, classify, nextLecture, INTERVAL_MS, LIMITS }
+/**
+ * Date et heure de Paris → instant (ms). Gère l'heure d'été sans bibliothèque :
+ * on lit le décalage de Paris à l'instant approché, puis on corrige.
+ */
+function parisToMs(jour, heure) {
+  const [y, mo, d] = jour.split('-').map(Number)
+  const [h, mi] = heure.split(':').map(Number)
+  const guess = Date.UTC(y, mo - 1, d, h, mi)
+  const offset = (ms) => {
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(ms))
+    const g = (t) => Number(parts.find(x => x.type === t).value)
+    return Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute')) - ms
+  }
+  const first = guess - offset(guess)
+  return guess - offset(first)
+}
+
+const docId = (id) => (/^[A-Za-z0-9_-]{1,100}$/.test(id) ? id : 'h' + require('crypto').createHash('sha256').update(id).digest('hex').slice(0, 24))
+
+/**
+ * Passages du programme au format des créneaux affichés par l'espace spectateur et /live
+ * (mêmes champs que la collection planning). Renvoie [{ docId, data }] avec debutMs et finMs ;
+ * le serveur ajoute debut et fin en dates Firestore.
+ */
+function programmeDocs(programme) {
+  return programme.filter(p => p.debut).map(p => {
+    const debutMs = parisToMs(p.jour, p.debut)
+    let finMs = p.fin ? parisToMs(p.jour, p.fin) : debutMs
+    if (finMs < debutMs) finMs += 24 * 3600_000   // le passage finit après minuit
+    return {
+      docId: docId(p.id),
+      data: {
+        emId: p.id, jour: p.jour, debutMs, finMs,
+        scene: p.scene, titre: p.titre, artiste: p.artiste,
+        type: p.type || 'autre', photo: p.photo || '', bio: p.presentation || '', description: '',
+        liens: p.liens || {}, statut: 'a-venir', source: 'event-manager',
+      },
+    }
+  })
+}
+
+module.exports = { normalizeSnapshot, comptes, lectureDue, classify, nextLecture, parisToMs, programmeDocs, INTERVAL_MS, LIMITS }

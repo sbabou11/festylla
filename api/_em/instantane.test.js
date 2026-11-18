@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { normalizeSnapshot, lectureDue, classify, nextLecture, INTERVAL_MS } = require('./instantane.js')
+const { normalizeSnapshot, lectureDue, classify, nextLecture, parisToMs, programmeDocs, INTERVAL_MS } = require('./instantane.js')
 const { refreshEvent } = require('./lecture.js')
 
 const V = '0123456789abcdef0123456789abcdef'
@@ -10,8 +10,10 @@ const sample = () => ({
   genere: '2027-05-15T14:02:00+02:00',
   evenement: { nom: "Fest'Ylla 2027", jours: ['2027-05-16', '2027-05-15'] },
   programme: [
-    { id: 'p2', jour: '2027-05-16', debut: '18:00', fin: '19:00', scene: '', titre: 'Danse', artiste: '' },
-    { id: 'p12', jour: '2027-05-15', debut: '20:30', fin: '21:30', scene: 'Grande scène', titre: 'Concert', artiste: 'Awa Exemple', cachet: 900, note: 'interne' },
+    { id: 'p2', jour: '2027-05-16', debut: '23:30', fin: '00:30', scene: '', titre: 'Danse', artiste: '', type: 'inconnu', photo: 'http://x.fr/a.jpg',
+      liens: { instagram: 'https://instagram.com/x', site: 'javascript:alert(1)', autre: 'https://a.fr' } },
+    { id: 'p12', jour: '2027-05-15', debut: '20:30', fin: '21:30', scene: 'Grande scène', titre: 'Concert', artiste: 'Awa Exemple', cachet: 900, note: 'interne',
+      type: 'musical', photo: 'https://gestion.maisonylla.com/p/awa.jpg', presentation: 'Chanteuse.' },
   ],
   artistes: [{ id: 'a7', nom: 'Awa Exemple', statut: 'confirme', jours: ['2027-05-15'], telephone: '0600000000',
     avantages: [{ jour: '2027-05-15', repas: 2, boissons: 4, eau: 4 }, { jour: '2027-05-16', repas: 0, boissons: 0, eau: 0 }] }],
@@ -48,6 +50,25 @@ describe('normalizeSnapshot', () => {
   })
 })
 
+describe('programme (v1.1)', () => {
+  it('garde type, photo, présentation et liens sûrs seulement', () => {
+    const [p12, p2] = normalizeSnapshot(sample()).data.programme
+    expect(p12).toMatchObject({ type: 'musical', photo: 'https://gestion.maisonylla.com/p/awa.jpg', presentation: 'Chanteuse.', liens: {} })
+    expect(p2).toMatchObject({ type: 'autre', photo: '', presentation: '', liens: { instagram: 'https://instagram.com/x' } })
+  })
+  it("heure de Paris, été comme hiver", () => {
+    expect(new Date(parisToMs('2027-05-15', '20:30')).toISOString()).toBe('2027-05-15T18:30:00.000Z')
+    expect(new Date(parisToMs('2027-01-15', '20:30')).toISOString()).toBe('2027-01-15T19:30:00.000Z')
+  })
+  it('au format des créneaux, fin après minuit comprise', () => {
+    const docs = programmeDocs(normalizeSnapshot(sample()).data.programme)
+    const p2 = docs.find(d => d.docId === 'p2').data
+    expect(p2.finMs - p2.debutMs).toBe(3600_000)
+    expect(docs.find(d => d.docId === 'p12').data).toMatchObject({ artiste: 'Awa Exemple', bio: 'Chanteuse.', statut: 'a-venir', source: 'event-manager' })
+    expect(programmeDocs([{ id: 'a.b c', jour: '2027-05-15', debut: '10:00', fin: '', scene: '', titre: '', artiste: '' }])[0].docId).toMatch(/^h[0-9a-f]{24}$/)
+  })
+})
+
 describe('rythme et état de lecture', () => {
   it('relit toutes les 5 minutes, ou tout de suite si demandé', () => {
     expect(lectureDue(null, 1000)).toBe(true)
@@ -72,40 +93,50 @@ describe('rythme et état de lecture', () => {
   })
 })
 
-// Base en mémoire, juste ce que lecture.js utilise
+// Base en mémoire, juste ce que lecture.js utilise (chemins texte, sous-collections comprises)
 function memoryDb(initial) {
   const docs = new Map(Object.entries(initial))
   const ref = (path) => ({
+    id: path.split('/').pop(),
     get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
     set: async (v) => { docs.set(path, v) },
     update: async (v) => { docs.set(path, { ...docs.get(path), ...v }) },
+    delete: async () => { docs.delete(path) },
+    collection: (c) => col(`${path}/${c}`),
   })
-  return { docs, collection: (c) => ({ doc: (id) => ref(`${c}/${id}`) }) }
+  const col = (base) => ({
+    doc: (id) => ref(`${base}/${id}`),
+    get: async () => ({ docs: [...docs.keys()].filter(k => k.startsWith(base + '/') && !k.slice(base.length + 1).includes('/'))
+      .map(k => ({ id: k.split('/').pop(), ref: ref(k), data: () => docs.get(k) })) }),
+  })
+  return { docs, collection: (c) => col(c) }
 }
 const reply = (status, body) => async (url, opts) => { reply.last = opts; return { status, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) } }
 
 describe('refreshEvent', () => {
   let db
-  beforeEach(() => { db = memoryDb({ 'liaisons-em/ev1': { cle: 'cle-em-essai-1234567890' } }) })
+  beforeEach(() => { db = memoryDb({ 'liaisons-em/ev1': { cle: 'cle-em-essai-1234567890' }, 'events/ev1': { nom: 'Fest' } }) })
 
   it('sans clé, ne fait rien', async () => {
-    expect(await refreshEvent(memoryDb({}), 'ev1', { fetchImpl: reply(200, sample()) })).toEqual({ lu: false })
+    expect(await refreshEvent(memoryDb({}), 'ev1', { toDate: (ms) => ms, fetchImpl: reply(200, sample()) })).toEqual({ lu: false })
   })
   it('range la copie et note la version, puis envoie la version au tour suivant', async () => {
-    const r = await refreshEvent(db, 'ev1', { now: 1000, fetchImpl: reply(200, sample()) })
+    const r = await refreshEvent(db, 'ev1', { now: 1000, toDate: (ms) => ms, fetchImpl: reply(200, sample()) })
     expect(r.lecture).toMatchObject({ okMs: 1000, version: V, comptes: { programme: 2, artistes: 1, benevoles: 1 }, echec: null })
     expect(db.docs.get('em-instantanes/ev1').programme).toHaveLength(2)
+    expect(db.docs.get('events/ev1/programme-em/p12')).toMatchObject({ artiste: 'Awa Exemple', debut: Date.parse('2027-05-15T18:30:00Z') })
+    expect(db.docs.get('events/ev1').emProgramme).toEqual({ majMs: 1000, nb: 2 })
     expect(reply.last.headers).toMatchObject({ 'x-ylla': '1', Authorization: 'Bearer cle-em-essai-1234567890' })
     expect(reply.last.headers['If-None-Match']).toBeUndefined()
 
-    expect((await refreshEvent(db, 'ev1', { now: 2000, fetchImpl: reply(304, '') })).lu).toBe(false) // trop tôt
-    const r2 = await refreshEvent(db, 'ev1', { now: 2000, force: true, fetchImpl: reply(304, '') })
+    expect((await refreshEvent(db, 'ev1', { now: 2000, toDate: (ms) => ms, fetchImpl: reply(304, '') })).lu).toBe(false) // trop tôt
+    const r2 = await refreshEvent(db, 'ev1', { now: 2000, force: true, toDate: (ms) => ms, fetchImpl: reply(304, '') })
     expect(reply.last.headers['If-None-Match']).toBe(`"${V}"`)
     expect(r2.lecture).toMatchObject({ okMs: 2000, echec: null })
   })
   it('en panne ou clé refusée : la copie précédente reste', async () => {
-    await refreshEvent(db, 'ev1', { now: 1000, fetchImpl: reply(200, sample()) })
-    const r = await refreshEvent(db, 'ev1', { now: 2000, force: true, fetchImpl: reply(401, { error: 'Clé absente, inconnue ou supprimée.' }) })
+    await refreshEvent(db, 'ev1', { now: 1000, toDate: (ms) => ms, fetchImpl: reply(200, sample()) })
+    const r = await refreshEvent(db, 'ev1', { now: 2000, force: true, toDate: (ms) => ms, fetchImpl: reply(401, { error: 'Clé absente, inconnue ou supprimée.' }) })
     expect(r.lecture.echec).toMatchObject({ type: 'refus', detail: '401 : Clé absente, inconnue ou supprimée.' })
     expect(r.lecture.okMs).toBe(1000)
     expect(db.docs.get('em-instantanes/ev1').programme).toHaveLength(2)
@@ -114,14 +145,30 @@ describe('refreshEvent', () => {
     expect(r2.lecture.echec).toMatchObject({ type: 'panne', depuisMs: 3000, detail: 'fetch failed' })
   })
   it('réponse illisible : rien n’est remplacé', async () => {
-    const r = await refreshEvent(db, 'ev1', { now: 1000, fetchImpl: reply(200, '<html>') })
+    const r = await refreshEvent(db, 'ev1', { now: 1000, toDate: (ms) => ms, fetchImpl: reply(200, '<html>') })
     expect(r.lecture.echec).toMatchObject({ type: 'panne', format: true })
     expect(db.docs.has('em-instantanes/ev1')).toBe(false)
   })
   it('304 sans copie locale : relecture complète au tour suivant', async () => {
     db.docs.set('liaisons-em/ev1', { cle: 'cle-em-essai-1234567890', lecture: { version: V, essaiMs: 0, okMs: 0 } })
-    const r = await refreshEvent(db, 'ev1', { now: 1000, force: true, fetchImpl: reply(304, '') })
+    const r = await refreshEvent(db, 'ev1', { now: 1000, force: true, toDate: (ms) => ms, fetchImpl: reply(304, '') })
     expect(r.lecture.version).toBeNull()
     expect(r.lecture.echec.type).toBe('panne')
+  })
+
+  it('le programme public suit Event Manager : modifié, retiré, inchangé', async () => {
+    await refreshEvent(db, 'ev1', { now: 1000, toDate: (ms) => ms, fetchImpl: reply(200, sample()) })
+    const next = sample()
+    next.version = 'f'.repeat(32)
+    next.programme = [{ ...next.programme[1], debut: '21:00' }]
+    const writes = []
+    const orig = db.docs.set.bind(db.docs)
+    db.docs.set = (k, v) => { writes.push(k); return orig(k, v) }
+    await refreshEvent(db, 'ev1', { now: 2000, force: true, toDate: (ms) => ms, fetchImpl: reply(200, next) })
+    expect(db.docs.has('events/ev1/programme-em/p2')).toBe(false)
+    expect(db.docs.get('events/ev1/programme-em/p12').debut).toBe(Date.parse('2027-05-15T19:00:00Z'))
+    writes.length = 0
+    await refreshEvent(db, 'ev1', { now: 3000, force: true, toDate: (ms) => ms, fetchImpl: reply(200, { ...next, version: 'e'.repeat(32) }) })
+    expect(writes.filter(k => k.includes('programme-em'))).toEqual([])
   })
 })
