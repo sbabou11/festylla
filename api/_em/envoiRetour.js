@@ -66,6 +66,7 @@ async function executerRetour(io, { now = Date.now(), newId = newMessageId } = {
   if (envoye) {
     next.essaiMs = now
     next.echec = echecs.length ? echecs.join(' · ').slice(0, 300) : null
+    next.echecDepuisMs = echecs.length ? (state.echec ? state.echecDepuisMs || now : now) : null
     if (!echecs.length) next.okMs = now
   }
   await io.save(next)

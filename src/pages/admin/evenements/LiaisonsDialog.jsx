@@ -53,6 +53,34 @@ function LectureStatus({ lecture }) {
   )
 }
 
+/** Retour des consommations et du bilan vers Event Manager (§7, maquette du 18/11/2026) */
+function RetourStatus({ retour }) {
+  const titre = <strong>Retour des consommations et du bilan</strong>
+  if (retour?.echec) return (
+    <div className={s.lectureLine}>
+      <span>{titre} <span className={`${s.lectureBadge} ${s.lectureRefus}`}>Refusé</span></span>
+      <span className={s.dialogHint}>Event Manager refuse l'envoi depuis {fmtHour(retour.echecDepuis) || '—'} ({retour.echec}). Les chiffres sont gardés et renvoyés toutes les 5 minutes.</span>
+    </div>
+  )
+  if (!retour?.okLe) return (
+    <div className={s.lectureLine}>
+      <span>{titre}</span>
+      <span className={s.dialogHint}>Pas encore d'envoi : il partira après la première transaction de l'événement.</span>
+    </div>
+  )
+  const final = retour.finalLe && retour.finalLe === retour.okLe
+  return (
+    <div className={s.lectureLine}>
+      <span>{titre} <span className={`${s.lectureBadge} ${s.lectureOk}`}>{final ? 'Bilan final envoyé' : 'À jour'}</span></span>
+      <span className={s.dialogHint}>
+        {final
+          ? `Bilan final envoyé le ${fmtDate(retour.finalLe)}, après la clôture de caisse de ${fmtHour(retour.clotureLe)}`
+          : `Dernier envoi le ${fmtDate(retour.okLe)} · nouvel envoi dès qu'un chiffre change, au plus toutes les 5 minutes`}
+      </span>
+    </div>
+  )
+}
+
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null
 
 export default function LiaisonsDialog({ event, onClose }) {
@@ -145,6 +173,7 @@ export default function LiaisonsDialog({ event, onClose }) {
                 </span>
               </div>
               <LectureStatus lecture={data.em.lecture}/>
+              <RetourStatus retour={data.em.retour}/>
               <div className={s.liaisonActions}>
                 <Button size="sm" variant="secondary" icon={RefreshCw} disabled={busy}
                   onClick={() => act({ mode: 'em-actualiser' }, (r) => { if (r?.lecture && !r.lecture.echec) toast.success('Event Manager relu') })}>

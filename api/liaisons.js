@@ -30,6 +30,11 @@ const lectureView = (l) => (l ? {
   okLe: isoMs(l.okMs), essaiLe: isoMs(l.essaiMs), comptes: l.comptes || null,
   echec: l.echec ? { type: l.echec.type, format: !!l.echec.format, depuis: isoMs(l.echec.depuisMs), detail: l.echec.detail || '' } : null,
 } : null)
+// Retour des consommations et du bilan vers Event Manager (§7)
+const retourView = (r) => (r ? {
+  okLe: isoMs(r.okMs), finalLe: isoMs(r.finalMs), clotureLe: isoMs(r.clotureMs),
+  echec: r.echec || null, echecDepuis: isoMs(r.echecDepuisMs),
+} : null)
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'POST attendu.' }); return }
@@ -58,7 +63,7 @@ module.exports = async (req, res) => {
         cles: list.docs.filter(d => !d.data().supprimee).map(d => ({
           id: d.id, nom: d.data().nom, creeLe: iso(d.data().creeLe), derniereUtilisation: iso(d.data().derniereUtilisation), comptes: d.data().comptes || 0,
         })).sort((a, b) => String(a.creeLe).localeCompare(String(b.creeLe))),
-        em: e && e.cle ? { fin: e.cle.slice(-4), enregistreLe: iso(e.enregistreLe), dernierEnvoiOk: iso(e.dernierEnvoiOk), dernierEchec: e.dernierEchec || null, lecture: lectureView(e.lecture) } : null,
+        em: e && e.cle ? { fin: e.cle.slice(-4), enregistreLe: iso(e.enregistreLe), dernierEnvoiOk: iso(e.dernierEnvoiOk), dernierEchec: e.dernierEchec || null, lecture: lectureView(e.lecture), retour: retourView(e.retour) } : null,
       })
       return
     }
