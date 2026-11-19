@@ -114,11 +114,13 @@ export const MOYENS = {
   especes: { label: 'Espèces' },
   cb:      { label: 'Carte bancaire' },
   inconnu: { label: 'Non renseigné' },
+  enligne: { label: 'En ligne (Stripe)' },
 }
 
 /** Mode de paiement normalisé d'une recharge (les anciennes recharges n'en ont pas) */
 export const moyenOf = (t) => {
   const m = (t.moyen || '').toLowerCase()
+  if (m === 'en-ligne') return 'enligne'   // recharge en ligne (Stripe) : ni dans le coffre ni dans le terminal
   if (m.startsWith('esp')) return 'especes'
   if (m === 'cb' || m.startsWith('carte')) return 'cb'
   return 'inconnu'
@@ -133,7 +135,7 @@ export const isSortieCaisse = (t) => t.type === 'remboursement' && t.surPlace ==
 export function cashiers(logs = [], from, to) {
   const by = {}
   logs.forEach(t => {
-    if (!isEncaissementCaisse(t)) return
+    if (!isEncaissementCaisse(t) || moyenOf(t) === 'enligne') return   // aucune caisse à clôturer pour Stripe
     const ms = txTime(t)
     if (ms == null || ms < from || ms >= to) return
     const k = t.staff || '—'
@@ -147,7 +149,8 @@ export function cashiers(logs = [], from, to) {
  * staff : nom du caissier, ou null pour toutes les caisses
  */
 export function expectedTill(logs = [], { from, to, staff = null }) {
-  const out = { especes: { n: 0, total: 0 }, cb: { n: 0, total: 0 }, inconnu: { n: 0, total: 0 } }
+  // enligne : recharges Stripe, montrées à part et hors de l'écart (elles ne passent pas par la caisse)
+  const out = { especes: { n: 0, total: 0 }, cb: { n: 0, total: 0 }, inconnu: { n: 0, total: 0 }, enligne: { n: 0, total: 0 } }
   logs.forEach(t => {
     const entree = isEncaissementCaisse(t)
     if (!entree && !isSortieCaisse(t)) return

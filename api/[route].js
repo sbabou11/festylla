@@ -22,6 +22,7 @@ const ROUTES = {
   inscription:         () => require('./_routes/inscription'),
   liaisons:            () => require('./_routes/liaisons'),
   'mot-de-passe':      () => require('./_routes/mot-de-passe'),
+  paiement:            () => require('./_routes/paiement'),
   'process-entrees':   () => require('./_routes/process-entrees'),
   'process-reminders': () => require('./_routes/process-reminders'),
   rapport:             () => require('./_routes/rapport'),

@@ -16,6 +16,7 @@ describe('clôture : montant attendu par mode de paiement', () => {
     { ...tx(7, 800, 'cb'), type: 'debit', surPlace: true },
     { ...tx(8, 300, 'especes'), type: 'remboursement', surPlace: true }, // ticket remboursé en espèces
     { ...tx(9, 5000, 'especes'), type: 'remboursement' },                 // remboursement de solde : hors de ce calcul
+    tx(10, 2000, 'en-ligne', 'Stripe'),                                    // recharge en ligne : à part, hors caisse
     tx(30, 7000, 'especes'),                  // hors de la période
   ]
 
@@ -24,6 +25,7 @@ describe('clôture : montant attendu par mode de paiement', () => {
     expect(r.especes).toEqual({ n: 3, total: 3900 })
     expect(r.cb).toEqual({ n: 2, total: 3800 })
     expect(r.inconnu).toEqual({ n: 1, total: 500 })
+    expect(r.enligne).toEqual({ n: 1, total: 2000 })
   })
   it('ne compte que la caisse choisie', () => {
     const r = expectedTill(logs, { from: day, to: day + 24 * H, staff: 'Caisse Karim' })

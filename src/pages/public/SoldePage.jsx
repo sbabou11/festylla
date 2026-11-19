@@ -9,13 +9,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
   Search, Wallet, Clock, Bookmark, LayoutList, BarChart2, CalendarDays, UtensilsCrossed,
-  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound,
+  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import { watchProgramme } from '../../programme/watchProgramme'
 import { getSettings, creerCodeEnLigne, annulerCodeEnLigne } from '../../firebase/service'
 import { watchCarte } from '../../menu/carte'
+import { apiFetch } from '../../firebase/session'
 import { organiserCarte } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
 import {
@@ -104,7 +105,7 @@ export default function SoldePage({ demo = null }) {
   const [loading, setLoading]         = useState(false)
   const [err, setErr]                 = useState('')
   const [codeTried, setCodeTried]     = useState(false)
-  const [tab, setTab]                 = useState('accueil')
+  const [tab, setTab]                 = useState(() => (params.get('recharge') || params.get('annule') ? 'recharger' : 'accueil'))
   const [qtys, setQtys]               = useState({})
   const [resaLoading, setResaLoading] = useState(false)
   const [resaDone, setResaDone]       = useState(null)
@@ -135,6 +136,12 @@ export default function SoldePage({ demo = null }) {
   const [rayonId, setRayonId]         = useState(null)
   const [catKey, setCatKey]           = useState(null)
   const [cancelCode, setCancelCode]   = useState(null)
+  // Recharge en ligne par Stripe (19/11/2026) : retour de la page de paiement avec ?recharge=<session> ou ?annule=1
+  const [montantRecharge, setMontantRecharge] = useState(2000)
+  const [autreMontant, setAutreMontant]       = useState('')
+  const [rechargeBusy, setRechargeBusy]       = useState(false)
+  const [rechargeErr, setRechargeErr]         = useState('')
+  const [retourStripe] = useState(() => ({ session: params.get('recharge') || null, annule: params.get('annule') === '1' }))
   const unsubsRef                     = useRef([])
 
   const { notifications, nonLuCount, marquerToutLu } = useNotifications({
@@ -281,6 +288,29 @@ export default function SoldePage({ demo = null }) {
     finally { setResaLoading(false) }
   }
 
+  // Montant choisi (centimes) : bouton rapide ou saisie libre, de 5 € à 200 €
+  const montantChoisi = autreMontant !== '' ? Math.round((parseFloat(String(autreMontant).replace(',', '.')) || 0) * 100) : montantRecharge
+  const montantOk = Number.isInteger(montantChoisi) && montantChoisi >= 500 && montantChoisi <= 20000
+  const allerPayer = async () => {
+    if (!montantOk) { setRechargeErr('Choisissez un montant entre 5 € et 200 €.'); return }
+    if (demo) { setRechargeErr('Aperçu : le paiement Stripe ne s\'ouvre pas ici.'); return }
+    setRechargeBusy(true); setRechargeErr('')
+    try {
+      const r = await apiFetch('/api/paiement', { body: { action: 'creer', ev: eventId, montant: montantChoisi, retour: window.location.href } })
+      window.location.href = r.url
+    } catch (e) { setRechargeErr(friendlyError(e, 'Le paiement en ligne est indisponible pour le moment.')); setRechargeBusy(false) }
+  }
+  const quitterRecharge = () => {
+    // Retire ?recharge / ?annule de l'adresse pour ne pas réafficher la confirmation
+    try {
+      const u = new URL(window.location.href); u.searchParams.delete('recharge'); u.searchParams.delete('annule')
+      window.history.replaceState(null, '', u.toString())
+    } catch {}
+    retourStripe.session = null; retourStripe.annule = false
+    go('accueil')
+  }
+  const rechargeRecue = retourStripe.session ? txs.find(t => t.stripeSession === retourStripe.session) : null
+
   const annulerCode = async (code) => {
     if (demo) { setCodes(cs => cs.map(c => c.code === code ? { ...c, statut: 'annule' } : c)); return }
     await annulerCodeEnLigne(code, eventId)
@@ -421,7 +451,7 @@ export default function SoldePage({ demo = null }) {
   }
 
   const NAV = [
-    { id: 'accueil',      label: 'Solde',     icon: Wallet,          match: ['accueil', 'historique'] },
+    { id: 'accueil',      label: 'Solde',     icon: Wallet,          match: ['accueil', 'historique', 'recharger'] },
     { id: 'reserver',     label: 'Commander', icon: UtensilsCrossed, match: ['reserver'] },
     { id: 'reservations', label: 'Mes résas', icon: Bookmark,        match: ['reservations'], badge: activeResas.length + codesAttente.length },
     { id: 'programme',    label: 'Programme', icon: CalendarDays,    match: ['programme'], badge: nonLuPlanning },
@@ -529,8 +559,9 @@ export default function SoldePage({ demo = null }) {
                   <span className={clsx(sp.actionIcon, sp.brand)}><CalendarDays size={18} /></span>Programme
                 </button>
               </div>
-              {/* Emplacement prévu pour la recharge en ligne (lot 5) */}
-              <p className={sp.topup}><Ticket size={14} aria-hidden="true" /> Pour recharger, passez à la billetterie.</p>
+              {/* Recharge en ligne par Stripe (19/11/2026) */}
+              <Button variant="coral" size="lg" block icon={CreditCard} onClick={() => { setRechargeErr(''); go('recharger') }}>Recharger mon solde</Button>
+              <p className={sp.topup}><Ticket size={14} aria-hidden="true" /> Carte, Apple Pay ou Google Pay · ou à la billetterie</p>
 
               <section className={sp.card}>
                 <header className={sp.cardHead}>
@@ -576,6 +607,56 @@ export default function SoldePage({ demo = null }) {
               )}
               <Button variant="ghost" block onClick={() => go('accueil')}>Retour au solde</Button>
             </section>
+          )}
+
+          {/* ── RECHARGER (Stripe) ── */}
+          {tab === 'recharger' && (
+            <div className={sp.stack}>
+              {retourStripe.session ? (
+                <section className={clsx(sp.card, sp.done)}>
+                  {rechargeRecue ? (<>
+                    <span className={sp.doneIcon}><CheckCircle2 size={28} /></span>
+                    <h2>Solde rechargé</h2>
+                    <b className={sp.rechargeMontant}>+{fmt(rechargeRecue.montant || 0)}</b>
+                    <p>Nouveau solde : <b>{fmt(spec.solde || 0)}</b></p>
+                    <p className={sp.muted}>Stripe vous envoie le reçu à l'adresse e-mail saisie lors du paiement.</p>
+                  </>) : (<>
+                    <span className={sp.doneIcon}><Clock size={28} /></span>
+                    <h2>Paiement en cours de vérification</h2>
+                    <p>Votre solde sera crédité dès que Stripe confirme le paiement, même si vous fermez cette page.</p>
+                  </>)}
+                  <div className={sp.doneActions}>
+                    <Button block onClick={() => { quitterRecharge(); go('reserver') }}>Commander</Button>
+                    <Button variant="secondary" block onClick={quitterRecharge}>Retour au solde</Button>
+                  </div>
+                </section>
+              ) : (
+                <section className={sp.card}>
+                  <button type="button" className={sp.back} onClick={quitterRecharge}><ArrowLeft size={16} /> Retour</button>
+                  <h2>Recharger mon solde</h2>
+                  <p className={sp.muted}>Solde actuel : {fmt(spec.solde || 0)}</p>
+                  {retourStripe.annule && <p className={sp.info}>Paiement annulé : rien n'a été débité.</p>}
+                  <span className={sp.catTitle}>Montant</span>
+                  <div className={sp.montants}>
+                    {[1000, 2000, 3000, 5000, 10000].map(m => (
+                      <button key={m} type="button" aria-pressed={autreMontant === '' && montantRecharge === m}
+                        className={clsx(sp.montant, autreMontant === '' && montantRecharge === m && sp.montantOn)}
+                        onClick={() => { setMontantRecharge(m); setAutreMontant(''); setRechargeErr('') }}>{m / 100} €</button>
+                    ))}
+                    <input className={clsx(sp.montant, sp.montantAutre, autreMontant !== '' && sp.montantOn)} inputMode="decimal"
+                      placeholder="Autre" aria-label="Autre montant en euros" value={autreMontant}
+                      onChange={e => { setAutreMontant(e.target.value.replace(/[^\d.,]/g, '').slice(0, 6)); setRechargeErr('') }} />
+                  </div>
+                  <p className={sp.muted}>De 5 € à 200 €. Aucun frais pour vous.</p>
+                  <div className={sp.nouveauSolde}><span>Nouveau solde</span><b>{montantOk ? fmt((spec.solde || 0) + montantChoisi) : '—'}</b></div>
+                  {rechargeErr && <p className={sp.error} role="alert">{rechargeErr}</p>}
+                  <Button size="lg" block loading={rechargeBusy} onClick={allerPayer}>
+                    {montantOk ? `Payer ${fmt(montantChoisi)}` : 'Payer'}
+                  </Button>
+                  <p className={clsx(sp.muted, sp.center)}><Lock size={12} aria-hidden="true" /> Vous passez sur la page de paiement sécurisée Stripe</p>
+                </section>
+              )}
+            </div>
           )}
 
           {/* ── COMMANDER ── */}

@@ -5,7 +5,7 @@
  * La clôture est enregistrée dans events/{id}/clotures et peut être imprimée en procès-verbal.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, Printer, RotateCcw, Banknote, CreditCard, HelpCircle, Minus, Plus } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Printer, RotateCcw, Banknote, CreditCard, HelpCircle, Minus, Plus, Globe } from 'lucide-react'
 import useAuthStore from '../../store/useAuthStore'
 import useEventStore from '../../store/useEventStore'
 import { saveCloture, watchClotures } from '../../firebase/service'
@@ -291,6 +291,7 @@ function Expected({ attendu, fond, loading }) {
       <div><Banknote size={18} /><span>Espèces attendues</span><b>{fmt(fond + attendu.especes.total)}</b><small>{attendu.especes.n} encaissement{attendu.especes.n > 1 ? 's' : ''}{fond ? ` + fond ${fmt(fond)}` : ''}</small></div>
       <div><CreditCard size={18} /><span>Carte attendue</span><b>{fmt(attendu.cb.total)}</b><small>{attendu.cb.n} encaissement{attendu.cb.n > 1 ? 's' : ''}</small></div>
       {attendu.inconnu.n > 0 && <div><HelpCircle size={18} /><span>{MOYENS.inconnu.label}</span><b>{fmt(attendu.inconnu.total)}</b><small>{attendu.inconnu.n} recharge{attendu.inconnu.n > 1 ? 's' : ''}</small></div>}
+      {attendu.enligne?.n > 0 && <div><Globe size={18} /><span>{MOYENS.enligne.label}</span><b>{fmt(attendu.enligne.total)}</b><small>{attendu.enligne.n} recharge{attendu.enligne.n > 1 ? 's' : ''} · hors caisse</small></div>}
     </div>
   )
 }
