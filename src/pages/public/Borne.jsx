@@ -25,7 +25,7 @@
  *   - Pas d'historique, pas d'infos personnelles affichées.
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
-import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2, ScanLine, KeyRound, Delete } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2, ScanLine, KeyRound, Delete, Printer } from 'lucide-react'
 import useKioskMode from '../../hooks/useKioskMode'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
 import { createWedge } from '../../utils/scanWedge'
@@ -38,6 +38,9 @@ import { organiserCarte, ticketsParStand } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
 import { parseBenevoleQr, parseArtisteQr } from '../../utils/benevoleQr'
 import { parseSecours } from '../../utils/qrTournant'
+import { ticketsDeCommande } from '../../utils/escpos'
+import { useImpressionTickets } from '../../hooks/useImpression'
+import { BoutonImprimante, Progression } from './borne/BorneImprimante'
 import { apiFetch } from '../../firebase/session'
 
 // ─── Étapes du flux ─────────────────────────────────────────────────────
@@ -159,6 +162,7 @@ export default function Borne() {
   // Le rerender propage automatiquement aux composants enfants via les props.
   const [palette, setPalette] = useState(() => buildPalette(null))
   const [logoUrl, setLogoUrl] = useState('')
+  const [festNom, setFestNom] = useState('')   // en-tête des tickets papier
   // Rayons, stands (settings/carte) et catégories de l'organisateur, lus en direct
   const [carte, setCarte] = useState({ rayons: [], stands: [] })
   const [categories, setCategories] = useState([])
@@ -190,6 +194,7 @@ export default function Borne() {
       }
       if (s?.logoDataUrl) setLogoUrl(s.logoDataUrl)
     }).catch(e => console.warn('Borne settings:', e.message))
+    getDoc(doc(db, 'events', ev)).then(d => setFestNom(d.data()?.nom || '')).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -365,7 +370,7 @@ export default function Borne() {
       {!eventReady ? (
         <ConfigError error={error}/>
       ) : step === STEP.ACCUEIL ? (
-        <Accueil onStart={() => setStep(STEP.IDENTIFICATION)} onCode={() => setStep(STEP.CODE)} logoUrl={logoUrl}/>
+        <Accueil onStart={() => setStep(STEP.IDENTIFICATION)} onCode={() => setStep(STEP.CODE)} logoUrl={logoUrl} festival={festNom}/>
       ) : step === STEP.CODE ? (
         <CodeScreen stands={carte.stands}
           onBenevoleCode={(code) => commanderBenevole({ code })}
@@ -410,8 +415,8 @@ export default function Borne() {
           }}/>
       ) : step === STEP.TICKET ? (
         lastResa?.benevole
-          ? <TicketBenevole resa={lastResa} onDone={resetSession} logoUrl={logoUrl}/>
-          : <Ticket resa={lastResa} onDone={resetSession} logoUrl={logoUrl} stands={carte.stands}/>
+          ? <TicketBenevole resa={lastResa} onDone={resetSession} logoUrl={logoUrl} festival={festNom}/>
+          : <Ticket resa={lastResa} onDone={resetSession} logoUrl={logoUrl} stands={carte.stands} festival={festNom}/>
       ) : null}
     </div>
   )
@@ -448,7 +453,7 @@ function ConfigError({ error }) {
 // Le fond utilise la couleur de marque du festival (settings.brandColor),
 // avec un gradient vers une variante plus sombre pour la profondeur.
 // Le logo (settings.logoDataUrl) est affiché en haut s'il est défini.
-function Accueil({ onStart, onCode, logoUrl }) {
+function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
   // Texte sur le fond brand — soit blanc soit noir selon luminance
   const onBrand = COLORS.textOnBrand || '#fff'
   // Couleur des labels secondaires : variante avec opacité réduite
@@ -482,6 +487,8 @@ function Accueil({ onStart, onCode, logoUrl }) {
             2. Activer le mode borne (sinon le bouton ne fait rien sur tactile)
           Note : Fullscreen API exige un geste utilisateur direct, c'est le
           cas avec onTouchEnd. */}
+      {/* Imprimante de tickets : réglage de l'équipe (20/11/2026) */}
+      <BoutonImprimante colors={COLORS} festival={festival} right={kiosk.active ? 16 : 150}/>
       {!kiosk.active && (
         <button
           onClick={kiosk.activate}
@@ -855,7 +862,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
               style={{ background: busy ? COLORS.border : COLORS.coral, color: '#fff', border: 'none', borderRadius: 12,
                 padding: '20px', fontSize: 20, fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              {busy ? <><RefreshCw size={18} style={{ animation: 'borne-spin 1s linear infinite' }}/> Envoi…</> : (codeBenev ? 'Imprimer mon ticket →' : enLigne ? 'Payer et imprimer mes tickets →' : 'Mes tickets →')}
+              {busy ? <><RefreshCw size={18} style={{ animation: 'borne-spin 1s linear infinite' }}/> Validation…</> : (codeBenev ? 'Imprimer mon ticket →' : enLigne ? 'Payer et imprimer mes tickets →' : 'Mes tickets →')}
             </button>
             <button onClick={() => { setFound(null); setDigits(''); setError('') }} disabled={busy}
               style={{ background: 'transparent', border: 'none', color: COLORS.muted, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -2031,7 +2038,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
           {submitting ? (
             <>
               <RefreshCw size={16} style={{ animation: 'borne-spin 1s linear infinite' }}/>
-              Envoi en cours…
+              Validation en cours…
             </>
           ) : (
             <>✓ Confirmer · {(total / 100).toFixed(2)} €</>
@@ -2059,17 +2066,51 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
 // strict, indépendant des interactions. Le seul moyen de prolonger
 // l'affichage est de NE PAS cliquer Terminer. Sinon → retour auto.
 const TICKET_TIMEOUT_SEC = 20
+const TICKET_PANNE_SEC = 60   // tickets non imprimés : le client doit avoir le temps de noter ses numéros
+const dateTicket = () => new Date().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
-function Ticket({ resa, onDone, logoUrl, stands = [] }) {
+// Compte à rebours de l'écran de fin : arrêté pendant l'impression, 20 s ensuite, 60 s si rien n'est sorti
+function useRetourAuto(phase, onDone) {
   const [secondsLeft, setSecondsLeft] = useState(TICKET_TIMEOUT_SEC)
+  useEffect(() => {
+    if (phase === 'impression') return
+    setSecondsLeft(phase === 'ok' ? TICKET_TIMEOUT_SEC : TICKET_PANNE_SEC)
+  }, [phase])
+  useEffect(() => {
+    if (phase === 'impression') return
+    if (secondsLeft <= 0) { onDone(); return }
+    const t = setTimeout(() => setSecondsLeft(x => x - 1), 1000)
+    return () => clearTimeout(t)
+  }, [secondsLeft, onDone, phase])
+  return secondsLeft
+}
+
+// Bandeau « tickets non imprimés » et bouton de nouvel essai
+function PanneImpression({ phase, onRetry, pluriel }) {
+  return (
+    <div style={{
+      width: '100%', maxWidth: 520, margin: '0 auto 14px', padding: '12px 16px', borderRadius: 10,
+      background: '#FCEBEB', color: '#791F1F', border: '0.5px solid #F09595', fontSize: 14, lineHeight: 1.45, textAlign: 'center',
+    }} role="alert">
+      <b>{phase === 'absente' ? 'L\'imprimante n\'est pas connectée.' : 'L\'imprimante ne répond pas.'}</b>{' '}
+      Photographiez cet écran ou notez {pluriel ? 'vos numéros' : 'votre numéro'}, puis montrez-{pluriel ? 'les' : 'le'} au stand. Prévenez l'équipe.
+      <div>
+        <button onClick={onRetry}
+          style={{
+            marginTop: 10, background: '#fff', color: COLORS.marine, border: `0.5px solid ${COLORS.marine}`,
+            borderRadius: 10, padding: '10px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+          }}>
+          Réessayer l'impression
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function Ticket({ resa, onDone, logoUrl, stands = [], festival = '' }) {
 
   // Décompte simple. Pas d'écoute des interactions — le timer est strict
   // pour éviter qu'une session reste ouverte si le spectateur reste devant.
-  useEffect(() => {
-    if (secondsLeft <= 0) { onDone(); return }
-    const t = setTimeout(() => setSecondsLeft(s => s - 1), 1000)
-    return () => clearTimeout(t)
-  }, [secondsLeft, onDone])
 
   // Items de la résa (fallback sur tableau vide si la résa est mal formée)
   const items = Array.isArray(resa?.items) ? resa.items : []
@@ -2077,8 +2118,20 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
   // Un ticket par stand (« Stand N° 4 », n° 47-4) ; un seul ticket si aucun stand n'est créé
   const tickets = ticketsParStand(items, stands, resa?.numero ?? '—')
 
+  // Tickets papier : un par stand, imprimés une fois à l'affichage de cet écran
+  const papier = useMemo(() => ticketsDeCommande(tickets, {
+    festival, date: dateTicket(),
+    ...(resa?.artiste
+      ? { mention: `ARTISTE · ${resa.artiste}`, offert: 'Avantages artiste' }
+      : { paiement: resa?.origine === 'billetterie' ? 'Payé à la billetterie' : 'Payé avec le solde' }),
+  }), [])   // eslint-disable-line react-hooks/exhaustive-deps
+  const { phase, progres, reessayer } = useImpressionTickets(papier)
+  const secondsLeft = useRetourAuto(phase, onDone)
+  const imprime = phase === 'ok'
+
   // Calcul du progrès du cercle (0 → 1)
-  const progress = (TICKET_TIMEOUT_SEC - secondsLeft) / TICKET_TIMEOUT_SEC
+  const duree = imprime ? TICKET_TIMEOUT_SEC : TICKET_PANNE_SEC
+  const progress = (duree - secondsLeft) / duree
   // Circonférence d'un cercle de rayon 22 (utilisé dans le SVG)
   const CIRC = 2 * Math.PI * 22
 
@@ -2098,42 +2151,55 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
           }}/>
       )}
 
-      {/* Coche verte avec animation d'apparition */}
-      <div style={{
-        width: 96, height: 96, background: COLORS.green,
+      {/* Pastille : impression en cours, coche verte, ou alerte si rien n'est sorti */}
+      <div key={phase} style={{
+        width: 96, height: 96, background: phase === 'impression' ? COLORS.marine : imprime ? COLORS.green : COLORS.red,
         borderRadius: '50%', display: 'flex',
         alignItems: 'center', justifyContent: 'center',
         color: '#fff', fontSize: 48, marginBottom: 16,
         animation: 'borne-ticket-pop 0.4s ease-out',
-      }}>✓</div>
+      }}>{phase === 'impression' ? <Printer size={44}/> : imprime ? '✓' : '!'}</div>
 
       <div style={{
         fontSize: 26, fontWeight: 700,
         color: COLORS.marine, marginBottom: 4, textAlign: 'center',
       }}>
-        Commande envoyée !
+        {phase === 'impression' ? (tickets.length > 1 ? 'Impression de vos tickets…' : 'Impression de votre ticket…') : imprime ? 'Commande confirmée !' : 'Commande payée, tickets non imprimés'}
       </div>
       <div style={{
         fontSize: 13, color: COLORS.muted, marginBottom: 22,
         textAlign: 'center', maxWidth: 420, lineHeight: 1.5,
       }}>
-        {tickets.length > 1
-          ? `Prenez vos ${tickets.length} tickets et présentez chacun au stand indiqué.`
-          : tickets[0]?.stand
-            ? 'Prenez votre ticket et présentez-le au stand indiqué.'
-            : 'Prenez votre ticket et présentez-le au stand.'}
+        {phase === 'impression'
+          ? `Ne partez pas : ${tickets.length > 1 ? `${tickets.length} tickets sortent` : 'votre ticket sort'} de la borne.`
+          : !imprime
+            ? 'Votre commande est bien enregistrée et payée.'
+            : tickets.length > 1
+              ? `Prenez vos ${tickets.length} tickets et présentez chacun au stand indiqué.`
+              : tickets[0]?.stand
+                ? 'Prenez votre ticket et présentez-le au stand indiqué.'
+                : 'Prenez votre ticket et présentez-le au stand.'}
       </div>
+      {phase === 'impression' && <Progression progres={progres} colors={COLORS}/>}
+      {(phase === 'panne' || phase === 'absente') && <PanneImpression phase={phase} onRetry={reessayer} pluriel={tickets.length > 1}/>}
 
       {/* Tickets : un par stand */}
       <div style={{
         display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 14,
         width: '100%', maxWidth: 900, marginBottom: 14,
       }}>
-        {tickets.map(t => (
+        {tickets.map((t, idx) => {
+          // Suivi de l'impression sur chaque ticket : en attente, en cours, imprimé
+          const etatTicket = phase === 'impression'
+            ? (idx < progres.ticket - 1 ? 'fait' : idx === progres.ticket - 1 ? 'encours' : 'attente')
+            : imprime ? 'fait' : null
+          return (
           <div key={t.numero} style={{
             background: '#fff', borderRadius: 14, width: 260,
-            border: `1px dashed ${COLORS.border}`, boxShadow: '0 2px 10px rgba(0,48,72,.06)',
+            border: etatTicket === 'encours' ? `2px solid ${COLORS.coral}` : etatTicket === 'fait' ? `2px solid ${COLORS.green}` : `1px dashed ${COLORS.border}`,
+            boxShadow: '0 2px 10px rgba(0,48,72,.06)',
             padding: '16px 18px', display: 'grid', gap: 10,
+            opacity: etatTicket === 'attente' ? 0.4 : 1, transition: 'opacity .3s',
           }}>
             {resa?.artiste && (
               <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 800, color: COLORS.marine, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -2167,9 +2233,15 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Commande</div>
               <div style={{ fontSize: 30, fontWeight: 800, color: COLORS.coral, lineHeight: 1.1 }}>{t.numero}</div>
+              {etatTicket && (
+                <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, color: etatTicket === 'fait' ? COLORS.green : etatTicket === 'encours' ? COLORS.coral : COLORS.muted }}>
+                  {etatTicket === 'fait' ? 'Imprimé' : etatTicket === 'encours' ? 'En cours…' : 'En attente'}
+                </div>
+              )}
             </div>
           </div>
-        ))}
+          )
+        })}
       </div>
       {tickets.length > 1 && !resa?.artiste && (
         <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.marine, marginBottom: 6 }}>
@@ -2182,9 +2254,9 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
         </div>
       )}
 
-      {/* Compte à rebours visuel : cercle SVG */}
+      {/* Compte à rebours visuel : cercle SVG (pas pendant l'impression) */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 14,
+        display: phase === 'impression' ? 'none' : 'flex', alignItems: 'center', gap: 14,
         marginBottom: 16, color: COLORS.muted, fontSize: 13,
       }}>
         <svg width="56" height="56" viewBox="0 0 56 56" style={{ flexShrink: 0 }}>
@@ -2225,9 +2297,9 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
           background: COLORS.marine, color: '#fff',
           border: 'none', borderRadius: 10, padding: '14px 36px',
           fontSize: 14, fontWeight: 600, cursor: 'pointer',
-          fontFamily: 'inherit',
+          fontFamily: 'inherit', display: phase === 'impression' ? 'none' : 'inline-block',
         }}>
-        Terminer maintenant
+        {imprime ? 'Terminer maintenant' : 'Terminer'}
       </button>
 
       <style>{`
@@ -2245,22 +2317,33 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
 // ════════════════════════════════════════════════════════════════════
 // Ticket bénévole (19/11/2026) : « Dirigez-vous au stand bénévoles »
 // ════════════════════════════════════════════════════════════════════
-function TicketBenevole({ resa, onDone, logoUrl }) {
-  const [secondsLeft, setSecondsLeft] = useState(TICKET_TIMEOUT_SEC)
-  useEffect(() => {
-    if (secondsLeft <= 0) { onDone(); return }
-    const t = setTimeout(() => setSecondsLeft(x => x - 1), 1000)
-    return () => clearTimeout(t)
-  }, [secondsLeft, onDone])
+function TicketBenevole({ resa, onDone, logoUrl, festival = '' }) {
   const items = resa?.items || []
   const p = resa?.parType || {}
   const droits = [['repas', 'repas'], ['boisson', 'boisson'], ['eau', 'eau']]
     .filter(([t]) => p[t]).map(([t, l]) => `${p[t]} ${l}${p[t] > 1 && t !== 'eau' ? 's' : ''}`).join(', ')
   const numero = resa?.stand ? `${resa.numero}-${resa.stand.numero}` : String(resa?.numero ?? '—')
+  // Ticket papier : un seul, pour le stand des bénévoles ; prénom et initiale du nom seulement
+  const papier = useMemo(() => {
+    const [prenom, ...reste] = String(resa?.nom || '').trim().split(/\s+/)
+    const court = [prenom, reste.length ? `${reste[reste.length - 1][0]}.` : ''].filter(Boolean).join(' ')
+    return [{
+      festival, mention: `BENEVOLE${court ? ` · ${court}` : ''}`,
+      standNumero: resa?.stand ? resa.stand.numero : null, standNom: resa?.stand?.nom || 'Stand des bénévoles',
+      lignes: items.map(it => ({ qty: it.qty, nom: it.nom, prix: null })),
+      totalLabel: 'Droits bénévole', totalValeur: 'OFFERT', numero, paiement: 'Dirigez-vous au stand bénévoles', date: dateTicket(),
+    }]
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
+  const { phase, progres, reessayer } = useImpressionTickets(papier)
+  const secondsLeft = useRetourAuto(phase, onDone)
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 30, background: COLORS.bg, overflowY: 'auto' }}>
       {logoUrl && <img src={logoUrl} alt="" style={{ maxHeight: 48, maxWidth: 160, marginBottom: 14, objectFit: 'contain' }}/>}
-      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.marine, marginBottom: 14 }}>Votre ticket est prêt</div>
+      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.marine, marginBottom: 14 }}>
+        {phase === 'impression' ? 'Impression de votre ticket…' : phase === 'ok' ? 'Votre ticket est prêt' : 'Commande enregistrée, ticket non imprimé'}
+      </div>
+      {phase === 'impression' && <Progression progres={progres} colors={COLORS}/>}
+      {(phase === 'panne' || phase === 'absente') && <PanneImpression phase={phase} onRetry={reessayer} pluriel={false}/>}
       <div style={{ background: '#fff', borderRadius: 14, width: 280, border: `1px dashed ${COLORS.border}`, padding: '16px 18px', display: 'grid', gap: 10, textAlign: 'center' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Bénévole</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.marine }}>Dirigez-vous au stand bénévoles</div>
@@ -2276,7 +2359,7 @@ function TicketBenevole({ resa, onDone, logoUrl }) {
         {resa?.nom && <div style={{ fontSize: 12, color: COLORS.muted }}>{resa.nom}</div>}
       </div>
       <button onClick={onDone} style={{ marginTop: 18, background: COLORS.marine, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 36px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-        Terminer ({secondsLeft} s)
+        {phase === 'impression' ? 'Impression…' : `Terminer (${secondsLeft} s)`}
       </button>
     </div>
   )
