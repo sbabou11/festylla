@@ -104,6 +104,7 @@ export default function LienPerdu() {
   // ── Compte choisi : vérification d'identité ──
   if (compte) {
     const annule = !!compte.billet?.annule
+    const sansCompte = !!compte.billet?.sansCompte
     return (
       <div className={t.stack} style={wrap}>
         <button type="button" className={s.back} onClick={() => { setCompte(null); setVerifie(false); setErr('') }}><ChevronLeft size={16} /> Lien perdu</button>
@@ -111,11 +112,13 @@ export default function LienPerdu() {
           <div className={s.head}>
             <div><b className={s.nom}>{compte.nom || '—'}</b>
               <span className={t.muted}>{compte.billet?.code ? `Billet ${compte.billet.code}${compte.billet.pass ? ` · ${compte.billet.pass}` : ''}${compte.billet.commande ? ` · commande ${compte.billet.commande}` : ''}` : 'Compte sans billet'}</span></div>
-            {compte.billet?.code && <Badge tone={annule ? 'danger' : 'success'}>{annule ? 'Billet annulé' : 'Billet valable'}</Badge>}
+            {compte.billet?.code && <Badge tone={annule ? 'danger' : sansCompte ? 'neutral' : 'success'}>{annule ? 'Billet annulé' : sansCompte ? 'Billet sans compte' : 'Billet valable'}</Badge>}
           </div>
           <div className={s.total}><span className={t.muted}>Solde</span><b>{fmt(compte.solde || 0)}</b></div>
           {annule ? (
             <p className={t.err} role="alert">Ce billet a été annulé : on ne donne pas de nouveau lien. Le solde se rembourse depuis Remboursement.</p>
+          ) : sansCompte ? (
+            <p className={t.warn}><AlertTriangle size={16} aria-hidden="true" /><span>Billet sans compte, choisi ainsi à l'achat sur le site : pas de lien possible. Son porteur commande et paie à la billetterie (Commande sur place).</span></p>
           ) : (<>
             <label className={s.part} style={{ cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
               <input type="checkbox" checked={verifie} onChange={e => setVerifie(e.target.checked)} style={{ width: 18, height: 18, marginTop: 1, accentColor: 'var(--brand)' }} />
@@ -148,7 +151,7 @@ export default function LienPerdu() {
         <button key={x._docId || x.id} type="button" className={s.row} onClick={() => { setCompte(x); setErr('') }}>
           <span className={s.rowMain}>
             <b>{x.nom || '—'}</b>
-            <span className={t.muted}>{x.billet?.code ? `Billet ${x.billet.code}${x.billet.pass ? ` · ${x.billet.pass}` : ''}` : 'Compte sans billet'}</span>
+            <span className={t.muted}>{x.billet?.code ? `Billet ${x.billet.code}${x.billet.pass ? ` · ${x.billet.pass}` : ''}${x.billet.sansCompte ? ' · sans compte' : ''}` : 'Compte sans billet'}</span>
           </span>
           <span className={s.rowEnd}><b>{fmt(x.solde || 0)}</b></span>
         </button>

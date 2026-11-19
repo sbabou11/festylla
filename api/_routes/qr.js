@@ -126,6 +126,7 @@ module.exports = async (req, res) => {
       if (!snap.exists) throw new Refus(404, 'Compte introuvable.')
       const spec = snap.data()
       if (spec.billet && spec.billet.annule) throw new Refus(403, 'Ce billet a été annulé : pas de nouveau lien.')
+      if (spec.billet && spec.billet.sansCompte) throw new Refus(403, 'Billet sans compte, choisi ainsi à l\'achat : pas de lien possible. Son porteur commande à la billetterie.')
       const jeton = crypto.randomBytes(16).toString('hex')
       const batch = db.batch()
       // Nouvelle clé : l'ancien lien et l'ancien QR tournant ne valent plus rien

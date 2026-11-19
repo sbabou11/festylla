@@ -221,6 +221,8 @@ export const crediter = async (specId, montantEuros, staffNom = 'Billetterie', e
   const snap = await getDocs(query(collection(db, 'events', eid, 'spectateurs'), where('id', '==', specId)))
   if (snap.empty) throw new Error('Spectateur introuvable')
   const specRef = snap.docs[0].ref
+  // Billet sans compte (choix de l'acheteur sur le site) : personne ne peut ouvrir ce porte-monnaie
+  if (snap.docs[0].data().billet?.sansCompte) throw new Error('Billet sans compte : pas de recharge possible. Son porteur commande et paie à la billetterie (Commande sur place).')
 
   await runTransaction(db, async (txn) => {
     const specDoc     = await txn.get(specRef)

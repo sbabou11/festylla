@@ -49,6 +49,9 @@ function validateMessage(msg) {
       if (!String(b.prenom || '').trim() && !String(b.nom || '').trim()) return `Nom du titulaire absent pour le billet ${b.code}.`
       if (!Number.isInteger(b.jours) || b.jours < 1 || b.jours > 30) return `Nombre de jours invalide pour le billet ${b.code}.`
       if (typeof b.prix !== 'number' || !Number.isFinite(b.prix) || b.prix < 0) return `Prix invalide pour le billet ${b.code}.`
+      // Billet sans compte (règle d'échange v1.4, 20/11/2026) : champ facultatif ; pas de clé dans ce cas
+      if (b.compte !== undefined && typeof b.compte !== 'boolean') return `Champ « compte » invalide pour le billet ${b.code} (true ou false).`
+      if (b.compte === false && b.cle) return `Un billet sans compte ne porte pas de clé (billet ${b.code}).`
     }
     return null
   }
@@ -97,8 +100,9 @@ async function handleMessage(store, msg, { ev, source = '' } = {}) {
           // enregistrée n'est jamais remplacée, mais un billet d'essai sans clé reçoit la sienne
           const known = current[b.code].data && current[b.code].data.billet
           const dejaCle = (cles[b.code].exists && cles[b.code].data && cles[b.code].data.cle) || (known && known.cle)
-          tx.set(path, { billet: { annule: false } }, { merge: true })
-          if (!dejaCle && b.cle) tx.set(`events/${ev}/cles/FY-${b.code}`, { cle: b.cle })
+          // Billet sans compte : la marque est posée aussi sur un billet déjà reçu (renvoi de tous les billets)
+          tx.set(path, { billet: { annule: false, ...(b.compte === false ? { sansCompte: true } : {}) } }, { merge: true })
+          if (!dejaCle && b.cle && b.compte !== false) tx.set(`events/${ev}/cles/FY-${b.code}`, { cle: b.cle })
           restored++
         } else {
           tx.set(path, {
@@ -115,11 +119,14 @@ async function handleMessage(store, msg, { ev, source = '' } = {}) {
               jours: b.jours,
               prix: Math.round(b.prix * 100),
               commande: clean(msg.commande, 40),
+              // Billet sans compte (choix de l'acheteur sur le site) : reconnu à l'entrée, mais ni espace,
+              // ni recharge, ni « Lien perdu » ; son porteur paie en passant par la billetterie
+              ...(b.compte === false ? { sansCompte: true } : {}),
               annule: false,
               entrees: {},
             },
           })
-          if (b.cle) tx.set(`events/${ev}/cles/FY-${b.code}`, { cle: b.cle })
+          if (b.cle && b.compte !== false) tx.set(`events/${ev}/cles/FY-${b.code}`, { cle: b.cle })
           created++
         }
       }

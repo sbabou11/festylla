@@ -14,7 +14,7 @@ import QrCode from '../../components/QrCode'
 import { Trash2, Pencil, Search, SearchX, X, Save, Plus, Minus, Users, Printer, Lock } from 'lucide-react'
 import { db } from '../../firebase/config'
 import { doc, deleteDoc, updateDoc } from 'firebase/firestore'
-import { Button, Stat, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
+import { Button, Badge, Stat, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
 import s from './spectateurs/spectateurs.module.css'
 import useEventStore from '../../store/useEventStore'
 import QRCode from 'qrcode'
@@ -292,7 +292,7 @@ ${evHeader}
   const totalSolde = spectateurs.reduce((a, s) => a + (s.solde || 0), 0)
 
   const columns = [
-    { key: 'nom', label: 'Nom', card: 'title', render: sp => <span className={s.name}>{sp.nom}</span> },
+    { key: 'nom', label: 'Nom', card: 'title', render: sp => <span className={s.name}>{sp.nom}{sp.billet?.sansCompte && <> <Badge tone="neutral">Billet sans compte</Badge></>}</span> },
     { key: 'solde', label: 'Solde', align: 'right', render: sp => (
       <span className={clsx(s.amount, (sp.solde || 0) > 0 && s.amountPos)}>{fmt(sp.solde || 0)}</span>
     ) },

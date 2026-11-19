@@ -97,6 +97,21 @@ describe('réception des ventes et annulations', () => {
     expect(store.docs.get('events/EV1/cles/FY-K7Q3NP')).toEqual({ cle: 'f'.repeat(32) })   // la clé d'origine n'est jamais remplacée
   })
 
+  it('billet sans compte : fiche marquée, aucune clé, et rattrapage par un renvoi', async () => {
+    const sans = (id) => ({ ...vente(id), billets: [{ ...vente().billets[0], cle: '', compte: false }] })
+    const store = memoryStore({ 'events/EV1': {} })
+    await handleMessage(store, sans(ID), { ev: 'EV1', source: 'festylla.com' })
+    expect(store.docs.get(SPEC).billet.sansCompte).toBe(true)
+    expect(store.docs.has('events/EV1/cles/FY-K7Q3NP')).toBe(false)
+    // Billet reçu avant la mise à jour (sans marque), puis renvoyé avec compte: false
+    const ancien = memoryStore({ 'events/EV1': {}, [SPEC]: { id: 'FY-K7Q3NP', solde: 0, billet: { code: 'K7Q3NP', annule: false, entrees: {} } } })
+    await handleMessage(ancien, sans(ID2), { ev: 'EV1', source: 'festylla.com' })
+    expect(ancien.docs.get(SPEC).billet.sansCompte).toBe(true)
+    expect(validateMessage({ ...vente(), billets: [{ ...vente().billets[0], compte: false }] })).toMatch(/sans compte/)
+    expect(validateMessage({ ...vente(), billets: [{ ...vente().billets[0], compte: 'non' }] })).toMatch(/compte/)
+    expect(validateMessage({ ...vente(), billets: [{ ...vente().billets[0], compte: true }] })).toBeNull()
+  })
+
   it('répond 404 pour un événement inconnu', async () => {
     const r = await handleMessage(memoryStore(), vente(), { ev: 'EV1', source: 'festylla.com' })
     expect(r.status).toBe(404)
