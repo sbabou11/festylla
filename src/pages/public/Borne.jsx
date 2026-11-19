@@ -309,8 +309,8 @@ export default function Borne() {
     if (!scanActive) return
     const wedge = createWedge({
       onTournant: (jeton) => { setStep(STEP.IDENTIFICATION); validateRef.current({ qr: jeton }) },
-      // Ancien QR fixe ou code « FY-… » : il ne permet plus de payer
-      onScan: () => { setStep(STEP.IDENTIFICATION); setError('Ce QR ne fonctionne plus. Ouvrez votre espace YllaCash sur votre téléphone et présentez le QR qui s\'y affiche.') },
+      // QR du billet (« FY-… » ou ancien lien) : il sert à l'entrée, pas à payer
+      onScan: () => { setStep(STEP.IDENTIFICATION); setError('C\'est le QR de votre billet : il sert à l\'entrée. Pour payer, ouvrez votre espace YllaCash sur votre téléphone et présentez le QR qui s\'y affiche.') },
       onUnknown: (texte, lectureCodes, lectureTouches) => {
         const b = parseBenevoleQr(lectureTouches, lectureCodes, texte)
         if (b) { benevRef.current(b); return }

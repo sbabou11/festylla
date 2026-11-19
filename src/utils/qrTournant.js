@@ -38,6 +38,15 @@ export function parseQrTournant(...lectures) {
   return null
 }
 
+/**
+ * Compte désigné par un QR tournant (« FY-K7Q3NP ») ou null. Sert au contrôle d'entrée, qui accepte
+ * le QR de l'espace comme celui du billet : seule l'identité du billet compte, pas la signature.
+ */
+export function specIdDuQrTournant(...lectures) {
+  const j = parseQrTournant(...lectures)
+  return j ? `FY-${j.split('-')[1]}` : null
+}
+
 /** Code de secours (« KT-4821 », saisi avec ou sans tiret) ou null */
 export function parseSecours(texte) {
   const m = String(texte || '').toUpperCase().replace(/\s+/g, '').match(SECOURS)

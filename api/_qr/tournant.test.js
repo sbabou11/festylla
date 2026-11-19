@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { jeton, lireJeton, jetonValable, lireSecours, nouveauSecours, PERIODE_MS } from './tournant'
-import { jetonTournant, parseQrTournant, parseSecours } from '../../src/utils/qrTournant'
+import { jetonTournant, parseQrTournant, parseSecours, specIdDuQrTournant } from '../../src/utils/qrTournant'
 
 const base = { cle: 'a'.repeat(32), ev: 'festylla-2027', specId: 'FY-K7Q3NP' }
 const t0 = Date.UTC(2027, 4, 14, 18, 0, 0)
@@ -28,6 +28,10 @@ describe('QR tournant', () => {
     expect(parseQrTournant('?&é"', j.toLowerCase())).toBe(j)
     expect(parseQrTournant('FY-K7Q3NP', 'https://x.fr/solde?id=FY-K7Q3NP&k=abc')).toBeNull()
     expect(lireJeton('FY-K7Q3NP')).toBeNull()
+  })
+  it("contrôle d'entrée : le QR de l'espace désigne le même billet", () => {
+    expect(specIdDuQrTournant(jeton({ ...base, ms: t0 }))).toBe('FY-K7Q3NP')
+    expect(specIdDuQrTournant('FY-K7Q3NP')).toBeNull()
   })
   it('code de secours : 2 lettres et 4 chiffres, distinct d\'un code de commande', () => {
     expect(lireSecours('kt 4821')).toBe('KT-4821')

@@ -15,6 +15,11 @@ import { Button, toast } from '../ui'
 import { friendlyError } from '../utils/errors'
 import { createWedge } from '../utils/scanWedge'
 import { extractSpecId } from '../utils/specCode'
+import { specIdDuQrTournant } from '../utils/qrTournant'
+
+// Billet lu : QR du billet (« FY-… », ou ancien lien), ou QR de l'espace du spectateur (20/11/2026 :
+// le spectateur n'a pas à savoir lequel présenter à l'entrée)
+const lireBillet = (texte) => specIdDuQrTournant(texte) || extractSpecId(texte)
 import { describeEntree, parisNow } from '../billets/entree'
 import { controlerBillet, annulerEntree, watchEntreesDuJour, watchEnvoisEnEchec, relancerEnvois } from '../billets/entreeService'
 import s from './EntreeControl.module.css'
@@ -33,7 +38,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
   useEffect(() => (eventId && showSendIssues) ? watchEnvoisEnEchec(eventId, setEchecs) : undefined, [eventId, showSendIssues])
 
   const control = async (raw) => {
-    const specId = extractSpecId(raw)
+    const specId = lireBillet(raw)
     if (!specId) { setResult({ status: 'inconnu' }); return }
     // La caméra relit le même billet plusieurs fois par seconde : on ne le traite qu'une fois
     const now = Date.now()
@@ -53,7 +58,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
   const controlRef = useRef(control)
   controlRef.current = control
   useEffect(() => {
-    const wedge = createWedge({ onScan: (code) => controlRef.current(code), onUnknown: () => setResult({ status: 'inconnu' }) })
+    const wedge = createWedge({ onScan: (code) => controlRef.current(code), onTournant: (jeton) => controlRef.current(jeton), onUnknown: () => setResult({ status: 'inconnu' }) })
     const onKey = (e) => { if (wedge.feed(e)) e.preventDefault() }
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('keydown', onKey, true); wedge.reset() }
@@ -89,7 +94,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
       )}
 
       {/* parse dédié : saisie du code seul (pas de recherche par nom ni de « récemment servis ») */}
-      <QrScanner onScan={control} parse={extractSpecId} placeholder="Code du billet (ex : K7Q3NP)" hint="Présentez le billet devant la caméra ou le lecteur"
+      <QrScanner onScan={control} parse={lireBillet} placeholder="Code du billet (ex : K7Q3NP)" hint="Présentez le billet devant la caméra ou le lecteur"
         simulate={['FY-K7Q3NP', 'FY-AB2C3D', 'FY-ZZ9Z9Z']}/>
 
       <div aria-live="assertive" className={s.resultZone}>
