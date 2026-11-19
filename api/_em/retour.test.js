@@ -33,6 +33,25 @@ describe('consommations (§7.2)', () => {
   })
 })
 
+describe("limites d'Event Manager", () => {
+  it('au plus 31 jours, et aucune ligne hors des jours envoyés', () => {
+    const jours = Array.from({ length: 40 }, (_, i) => new Date(Date.UTC(2027, 4, 1 + i)).toISOString().slice(0, 10))
+    const r = consommations({
+      benevoles: [{ id: 'em-u1', emId: 'u1' }],
+      resas: [{ isBenev: true, benevoleId: 'em-u1', status: 'collected', jourConso: jours[0], items: [{ typeConsommation: 'eau', qty: 20000 }] },
+              { isBenev: true, benevoleId: 'em-u1', status: 'collected', jourConso: jours[39], items: [{ typeConsommation: 'eau', qty: 20000 }] }],
+      jours,
+    })
+    expect(r.jours).toHaveLength(31)
+    expect(r.benevoles).toEqual([{ id: 'u1', jour: jours[39], repas: 0, boissons: 0, eau: 9999 }])
+  })
+  it('catégories distinctes sans tenir compte des majuscules', () => {
+    const r = bilan({ menu: [{ nom: 'A', cat: 'Boissons' }, { nom: 'B', cat: 'boissons ' }],
+      transactions: [{ type: 'debit', montant: 300, items: [{ nom: 'A', total: 100 }, { nom: 'B', total: 200 }] }] })
+    expect(r.categories).toEqual([{ nom: 'Boissons', montant: 3, unites: 2 }])
+  })
+})
+
 describe('bilan (§7.3)', () => {
   it('comme le Rapport Excel, offerts valorisés au prix de la carte et hors ventes', () => {
     const r = bilan({

@@ -6,6 +6,9 @@
  *  - bilan : totaux de l'événement en euros, calculés comme le « Rapport Excel » (api/rapport.js),
  *    les offerts (bénévoles, artistes) valorisés au prix de la carte et sortis des ventes.
  * Chaque message porte l'état complet : Event Manager remplace ce qu'il avait reçu.
+ * Limites d'Event Manager (docs/api-billetterie.md, commit ae9e396) : 31 jours au plus, chaque ligne
+ * dans un jour envoyé, quantités entières de 0 à 9 999, 5 000 lignes par liste, 200 catégories aux
+ * noms distincts (majuscules ignorées), 31 jours dans parJour.
  */
 const crypto = require('crypto')
 
@@ -66,7 +69,11 @@ function consommations({ benevoles = [], artistes = [], resas = [], consos = [],
   const benevolesOut = [...b.values()].sort(tri)
   const artistesOut = [...a.values()].sort(tri)
   const tousJours = [...new Set([...jours, ...benevolesOut.map(x => x.jour), ...artistesOut.map(x => x.jour)])].sort().slice(-31)
-  return { jours: tousJours, benevoles: benevolesOut, artistes: artistesOut }
+  // Chaque ligne doit appartenir à un jour envoyé ; quantités bornées comme chez Event Manager
+  const garde = new Set(tousJours)
+  const borne = (l) => ({ ...l, repas: Math.min(l.repas, 9999), boissons: Math.min(l.boissons, 9999), eau: Math.min(l.eau, 9999) })
+  const liste = (l) => l.filter(x => garde.has(x.jour)).map(borne).slice(0, 5000)
+  return { jours: tousJours, benevoles: liste(benevolesOut), artistes: liste(artistesOut) }
 }
 
 /**
@@ -99,9 +106,10 @@ function bilan({ transactions = [], spectateurs = [], menu = [] }) {
         const qty = num(it.qty) || 1
         const montant = it.total != null ? num(it.total) : num(it.prixUnit ?? it.prix) * qty
         const nomCat = article(it.nom)?.cat || 'Supprimé du menu'
-        const cur = cats.get(nomCat) || { nom: nomCat, montant: 0, unites: 0 }
+        const k = nomCat.trim().toLowerCase()   // noms distincts sans tenir compte des majuscules
+        const cur = cats.get(k) || { nom: nomCat.trim(), montant: 0, unites: 0 }
         cur.montant += montant; cur.unites += qty
-        cats.set(nomCat, cur)
+        cats.set(k, cur)
       }
     }
     if (t.type === 'artist-gift') {
@@ -115,9 +123,9 @@ function bilan({ transactions = [], spectateurs = [], menu = [] }) {
     soldesRestants: euros(spectateurs.reduce((s, x) => s + num(x.solde), 0)),
     offertsBenevoles: euros(sum('benev-retrait')),
     offertsArtistes: euros(offertsArtistes),
-    categories: [...cats.values()].map(c => ({ nom: c.nom, montant: euros(c.montant), unites: c.unites }))
-      .sort((x, y) => y.montant - x.montant),
-    parJour: [...jours.values()].sort((x, y) => x.jour.localeCompare(y.jour))
+    categories: [...cats.values()].map(c => ({ nom: c.nom.slice(0, 120), montant: euros(c.montant), unites: Math.round(c.unites) }))
+      .sort((x, y) => y.montant - x.montant).slice(0, 200),
+    parJour: [...jours.values()].sort((x, y) => x.jour.localeCompare(y.jour)).slice(-31)
       .map(j => ({ jour: j.jour, recharges: euros(j.recharges), ventes: euros(j.ventes), remboursements: euros(j.remboursements) })),
   }
 }
