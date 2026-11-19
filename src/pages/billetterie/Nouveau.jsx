@@ -1,5 +1,5 @@
 // pages/billetterie/Nouveau.jsx
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
@@ -8,7 +8,10 @@ import { createSpectateur as svcCreateSpectateur } from '../../firebase/service'
 import useEventStore from '../../store/useEventStore'
 import QrCode from '../../components/QrCode'
 import useAuthStore from '../../store/useAuthStore'
-import { Field, focusFirstInvalid } from '../../ui'
+import { Field, Empty, focusFirstInvalid } from '../../ui'
+import { doc, onSnapshot } from 'firebase/firestore'
+import { db } from '../../firebase/config'
+import { Globe } from 'lucide-react'
 
 export default function Nouveau() {
   const { createSpectateur } = useAppStore()
@@ -23,6 +26,14 @@ export default function Nouveau() {
   const [tried, setTried]   = useState(false)
   const [formKey, setFormKey] = useState(0) // repart d'un champ vierge après une création
   const formRef = useRef(null)
+  // Sécurité (20/11/2026) : les comptes se créent sur le site internet. Cette page ne rouvre
+  // que si un administrateur active « Liaison du site en panne » dans les réglages.
+  const [secours, setSecours] = useState(null)
+  useEffect(() => {
+    if (!currentEventId) { setSecours(false); return }
+    return onSnapshot(doc(db, 'events', currentEventId, 'settings', 'global'),
+      snap => setSecours(snap.data()?.liaisonEnPanne === true), () => setSecours(false))
+  }, [currentEventId])
 
   const nomErr = nom.trim() ? null : 'Indique le nom du spectateur.'
 
@@ -43,6 +54,17 @@ export default function Nouveau() {
   }
 
   const card = { background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'14px 16px' }
+
+  if (secours === null) return null
+  if (!secours) {
+    return (
+      <Empty icon={Globe} title="Les comptes se créent sur le site internet">
+        Le spectateur prend son billet sur le site du festival et reçoit par e-mail le lien de son espace.
+        Sans compte, passez par « Commande sur place ». En cas de panne de la liaison avec le site,
+        un administrateur peut rouvrir cette page dans Paramètres, « Paiement : modes de secours ».
+      </Empty>
+    )
+  }
 
   return (
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:12 }}>

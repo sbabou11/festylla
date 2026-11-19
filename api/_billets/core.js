@@ -83,6 +83,10 @@ async function handleMessage(store, msg, { ev, source = '' } = {}) {
     const codes = msg.type === 'vente' ? msg.billets.map(b => b.code) : msg.codes
     const current = {}
     for (const code of codes) current[code] = await tx.get(`events/${ev}/spectateurs/FY-${code}`)
+    // Clés des comptes (sécurité, 20/11/2026) : rangées à part, dans events/{ev}/cles, que seul le
+    // serveur lit. La fiche du spectateur, lue par les bénévoles au contrôle, n'en contient plus.
+    const cles = {}
+    if (msg.type === 'vente') for (const code of codes) cles[code] = await tx.get(`events/${ev}/cles/FY-${code}`)
 
     let created = 0, restored = 0, cancelled = 0, unknown = 0
     if (msg.type === 'vente') {
@@ -92,7 +96,9 @@ async function handleMessage(store, msg, { ev, source = '' } = {}) {
           // Vente renvoyée (rétablissement) : on ne touche ni au solde ni aux entrées ; la clé déjà
           // enregistrée n'est jamais remplacée, mais un billet d'essai sans clé reçoit la sienne
           const known = current[b.code].data && current[b.code].data.billet
-          tx.set(path, { billet: { annule: false, ...(!(known && known.cle) && b.cle ? { cle: b.cle } : {}) } }, { merge: true })
+          const dejaCle = (cles[b.code].exists && cles[b.code].data && cles[b.code].data.cle) || (known && known.cle)
+          tx.set(path, { billet: { annule: false } }, { merge: true })
+          if (!dejaCle && b.cle) tx.set(`events/${ev}/cles/FY-${b.code}`, { cle: b.cle })
           restored++
         } else {
           tx.set(path, {
@@ -109,11 +115,11 @@ async function handleMessage(store, msg, { ev, source = '' } = {}) {
               jours: b.jours,
               prix: Math.round(b.prix * 100),
               commande: clean(msg.commande, 40),
-              cle: b.cle || '',
               annule: false,
               entrees: {},
             },
           })
+          if (b.cle) tx.set(`events/${ev}/cles/FY-${b.code}`, { cle: b.cle })
           created++
         }
       }

@@ -165,7 +165,10 @@ export const createSpectateur = async (nom, soldeEuros, staffNom = 'Billetterie'
   const eid   = getEventId()
   // Clé du compte (sécurité, mesure 3) : contenue dans le QR remis au spectateur, elle ouvre son espace
   const cle   = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
-  await addDoc(collection(db, 'events', eid, 'spectateurs'), { id, nom, solde, avatar: null, cle, createdAt: serverTimestamp() })
+  // Sécurité (20/11/2026) : la clé n'est plus dans la fiche (lisible par les bénévoles), mais dans
+  // events/{ev}/cles, que seul le serveur lit
+  const fiche = await addDoc(collection(db, 'events', eid, 'spectateurs'), { id, nom, solde, avatar: null, createdAt: serverTimestamp() })
+  await setDoc(doc(db, 'events', eid, 'cles', fiche.id), { cle })
   if (solde > 0) {
     // Dans les transactions de l'événement (auparavant écrite à la racine, invisible des totaux)
     const now = new Date()
@@ -2199,19 +2202,29 @@ export const getNextCommandeNumero = async (evId = null) => {
  * @param {string|null} evId           - ID de l'événement
  * @returns {Promise<{id, numero}>}    - L'ID Firestore et le numéro attribué
  */
-export const createCommande = async ({ specId, specNom, items, payNow, staff, code, source, remise = false }, evId = null) => {
+export const createCommande = async ({ specId, specDocId = null, specNom, items, payNow, staff, code, source, remise = false }, evId = null) => {
   const eventId = evId || getEventId()
   if (!eventId) throw new Error('Aucun événement courant')
   if (!specId) throw new Error('Spectateur requis')
   if (!Array.isArray(items) || items.length === 0) throw new Error('Aucun article dans la commande')
 
   // Vérifie que le spectateur existe et a un solde suffisant si débit immédiat
-  const specSnap = await getDocs(
-    query(collection(db, 'events', eventId, 'spectateurs'), where('id', '==', specId))
-  )
-  if (specSnap.empty) throw new Error('Spectateur introuvable')
-  const specRef = specSnap.docs[0].ref
-  const specData = specSnap.docs[0].data()
+  // Borne (20/11/2026) : le compte est désigné par son document, autorisé par le serveur après
+  // lecture du QR tournant ; elle ne peut plus chercher un compte par son code.
+  let specRef, specData
+  if (specDocId) {
+    specRef = doc(db, 'events', eventId, 'spectateurs', specDocId)
+    const one = await getDoc(specRef)
+    if (!one.exists() || one.data().id !== specId) throw new Error('Spectateur introuvable')
+    specData = one.data()
+  } else {
+    const specSnap = await getDocs(
+      query(collection(db, 'events', eventId, 'spectateurs'), where('id', '==', specId))
+    )
+    if (specSnap.empty) throw new Error('Spectateur introuvable')
+    specRef = specSnap.docs[0].ref
+    specData = specSnap.docs[0].data()
+  }
 
   // Calcul du total en centimes (robuste : protège contre NaN/undefined)
   const total = items.reduce((s, it) => {

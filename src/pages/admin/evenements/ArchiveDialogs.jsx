@@ -225,6 +225,7 @@ export function RemoveArchiveDialog({ event, onClose }) {
 export function SecuriteDialog({ event, onClose }) {
   const [busy, setBusy] = useState(false)
   const [migration, setMigration] = useState(null)
+  const [cles, setCles] = useState(null)
   const fermee = event?.securite === 'fermee'
   const run = async (body, done) => {
     setBusy(true)
@@ -247,6 +248,12 @@ export function SecuriteDialog({ event, onClose }) {
             ? <Button variant="secondary" disabled={busy} onClick={() => run({ mode: 'ouvrir', ev: event.id }, () => { toast.info('Retour au mode ancien') ; onClose() })}>Revenir au mode ancien</Button>
             : <HoldButton tone="danger" icon={ShieldCheck} onConfirm={() => run({ mode: 'fermer', ev: event.id }, () => { toast.success('Règles strictes activées') ; onClose() })}>Maintenir pour protéger la base</HoldButton>}
           <p className={s.dialogHint}>À essayer d'abord sur un événement de test : vérifiez la caisse, la borne, l'écran, l'espace bénévole et un compte spectateur.</p>
+        </section>
+        <section className={s.archiveStep}>
+          <h3 className={s.archiveStepTitle}>Clés des comptes spectateurs</h3>
+          <p className={s.dialogText}>Met à l'abri les clés des comptes déjà créés : elles sortent des fiches des spectateurs, que les bénévoles et les artistes peuvent lire, pour un rangement réservé au serveur. Les liens déjà envoyés continuent de fonctionner. À lancer une fois par événement.</p>
+          <Button variant="secondary" disabled={busy} onClick={() => run({ mode: 'migrer-cles', ev: event.id }, setCles)}>Mettre les clés à l'abri</Button>
+          {cles && <p className={s.archiveSummary}><CheckCircle size={14} aria-hidden="true"/> {cles.deplacees} clé{cles.deplacees > 1 ? 's' : ''} mise{cles.deplacees > 1 ? 's' : ''} à l'abri ; {cles.sansCle} compte{cles.sansCle > 1 ? 's' : ''} sans clé.</p>}
         </section>
         <section className={s.archiveStep}>
           <h3 className={s.archiveStepTitle}>Mots de passe en clair</h3>

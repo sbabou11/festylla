@@ -7,6 +7,8 @@
  *                                      la prochaine connexion de chacun ; renvoie les nombres traités
  *   { mode: 'fermer', ev }             active les règles strictes sur l'événement (securite: 'fermee')
  *   { mode: 'ouvrir', ev }             revient au mode ancien (en cas de problème le jour J)
+ *   { mode: 'migrer-cles', ev }        sort les clés des comptes des fiches des spectateurs (lisibles par
+ *                                      les bénévoles et les artistes) vers events/{ev}/cles, réservé au serveur
  */
 const { passwordFields } = require('../_auth/core')
 const { admin, getDb, requireCaller, writeAudit } = require('../_auth/server')
@@ -52,6 +54,27 @@ module.exports = async (req, res) => {
         label: body.mode === 'fermer' ? 'Règles strictes activées sur l\'événement' : 'Retour au mode ancien sur l\'événement',
       })
       res.status(200).json({ ok: true }); return
+    }
+
+    if (body.mode === 'migrer-cles') {
+      const ev = String(body.ev || '')
+      if (!/^[\w-]{1,128}$/.test(ev)) { res.status(400).json({ error: 'Événement manquant.' }); return }
+      const evRef = db.collection('events').doc(ev)
+      const snap = await evRef.collection('spectateurs').get()
+      let deplacees = 0, sansCle = 0
+      let batch = db.batch(), n = 0
+      for (const d of snap.docs) {
+        const s = d.data()
+        const cle = (s.billet && s.billet.cle) || s.cle || ''
+        if (!cle) { sansCle++; continue }
+        batch.set(evRef.collection('cles').doc(d.id), { cle }, { merge: true })
+        batch.update(d.ref, { cle: DELETE, ...(s.billet ? { 'billet.cle': DELETE } : {}) })
+        deplacees++; n += 2
+        if (n >= 400) { await batch.commit(); batch = db.batch(); n = 0 }
+      }
+      if (n) await batch.commit()
+      await writeAudit(db, ev, { action: 'CLES_DEPLACEES', staff: caller.uid, userType: 'admin', label: `Clés des comptes mises à l'abri : ${deplacees}` })
+      res.status(200).json({ ok: true, deplacees, sansCle }); return
     }
 
     res.status(400).json({ error: 'Mode inconnu.' })

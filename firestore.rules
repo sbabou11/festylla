@@ -41,6 +41,12 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/events/$(ev)).data.get('securite', '') == 'fermee';
     }
     function legacy(ev) { return !closed(ev); }
+    // Borne (20/11/2026) : le serveur (api/qr) ouvre une autorisation de quelques minutes sur un
+    // compte après avoir vérifié son QR tournant ; la borne ne touche qu'à ce compte, ce temps-là.
+    function autorise(ev, compte) {
+      return exists(/databases/$(database)/documents/events/$(ev)/autorisations/$(compte))
+             && get(/databases/$(database)/documents/events/$(ev)/autorisations/$(compte)).data.exp > request.time;
+    }
 
     // ── Événements ───────────────────────────────────────────────────────────
     match /events/{ev} {
@@ -60,8 +66,9 @@ service cloud.firestore {
       match /benevoles/{id} {
         allow read: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id);
         allow create, delete: if staffIn(ev);
-        // consoJours : consommations par journée des fiches venues d'Event Manager (lot C)
-        allow update: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id && onlyChanges(['consommation', 'consoJours', 'historique']));
+        // Sécurité (20/11/2026) : le bénévole ne modifie plus ses compteurs de consommation
+        // (consommation, consoJours). Ils sont tenus par le serveur (borne) et par l'équipe.
+        allow update: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id && onlyChanges(['historique']));
       }
       match /benevoles-annuaire/{id} {
         allow read: if staffIn(ev) || sess('benevole', ev);
@@ -108,8 +115,9 @@ service cloud.firestore {
       match /menu/{id} {
         allow read: if yc() && inEvent(ev) || staffIn(ev) || legacy(ev);
         allow create, delete: if staffIn(ev) || legacy(ev);
-        // Réservations et commandes : le stock bouge depuis les pages des visiteurs et des bénévoles
-        allow update: if staffIn(ev) || legacy(ev) || (inEvent(ev) && onlyChanges(['stock']));
+        // Sécurité (20/11/2026) : hors équipe, seule la borne modifie le stock (commande payée).
+        // Les espaces spectateur, bénévole et artiste ne commandent plus que par code.
+        allow update: if staffIn(ev) || legacy(ev) || (sess('borne', ev) && onlyChanges(['stock']));
       }
       match /categories/{id} {
         allow read: if inEvent(ev) || staffIn(ev) || legacy(ev);
@@ -118,14 +126,18 @@ service cloud.firestore {
       match /spectateurs/{doc} {
         allow read: if staffIn(ev) || legacy(ev)
                     || (sess('spectateur', ev) && resource.data.id == request.auth.token.specId)
-                    || sess('borne', ev) || sess('artiste', ev)
+                    // (Sécurité, 20/11/2026 : les artistes ne lisent plus les fiches des spectateurs ;
+                    // la liaison d'un espace artiste à un compte spectateur est retirée.)
                     // Contrôle des billets à l'entrée (un code inconnu doit pouvoir répondre « Billet inconnu »)
                     || (sess('benevole', ev) && (resource == null || resource.data.keys().hasAny(['billet'])));
+        // Borne : seulement le compte autorisé par le serveur (QR tournant), lu un par un
+        allow get: if sess('borne', ev) && autorise(ev, doc);
         allow create: if staffIn(ev) || legacy(ev);
         allow delete: if staffIn(ev) || legacy(ev);
         allow update: if staffIn(ev) || legacy(ev)
-                      // Borne : paiement d'une commande (solde)
-                      || (sess('borne', ev) && onlyChanges(['solde']))
+                      // Borne : paiement d'une commande, sur le compte autorisé ; le solde ne peut que baisser
+                      || (sess('borne', ev) && autorise(ev, doc) && onlyChanges(['solde'])
+                          && request.resource.data.solde < resource.data.solde && request.resource.data.solde >= 0)
                       // Bénévole au contrôle : seulement le registre des entrées du billet
                       || (sess('benevole', ev) && onlyChanges(['billet'])
                           && request.resource.data.billet.diff(resource.data.billet).affectedKeys().hasOnly(['entrees']));
@@ -134,9 +146,9 @@ service cloud.firestore {
         allow read: if staffIn(ev) || legacy(ev)
                     || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId);
         allow create: if staffIn(ev) || legacy(ev) || sess('borne', ev)
+                      // Sécurité (20/11/2026) : trace d'annulation d'une ancienne réservation, à 0 € seulement
                       || (sess('spectateur', ev) && request.resource.data.specId == request.auth.token.specId
-                          && request.resource.data.type in ['reservation', 'annulation'])
-                      || (sess('benevole', ev) && request.resource.data.benevoleId == benevoleId());
+                          && request.resource.data.type == 'annulation' && request.resource.data.montant == 0);
         allow update, delete: if staffIn(ev) || legacy(ev);
       }
       match /reservations/{id} {
@@ -144,12 +156,14 @@ service cloud.firestore {
                     || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId)
                     || (sess('benevole', ev) && resource.data.benevoleId == benevoleId())
                     || (sess('ecran', ev) && resource.data.status == 'ready');
-        allow create: if staffIn(ev) || legacy(ev)
-                      || (sess('spectateur', ev) && request.resource.data.specId == request.auth.token.specId)
-                      || (sess('benevole', ev) && request.resource.data.benevoleId == benevoleId());
+        // Sécurité (20/11/2026) : les espaces ne créent plus de réservation (commande par code) ;
+        // ils peuvent seulement annuler une ancienne réservation pas encore retirée.
+        allow create: if staffIn(ev) || legacy(ev);
         allow update: if staffIn(ev) || legacy(ev)
-                      || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId)
-                      || (sess('benevole', ev) && resource.data.benevoleId == benevoleId());
+                      || (((sess('spectateur', ev) && resource.data.specId == request.auth.token.specId)
+                           || (sess('benevole', ev) && resource.data.benevoleId == benevoleId()))
+                          && resource.data.status != 'collected' && request.resource.data.status == 'cancelled'
+                          && onlyChanges(['status', 'cancelledBy', 'cancelledByRole', 'cancelledAt', 'motifAnnulation']));
         allow delete: if staffIn(ev) || legacy(ev);
       }
       match /commandes/{id} {
@@ -196,6 +210,14 @@ service cloud.firestore {
                       && onlyChanges(['statut', 'annuleLe']);
         allow delete: if isAdmin();
       }
+      // Autorisations de la borne et codes de secours : écrits et lus par le serveur seulement
+      // Clés des comptes : jamais lues depuis une appli ; la billetterie en dépose une en créant un
+      // compte de secours (réglage « Liaison du site en panne »)
+      match /cles/{id} { allow create: if staffIn(ev); allow read, update, delete: if false; }
+      // Jetons « Lien perdu » : la billetterie suit leur utilisation ; ils ne contiennent pas la clé
+      match /jetons-lien/{id} { allow get: if staffIn(ev); allow list, write: if false; }
+      match /autorisations/{id} { allow read, write: if false; }
+      match /codes-secours/{id} { allow read, write: if false; }
       // Demandes de remboursement du solde (20/11/2026) : créées par le serveur (api/paiement) ;
       // le spectateur lit les siennes ; la billetterie traite les parts SumUp et espèces.
       match /demandes-remboursement/{id} {
@@ -204,7 +226,7 @@ service cloud.firestore {
         allow update: if staffIn(ev) || legacy(ev);
       }
       match /_counters/{id} {
-        allow read, write: if staffIn(ev) || legacy(ev) || sess('borne', ev) || sess('benevole', ev);
+        allow read, write: if staffIn(ev) || legacy(ev) || sess('borne', ev);
       }
       match /notifications/{id} {
         allow read: if staffIn(ev) || legacy(ev)
@@ -212,7 +234,9 @@ service cloud.firestore {
                         || (type() == 'spectateur' && resource.data.specId == request.auth.token.specId)
                         || (type() == 'benevole' && (resource.data.specId == benevoleId() || resource.data.benevoleId == benevoleId()))
                         || (type() == 'artiste' && resource.data.creneauId == request.auth.token.creneauId)));
-        allow create: if staffIn(ev) || legacy(ev) || inEvent(ev);
+        // Sécurité (20/11/2026) : hors équipe, seul un bénévole prévient l'équipe, à son propre nom
+        allow create: if staffIn(ev) || legacy(ev)
+                      || (sess('benevole', ev) && request.resource.data.benevoleId == benevoleId());
         allow update: if staffIn(ev) || legacy(ev)
                       || (inEvent(ev) && onlyChanges(['lu']) && resource.data.type != 'PLANNING_MODIF'
                           && ((type() == 'spectateur' && resource.data.specId == request.auth.token.specId)
@@ -266,7 +290,7 @@ service cloud.firestore {
       // (Les règles s'additionnent : les collections protégées ci-dessus sont exclues d'ici,
       // sinon cette règle générale leur rendrait des droits qu'on leur a retirés.)
       match /{other}/{id} {
-        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire', 'programme-em', 'artistes'])
+        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire', 'programme-em', 'artistes', 'autorisations', 'codes-secours', 'cles', 'jetons-lien'])
                               && (staffIn(ev) || legacy(ev));
       }
     }

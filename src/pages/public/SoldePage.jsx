@@ -4,7 +4,8 @@
  * barre d'onglets en bas : Solde | Commander | Mes résas | Programme.
  * La logique Firestore (compte, transactions, réservations) est celle de la v4.
  */
-import { ensureSpectatorSession, soldeUrl, spectateurOuvert } from '../../firebase/publicSession'
+import { ensureSpectatorSession, soldeUrl, spectateurOuvert, oublierCompte, rememberedKey, ouvrirParJeton } from '../../firebase/publicSession'
+import { jetonTournant, fenetreDe, resteSecondes } from '../../utils/qrTournant'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
@@ -113,6 +114,10 @@ export default function SoldePage({ demo = null }) {
   const [resaDone, setResaDone]       = useState(null)
   const [resaErr, setResaErr]         = useState('')
   const [qrDataUrl, setQrDataUrl]     = useState(null)
+  // QR tournant (20/11/2026) : change toutes les 30 s ; code de secours si « Scanner en panne »
+  const [qrReste, setQrReste]         = useState(30)
+  const [scannerEnPanne, setScannerEnPanne] = useState(!!demo?.scannerEnPanne)
+  const [secours, setSecours]         = useState(null)   // { code, expMs }
   const [qrOpen, setQrOpen]           = useState(false)
   const [chartMode, setChartMode]     = useState(false)   // false=liste true=graphe
   const [planningData, setPlanningData] = useState(() => {
@@ -265,16 +270,69 @@ export default function SoldePage({ demo = null }) {
   useEffect(() => {
     if (urlId || demo || !eventId) return
     let vivant = true
+    // « Lien perdu » : QR à usage unique scanné à la billetterie (…/solde?ev=…&jeton=…)
+    const jeton = params.get('jeton')
+    if (jeton) {
+      setLoading(true)
+      ouvrirParJeton(eventId, jeton).then(r => {
+        if (!vivant) return
+        // Le jeton ne sert qu'une fois : on le retire de l'adresse, qui garde seulement le numéro
+        try { window.history.replaceState(null, '', `/solde?ev=${encodeURIComponent(eventId)}${r.ok ? `&id=${r.id}` : ''}`) } catch {}
+        if (r.ok) { setInputId(r.id); findSpec(r.id) }
+        else { setErr(r.error); setLoading(false) }
+      })
+      return () => { vivant = false }
+    }
     spectateurOuvert(eventId).then(id => { if (vivant && id) { setInputId(id); findSpec(id) } }).catch(() => {})
     return () => { vivant = false }
   }, [eventId])
 
+  // QR tournant : calculé sur le téléphone avec la clé du lien personnel (aucun réseau nécessaire).
+  // Sans clé retenue (espace ouvert autrement que par son lien), pas de QR : on ne peut pas payer.
+  const cleCompte = spec?.id ? (demo ? 'demo' : (rememberedKey(eventId, spec.id) || (spec.id === urlId ? urlKey : ''))) : ''
   useEffect(() => {
-    if (!spec?.id) return
-    const url = soldeUrl(eventId, spec.id)
-    QRCode.toDataURL(url, { width:400, margin:2, color:{ dark:themeColor, light:'#ffffff' } })
-      .then(u => setQrDataUrl(u)).catch(() => {})
-  }, [spec?.id])
+    if (!spec?.id || !cleCompte) { setQrDataUrl(null); return }
+    let vivant = true, fenetre = null
+    const tick = async () => {
+      const ms = Date.now()
+      setQrReste(resteSecondes(ms))
+      if (fenetreDe(ms) === fenetre) return
+      fenetre = fenetreDe(ms)
+      try {
+        const j = await jetonTournant({ cle: cleCompte, ev: eventId || 'demo', specId: spec.id, ms })
+        const u = await QRCode.toDataURL(j, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#003048', light: '#ffffff' } })
+        if (vivant) setQrDataUrl(u)
+      } catch { if (vivant) setQrDataUrl(null) }
+    }
+    tick()
+    const t = setInterval(tick, 1000)
+    return () => { vivant = false; clearInterval(t) }
+  }, [spec?.id, cleCompte, eventId])
+
+  // Réglage « Scanner en panne » de l'organisateur : un code de secours s'affiche sous le QR
+  useEffect(() => {
+    if (demo || !eventId) return
+    return onSnapshot(doc(db, 'events', eventId, 'settings', 'global'),
+      snap => setScannerEnPanne(snap.data()?.scannerEnPanne === true), () => {})
+  }, [eventId])
+  useEffect(() => {
+    if (!scannerEnPanne || !spec?.id) { setSecours(null); return }
+    let vivant = true
+    const demander = async () => {
+      try {
+        if (demo) {
+          const L = 'ABCDEFGHJKLMNPRSTUVWXYZ'
+          const c = L[Math.floor(Math.random() * L.length)] + L[Math.floor(Math.random() * L.length)] + '-' + String(Math.floor(Math.random() * 10000)).padStart(4, '0')
+          if (vivant) setSecours({ code: c }); return
+        }
+        const r = await apiFetch('/api/qr', { body: { action: 'secours', ev: eventId } })
+        if (vivant) setSecours({ code: r.code })
+      } catch { if (vivant) setSecours(null) }
+    }
+    demander()
+    const t = setInterval(demander, 60 * 1000)   // le code vaut 90 s : renouvelé chaque minute
+    return () => { vivant = false; clearInterval(t) }
+  }, [scannerEnPanne, spec?.id, eventId])
 
   const openQr  = useCallback(async () => { setQrOpen(true) }, [])
   const closeQr = useCallback(() => setQrOpen(false), [])
@@ -466,7 +524,20 @@ export default function SoldePage({ demo = null }) {
   }, [qrOpen])
 
   const go = (t) => { setTab(t); window.scrollTo(0, 0) }
-  const logoutSpec = () => { setSpec(null); setInputId(''); setTxs([]); setResas([]); setQtys({}); go('accueil') }
+  // Sécurité (20/11/2026) : changer de compte oublie vraiment celui-ci sur ce téléphone (clé, session,
+  // numéro dans l'adresse) ; il se rouvrira seulement avec son lien
+  const logoutSpec = () => {
+    const id = spec?.id
+    clearListeners()
+    setSpec(null); setInputId(''); setTxs([]); setResas([]); setQtys({}); setCodes([]); setDemandes([]); go('accueil')
+    if (!demo && eventId && id) {
+      oublierCompte(eventId, id)
+      try {
+        const u = new URL(window.location.href); u.searchParams.delete('id'); u.searchParams.delete('k')
+        window.history.replaceState(null, '', u.toString())
+      } catch {}
+    }
+  }
 
   const confirmCancel = async () => {
     setCancelling(true)
@@ -537,23 +608,9 @@ export default function SoldePage({ demo = null }) {
         {!spec && (
           <section className={sp.login}>
             <h1>Mon portefeuille festival</h1>
-            <p>Entrez le code inscrit sous votre QR code (bracelet ou carte).</p>
-            {loading ? (
-              <p className={sp.loading}>Recherche du compte…</p>
-            ) : (
-              <form className={sp.loginRow} noValidate onSubmit={e => {
-                e.preventDefault()
-                if (!inputId.trim()) { setCodeTried(true); focusFirstInvalid(e.currentTarget); return }
-                setCodeTried(false); findSpec()
-              }}>
-                <label htmlFor="spec-code" className={sp.srOnly}>Code du QR</label>
-                <Field error={inputId.trim() ? null : 'Entrez le code inscrit sous votre QR.'} showError={codeTried} className={sp.codeField}>
-                  <input id="spec-code" value={inputId} onChange={e => setInputId(e.target.value.toUpperCase())}
-                    placeholder="FY-XXXX" autoCapitalize="characters" autoComplete="off" className={sp.codeInput} />
-                </Field>
-                <Button type="submit" icon={Search} iconOnly aria-label="Ouvrir mon compte" />
-              </form>
-            )}
+            {loading
+              ? <p className={sp.loading}>Ouverture de votre espace…</p>
+              : <p>Ouvrez votre espace avec le lien reçu par e-mail avec votre billet. Plus besoin de code : votre QR s'affiche ici et change tout seul.</p>}
             {err && <p className={sp.error} role="alert">{err}</p>}
           </section>
         )}
@@ -577,13 +634,20 @@ export default function SoldePage({ demo = null }) {
                 <div className={sp.walletRow}>
                   <b className={sp.walletValue}><AnimatedNumber value={spec.solde || 0} format={fmt} /></b>
                   {qrDataUrl && (
-                    <button type="button" className={sp.walletQr} onClick={openQr} aria-label="Agrandir mon QR code">
+                    <button type="button" className={sp.walletQr} onClick={openQr} aria-label="Agrandir mon QR code de paiement">
                       <img src={qrDataUrl} alt="" />
                       <Maximize2 size={12} className={sp.walletQrIcon} aria-hidden="true" />
                     </button>
                   )}
                 </div>
-                <span className={sp.walletId}>{spec.id} · touchez le QR pour l'agrandir au stand</span>
+                <span className={sp.walletId}>
+                  {qrDataUrl
+                    ? `QR de paiement · change dans ${qrReste} s · touchez-le pour l'agrandir à la borne`
+                    : 'Pour afficher votre QR de paiement, rouvrez votre espace avec le lien reçu par e-mail.'}
+                </span>
+                {secours && (
+                  <span className={sp.secours}>Scanner en panne ? Tapez ce code à la borne : <b>{secours.code}</b></span>
+                )}
               </section>
 
               {readyResas.map(r => (
@@ -591,7 +655,7 @@ export default function SoldePage({ demo = null }) {
                   <span className={sp.readyCode}>#{r.code}</span>
                   <span className={sp.readyText}>
                     <b>Votre commande est prête</b>
-                    <span>Présentez votre QR au stand pour la retirer · {fmt(r.total || 0)}</span>
+                    <span>Présentez-vous au stand pour la retirer · {fmt(r.total || 0)}</span>
                   </span>
                   <ChevronRight size={18} aria-hidden="true" />
                 </button>
@@ -918,7 +982,7 @@ export default function SoldePage({ demo = null }) {
                             <span className={sp.muted}>{r.date}</span>
                             <b>{fmt(r.total || 0)}</b>
                           </div>
-                          {r.status === 'ready' && <p className={sp.resaHint}>Présentez votre QR code au stand pour retirer et payer.</p>}
+                          {r.status === 'ready' && <p className={sp.resaHint}>Présentez-vous au stand pour la retirer.</p>}
                           {r.status === 'pending' && (
                             <Button size="sm" variant="danger" onClick={() => setCancelId(r.id)}>Annuler la commande</Button>
                           )}
@@ -981,9 +1045,11 @@ export default function SoldePage({ demo = null }) {
       {qrOpen && qrDataUrl && (
         <div className={sp.qrFull} onClick={closeQr} role="dialog" aria-modal="true" aria-label="Mon QR code">
           <b>{spec?.nom}</b>
-          <span>{spec?.id}</span>
-          <img src={qrDataUrl} alt={`QR code ${spec?.id}`} />
-          <p>Montrez ce code au stand. Touchez l'écran pour fermer.</p>
+          <img src={qrDataUrl} alt="QR code de paiement" />
+          <span className={sp.qrBar}><i style={{ width: `${(qrReste / 30) * 100}%` }} /></span>
+          <span>Se renouvelle dans {qrReste} s · une capture d'écran ne fonctionne pas</span>
+          {secours && <span className={sp.secoursFull}>Scanner en panne ? Tapez ce code<b>{secours.code}</b></span>}
+          <p>Présentez ce QR à la borne. Touchez l'écran pour fermer.</p>
           <Button variant="secondary" onClick={closeQr}>Fermer</Button>
         </div>
       )}

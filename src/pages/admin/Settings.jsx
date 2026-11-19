@@ -9,6 +9,7 @@ import DiagnosticTransactions from '../../components/DiagnosticTransactions'
 import FacturationSettings from './settings/FacturationSettings'
 import { isEmLinked } from '../../em/pages'
 import RapportCloture from './settings/RapportCloture'
+import SecoursSettings from './settings/SecoursSettings'
 import { useExport }             from '../../hooks/useExport'
 import { migrerVersV2 }          from '../../utils/migrationV2'
 import { migrerVersEvenement }   from '../../utils/migrationRacineVersEvent'
@@ -243,6 +244,9 @@ export default function Settings({ onNavigate }) {
       {/* Exposants et facturation (thématiques, organisateur, identité, TVA, templates) */}
       {!emLinked && <FacturationSettings currentEventId={currentEventId} onNavigate={onNavigate}/>}
 
+      {/* Modes de secours du paiement (20/11/2026) */}
+      <SecoursSettings/>
+
       {/* Exports */}
       <Card title={title(Download, 'Export des données')} subtitle="Générés côté client — aucun serveur requis.">
         <div className={s.actions}>
@@ -319,8 +323,7 @@ export default function Settings({ onNavigate }) {
           {[
             ['Version',          '1.0.0'],
             ['PWA',              'serviceWorker' in navigator ? 'Supportée' : 'Non supportée'],
-            ['URL spectateur',   '/solde?id=FY-XXXX'],
-            ['URL inscription',  '/inscription'],
+            ['Espace spectateur', 'lien reçu par e-mail avec le billet'],
           ].map(([k, v]) => (
             <div key={k}>
               <dt>{k}</dt>

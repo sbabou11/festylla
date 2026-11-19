@@ -22,6 +22,28 @@ const keyStore = (ev, id) => `yllacash-cle-${ev}-${id}`
 export const rememberedKey = (ev, id) => { try { return localStorage.getItem(keyStore(ev, id)) || '' } catch { return '' } }
 const rememberKey = (ev, id, cle) => { try { if (cle) localStorage.setItem(keyStore(ev, id), cle) } catch {} }
 
+/**
+ * « Lien perdu » (20/11/2026) : le QR à usage unique affiché à la billetterie ouvre l'espace et
+ * donne au téléphone la nouvelle clé du compte. Renvoie { ok, id } ou { ok: false, error }.
+ */
+export async function ouvrirParJeton(ev, jeton) {
+  try {
+    const r = await apiFetch('/api/qr', { body: { action: 'ouvrir-lien', ev, jeton } })
+    await openFirebaseSession(r.token)
+    rememberKey(ev, r.compte.id, r.compte.cle)
+    return { ok: true, id: r.compte.id }
+  } catch (e) {
+    return { ok: false, error: e.status ? e.message : 'Connexion impossible : vérifiez le réseau et réessayez.' }
+  }
+}
+
+/** « Changer de compte » : le téléphone oublie la clé du compte et ferme sa session (20/11/2026) */
+export async function oublierCompte(ev, id) {
+  try { localStorage.removeItem(keyStore(ev, id)) } catch {}
+  const c = await claims().catch(() => null)
+  if (c?.type === 'spectateur') await auth.signOut().catch(() => {})
+}
+
 /** Adresse publique du compte, avec sa clé si on la connaît */
 export function soldeUrl(ev, id, cle = rememberedKey(ev, id)) {
   return `${window.location.origin}/solde?id=${id}${ev ? `&ev=${ev}` : ''}${cle ? `&k=${cle}` : ''}`

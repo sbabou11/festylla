@@ -25,6 +25,7 @@ const ROUTES = {
   paiement:            () => require('./_routes/paiement'),
   'process-entrees':   () => require('./_routes/process-entrees'),
   'process-reminders': () => require('./_routes/process-reminders'),
+  qr:                  () => require('./_routes/qr'),
   rapport:             () => require('./_routes/rapport'),
   securite:            () => require('./_routes/securite'),
   'send-push':         () => require('./_routes/send-push'),

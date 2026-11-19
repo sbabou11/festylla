@@ -23,6 +23,7 @@ const {
 } = require('../_auth/core')
 const { admin, getDb, clientIp, verifyCaller, loadAccount } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
+const { cleDuCompte } = require('../_auth/cles')
 
 const ID = /^[\w-]{1,128}$/
 const SPEC = /^FY-[A-Z0-9]{4,12}$/
@@ -69,23 +70,16 @@ module.exports = async (req, res) => {
 
       const spec = await findSpectator(db, ev, id)
       if (!spec) { await fail(401, 'Code inconnu : vérifiez le code ou l\'événement.'); return }
-      const expected = accountKey(spec.data)
-      if (expected && !sameKey(String(body.cle || '').toLowerCase(), expected)) {
-        // Exception : l'artiste dont le créneau est relié à ce compte (espace artiste → solde)
-        const caller = await verifyCaller(req)
-        let allowed = false
-        if (caller && caller.type === 'artiste' && (caller.eventIds || []).includes(ev)) {
-          const cr = await db.collection('events').doc(ev).collection('planning').doc(caller.creneauId).get()
-          allowed = cr.exists && cr.data().linkedSpecId === id
-        }
-        if (!allowed) {
-          await fail(401, body.cle ? 'Ce lien n\'est plus valable pour ce compte.' : 'Ce compte s\'ouvre avec le lien ou le QR code reçu à la création du compte (billet, e-mail ou carte). Demandez-le à la billetterie si besoin.', codeRef, codeRec)
-          return
-        }
+      const expected = await cleDuCompte(db.collection('events').doc(ev), spec.docId, spec.data)
+      // Sécurité (20/11/2026) : un compte ne s'ouvre qu'avec sa clé. Fini l'exception de l'artiste
+      // relié au compte, et l'ouverture avec le seul code quand le compte n'a pas de clé.
+      if (!expected || !sameKey(String(body.cle || '').toLowerCase(), expected)) {
+        await fail(401, body.cle ? 'Ce lien n\'est plus valable pour ce compte.' : 'Votre espace s\'ouvre avec le lien reçu par e-mail avec votre billet. Demandez de l\'aide à la billetterie si besoin.', codeRef, codeRec)
+        return
       }
       const { uid, claims } = spectatorSession(ev, spec.docId, spec.data)
       const token = await admin.auth().createCustomToken(uid, claims)
-      res.status(200).json({ token, compte: { id: spec.data.id, docId: spec.docId, nom: spec.data.nom || '', cle: expected ? String(body.cle || '').toLowerCase() || null : null } })
+      res.status(200).json({ token, compte: { id: spec.data.id, docId: spec.docId, nom: spec.data.nom || '', cle: String(body.cle || '').toLowerCase() } })
       return
     }
 

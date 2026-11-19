@@ -25,7 +25,8 @@ import { cleanEmail, emailOk } from '../../utils/msAccount'
 const ALL_PAGES = [
   { id:'credit',             label:'Créditer',             group:'Billetterie' },
   { id:'commande-sur-place', label:'Commande sur place',    group:'Billetterie' },
-  { id:'nouveau',            label:'Nouveau QR',            group:'Billetterie' },
+  { id:'nouveau',            label:'Compte de secours',     group:'Billetterie' },
+  { id:'lien-perdu',         label:'Lien perdu',            group:'Billetterie' },
   { id:'debit',              label:'Encaisser',             group:'Stand' },
   { id:'reservations-admin', label:'Réservations',          group:'Commun' },
   { id:'transactions',       label:'Transactions',          group:'Commun' },

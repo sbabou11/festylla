@@ -10,11 +10,11 @@
 import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
-import { getSettings, annulerReservationArtiste, watchArtistReservations, linkArtistToSpec, unlinkArtistFromSpec, creerCodeArtiste, annulerCodeEnLigne } from '../../firebase/service'
+import { getSettings, annulerReservationArtiste, watchArtistReservations, creerCodeArtiste, annulerCodeEnLigne } from '../../firebase/service'
 import { watchCarte } from '../../menu/carte'
 import BenevoleCommander, { MesCodes } from './BenevoleCommander'
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore'
-import { Clock, MapPin, Gift, History, CalendarDays, Bookmark, ShoppingCart, AlertCircle, Link2, Wallet, Mic, Mic2, Maximize2, Ban, Bell, BellOff } from 'lucide-react'
+import { Clock, MapPin, Gift, History, CalendarDays, Bookmark, ShoppingCart, AlertCircle, Mic, Mic2, Maximize2, Ban, Bell, BellOff } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
 import ThemeToggle from '../../components/ThemeToggle'
 import NotifBell from '../../components/NotifBell'
@@ -65,14 +65,8 @@ export default function EspaceArtiste() {
   const [carte,        setCarte]        = useState({ rayons: [], stands: [] })
   const [categories,   setCategories]   = useState([])
   const [showQrFull,   setShowQrFull]   = useState(false)
-  const [showLinkModal, setShowLinkModal] = useState(false)
-  const [linkInput, setLinkInput] = useState('')
-  const [linkErr, setLinkErr] = useState('')
-  const [linkTried, setLinkTried] = useState(false)
-  const linkFormRef = useRef(null)
-  const [linkLoading, setLinkLoading] = useState(false)
   const [cancelAsk,   setCancelAsk]   = useState(null)  // id de la réservation à annuler
-  const [unlinkAsk,   setUnlinkAsk]   = useState(false)
+
 
   // Notifications artiste (filtrées par creneauId)
   const { notifications, nonLuCount, marquerToutLu } = useNotifications({
@@ -330,36 +324,6 @@ export default function EspaceArtiste() {
     }
   }
 
-  const handleLinkSpec = async () => {
-    const v = linkInput.trim().toUpperCase()
-    if (!v) { setLinkTried(true); focusFirstInvalid(linkFormRef.current); return }
-    setLinkLoading(true); setLinkErr('')
-    try {
-      await linkArtistToSpec(creneauId, v, eventId, fiche)
-      setShowLinkModal(false)
-      setLinkInput('')
-    } catch (e) {
-      setLinkErr(friendlyError(e, "Le compte n'a pas pu être lié."))
-    } finally {
-      setLinkLoading(false)
-    }
-  }
-
-  // Déliaison : confirmée dans la fenêtre « Délier votre compte spectateur ? »
-  const handleUnlinkSpec = async () => {
-    try {
-      await unlinkArtistFromSpec(creneauId, eventId, fiche)
-    } catch (e) {
-      toast.error(friendlyError(e, "Le compte n'a pas pu être délié."), { action: { label: 'Réessayer', onClick: () => handleUnlinkSpec() } })
-    }
-  }
-
-  const goToSpectateurSpace = () => {
-    if (!creneau.linkedSpecId) return
-    const url = '/solde?id=' + creneau.linkedSpecId + (eventId ? '&ev=' + eventId : '') + '&from=artiste&cr=' + creneauId
-    window.location.href = url
-  }
-
   const NAV = [
     { id: 'droits',    label: 'Droits',    icon: Gift },
     { id: 'consos',    label: 'Consos',    icon: History },
@@ -383,18 +347,8 @@ export default function EspaceArtiste() {
             <span>Espace artiste</span>
           </div>
           <div className={s.headActions}>
-            {creneau.linkedSpecId ? (
-              <button type="button" className={clsx(s.headBtn, s.headBtnOn)} onClick={goToSpectateurSpace}
-                title={'Aller à mon espace spectateur (' + creneau.linkedSpecId + ')'} aria-label="Aller à mon espace spectateur">
-                <Wallet size={16}/>
-              </button>
-            ) : (
-              <button type="button" className={clsx(s.headBtn, s.headBtnDashed)}
-                onClick={() => { setLinkInput(''); setLinkErr(''); setLinkTried(false); setShowLinkModal(true) }}
-                title="Lier mon compte spectateur" aria-label="Lier mon compte spectateur">
-                <Link2 size={16}/>
-              </button>
-            )}
+            {/* Sécurité (20/11/2026) : la liaison à un compte spectateur par son code « FY-… » est retirée.
+                Elle ouvrait ce compte sans sa clé. Chacun ouvre son espace avec son propre lien. */}
             <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}/>
             <ThemeToggle/>
           </div>
@@ -474,7 +428,7 @@ export default function EspaceArtiste() {
 
         {/* QR code (plein écran au toucher) */}
         <section className={clsx(s.card, s.qrCard)}>
-          <h2 className={s.overline}>Présentez ce code au stand</h2>
+          <h2 className={s.overline}>Présentez ce QR à la borne</h2>
           <button type="button" className={s.qrBtn} onClick={() => setShowQrFull(true)} aria-label="Agrandir mon QR code">
             <QRCodeCanvas value={qrPayload} size={140} fgColor="#003048" bgColor="#FFFFFF"/>
           </button>
@@ -545,32 +499,6 @@ export default function EspaceArtiste() {
         })}
       </nav>
 
-      {/* Liaison au compte spectateur */}
-      <Sheet open={showLinkModal} onClose={() => setShowLinkModal(false)} title="Lier mon compte spectateur"
-        footer={<>
-          <Button variant="secondary" onClick={() => setShowLinkModal(false)}>Annuler</Button>
-          <Button icon={Link2} onClick={handleLinkSpec} loading={linkLoading}>
-            {linkLoading ? 'Vérification…' : 'Lier mon compte'}
-          </Button>
-        </>}>
-        <div className={s.form} ref={linkFormRef}>
-          <p className={s.muted}>
-            Saisissez votre numéro spectateur (écrit sous votre QR personnel, par exemple <code>FY-4A2B</code>)
-            pour passer d'un espace à l'autre en un geste.
-          </p>
-          <Field label="Numéro spectateur" error={linkInput.trim() ? null : 'Veuillez saisir votre numéro spectateur.'} showError={linkTried}>
-            <input type="text" className={s.input} value={linkInput}
-              onChange={(e) => setLinkInput(e.target.value.toUpperCase())}
-              onKeyDown={(e) => e.key === 'Enter' && handleLinkSpec()}
-              placeholder="FY-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false}
-              autoFocus/>
-          </Field>
-          {linkErr && (
-            <div className={s.error} role="alert"><AlertCircle size={16} aria-hidden="true"/><span>{linkErr}</span></div>
-          )}
-        </div>
-      </Sheet>
-
       {/* Confirmation d'annulation */}
       <Dialog open={!!cancelAsk} onClose={() => setCancelAsk(null)} title="Annuler cette réservation ?"
         footer={<>
@@ -591,15 +519,6 @@ export default function EspaceArtiste() {
           }}>Annuler le code</Button>
         </>}>
         <p className={s.muted}>Rien n'a été décompté : vos avantages restent disponibles.</p>
-      </Dialog>
-
-      {/* Confirmation de déliaison (aucun bouton ne l'ouvre pour l'instant, comme avant) */}
-      <Dialog open={unlinkAsk} onClose={() => setUnlinkAsk(false)} title="Délier votre compte spectateur ?"
-        footer={<>
-          <Button variant="secondary" onClick={() => setUnlinkAsk(false)}>Garder le lien</Button>
-          <Button variant="danger" onClick={() => { setUnlinkAsk(false); handleUnlinkSpec() }}>Délier</Button>
-        </>}>
-        <p className={s.muted}>Vous ne pourrez plus passer directement à votre espace spectateur depuis cette page.</p>
       </Dialog>
 
       {/* QR plein écran : toujours fond blanc pour la lecture */}

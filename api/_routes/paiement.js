@@ -204,6 +204,12 @@ async function rembourser(req, res, body) {
         const d = await t.get(evRef.collection('demandes-remboursement').doc(String(enCours)))
         if (d.exists && d.data().statut === 'en_attente') throw Object.assign(new Error('Une demande de remboursement est déjà en cours.'), { status: 409 })
       }
+      // Une demande par compte et par jour : chaque aller-retour recharge / remboursement coûte
+      // des frais Stripe à l'association (20/11/2026)
+      const dejaSnap = await t.get(evRef.collection('demandes-remboursement').where('specId', '==', caller.specId))
+      if (dejaSnap.docs.some(x => x.data().date === date && !['annule', 'echec'].includes(x.data().statut))) {
+        throw Object.assign(new Error('Vous avez déjà fait une demande de remboursement aujourd\'hui. Pour le reste, présentez-vous à la billetterie.'), { status: 429 })
+      }
       const txsSnap = await t.get(evRef.collection('transactions').where('specId', '==', caller.specId))
       const solde = Number(spec.data().solde) || 0
       plan = planRemboursement({ solde, txs: txsSnap.docs.map(d => d.data()) })

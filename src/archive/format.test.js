@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { zipSync, unzipSync, strToU8 } from 'fflate'
 import {
-  ARCHIVE_COLLECTIONS, encodeValue, decodeValue, stripSecrets, findStorageUrls, replaceUrls,
+  ARCHIVE_COLLECTIONS, HORS_ARCHIVE, encodeValue, decodeValue, stripSecrets, findStorageUrls, replaceUrls,
   storagePathFromUrl, checkArchive, sha256, ARCHIVE_FORMAT,
 } from './format'
 import { setReadOnlyEvents, assertWritable, withArchiveWrites, writeBatch } from '../firebase/guardedFirestore'
@@ -82,7 +82,7 @@ describe('liste des collections archivées', () => {
       }
     }
     walk(src)
-    const missing = [...used].filter(c => !ARCHIVE_COLLECTIONS.includes(c))
+    const missing = [...used].filter(c => !ARCHIVE_COLLECTIONS.includes(c) && !HORS_ARCHIVE.includes(c))
     expect(missing).toEqual([])
   })
 })

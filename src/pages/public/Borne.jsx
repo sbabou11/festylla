@@ -30,13 +30,14 @@ import useKioskMode from '../../hooks/useKioskMode'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
 import { createWedge } from '../../utils/scanWedge'
 import { SPEC_CODE } from '../../utils/specCode'
-import { getSpectateur, setCurrentEvent, watchMenu, createCommande, getSettings, lireCode, utiliserCode } from '../../firebase/service'
+import { setCurrentEvent, watchMenu, createCommande, getSettings, lireCode, utiliserCode } from '../../firebase/service'
 import { db } from '../../firebase/config'
-import { collection, onSnapshot } from 'firebase/firestore'
+import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { watchCarte } from '../../menu/carte'
 import { organiserCarte, ticketsParStand } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
 import { parseBenevoleQr, parseArtisteQr } from '../../utils/benevoleQr'
+import { parseSecours } from '../../utils/qrTournant'
 import { apiFetch } from '../../firebase/session'
 
 // ─── Étapes du flux ─────────────────────────────────────────────────────
@@ -201,38 +202,32 @@ export default function Borne() {
     return () => { offCarte(); offCats() }
   }, [eventReady])
 
-  // ─── Validation d'un ID spectateur (commun QR + saisie manuelle) ──────
-  // Recherche dans Firestore, valide, puis passe à l'étape suivante.
-  const validateSpec = useCallback(async (rawId) => {
-    if (!rawId) return
+  // ─── Ouverture d'un compte spectateur (20/11/2026) ─────────────────────
+  // On ne paie plus avec le code « FY-… » : le serveur vérifie le QR tournant de l'espace (ou le
+  // code de secours si « Scanner en panne » est activé), puis autorise la borne sur ce seul compte.
+  const [scannerEnPanne, setScannerEnPanne] = useState(false)
+  useEffect(() => {
+    if (!eventReady) return
+    const ev = new URLSearchParams(window.location.search).get('ev')
+    return onSnapshot(doc(db, 'events', ev, 'settings', 'global'),
+      snap => setScannerEnPanne(snap.data()?.scannerEnPanne === true), () => {})
+  }, [eventReady])
+
+  // preuve : { qr: jeton } ou { secours: 'KT-4821' }
+  const validateSpec = useCallback(async (preuve) => {
+    if (!preuve) return
     setError('')
     setLoading(true)
     try {
-      // Normalisation : nettoie espaces, met en majuscules, retire URL si QR
-      // a encodé une URL complète (ex: https://festishop.festylla.com/spec/FY-XYZ)
-      let id = String(rawId).trim().toUpperCase()
-      // Si on a une URL avec un FY- dedans, extrait
-      const match = id.match(SPEC_CODE)
-      if (match) id = match[0]
-
-      if (!id.startsWith('FY-')) {
-        setError('Code spectateur invalide. Format attendu : FY-XXXX.')
-        return
-      }
-      // Recherche dans Firestore
-      const found = await getSpectateur(id)
-      if (!found) {
-        setError(`Code spectateur "${id}" introuvable. Vérifiez votre QR ou demandez à la caisse.`)
-        return
-      }
-      // Succès : on stocke le spectateur et on passe à l'étape suivante
-      // (pour l'instant juste affichage temporaire d'un message — le menu sera
-      // ajouté au Lot 2)
-      setSpec(found)
+      const ev = new URLSearchParams(window.location.search).get('ev')
+      const r = await apiFetch('/api/qr', { body: { action: 'identifier', ev, ...preuve } })
+      const snap = await getDoc(doc(db, 'events', ev, 'spectateurs', r.compte.docId))
+      if (!snap.exists()) { setError('Compte introuvable. Demandez à la billetterie.'); return }
+      setSpec({ ...snap.data(), _docId: snap.id })
       setStep(STEP.MENU)
     } catch (e) {
       console.error('Borne validateSpec:', e)
-      setError('Erreur de connexion. Réessayez dans un instant.')
+      setError(e.status ? e.message : 'Erreur de connexion. Réessayez dans un instant.')
     } finally {
       setLoading(false)
     }
@@ -313,7 +308,9 @@ export default function Borne() {
   useEffect(() => {
     if (!scanActive) return
     const wedge = createWedge({
-      onScan: (code) => { setStep(STEP.IDENTIFICATION); validateRef.current(code) },
+      onTournant: (jeton) => { setStep(STEP.IDENTIFICATION); validateRef.current({ qr: jeton }) },
+      // Ancien QR fixe ou code « FY-… » : il ne permet plus de payer
+      onScan: () => { setStep(STEP.IDENTIFICATION); setError('Ce QR ne fonctionne plus. Ouvrez votre espace YllaCash sur votre téléphone et présentez le QR qui s\'y affiche.') },
       onUnknown: (texte, lectureCodes, lectureTouches) => {
         const b = parseBenevoleQr(lectureTouches, lectureCodes, texte)
         if (b) { benevRef.current(b); return }
@@ -368,6 +365,7 @@ export default function Borne() {
       ) : step === STEP.IDENTIFICATION ? (
         <Identification
           onValidated={validateSpec}
+          secours={scannerEnPanne}
           onCancel={resetSession}
           loading={loading}
           error={error}
@@ -570,8 +568,8 @@ function Accueil({ onStart, onCode, logoUrl }) {
 // ════════════════════════════════════════════════════════════════════
 // Écran 2 — Identification (QR + saisie manuelle)
 // ════════════════════════════════════════════════════════════════════
-function Identification({ onValidated, onCancel, loading, error }) {
-  // Saisie manuelle du code (préfixe FY- ajouté automatiquement à la validation)
+function Identification({ onValidated, onCancel, loading, error, secours = false }) {
+  // Code de secours (2 lettres + 4 chiffres), seulement si « Scanner en panne » est activé
   const [manualInput, setManualInput] = useState('')
 
   // Heure courante (mise à jour chaque minute pour l'en-tête)
@@ -582,11 +580,12 @@ function Identification({ onValidated, onCancel, loading, error }) {
   }, [])
   const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 
-  // Ajout d'une lettre/chiffre au clavier manuel.
-  // On limite à 12 caractères : 4 pour un compte créé sur place, 6 pour un billet du site (12 pour les premiers billets d'essai).
+  // Deux lettres puis quatre chiffres (ex. KT-4821)
   const addChar = (ch) => {
     if (loading) return
-    if (manualInput.length >= 12) return
+    if (manualInput.length >= 6) return
+    const lettre = /[A-Z]/.test(ch)
+    if (manualInput.length < 2 ? !lettre : lettre) return
     setManualInput(prev => prev + ch)
   }
   const removeChar = () => {
@@ -594,9 +593,9 @@ function Identification({ onValidated, onCancel, loading, error }) {
     setManualInput(prev => prev.slice(0, -1))
   }
   const submitManual = () => {
-    if (loading || manualInput.length < 3) return
-    // Reconstitue le code complet avec préfixe FY-
-    onValidated('FY-' + manualInput)
+    const code = parseSecours(manualInput)
+    if (loading || !code) return
+    onValidated({ secours: code })
   }
 
   return (
@@ -639,7 +638,9 @@ function Identification({ onValidated, onCancel, loading, error }) {
           Identifiez-vous
         </div>
         <div style={{ fontSize: 13, color: COLORS.muted }}>
-          Présentez votre QR devant le lecteur, ou saisissez votre identifiant (ex : FY-A2B4)
+          {secours
+            ? 'Présentez le QR de votre espace devant le lecteur, ou tapez le code affiché sous votre QR (ex : KT-4821)'
+            : 'Ouvrez votre espace YllaCash sur votre téléphone et présentez son QR devant le lecteur'}
         </div>
       </div>
 
@@ -649,12 +650,31 @@ function Identification({ onValidated, onCancel, loading, error }) {
         display: 'flex', justifyContent: 'center', alignItems: 'flex-start',
         overflowY: 'auto',
       }}>
-        <ManualKeypad
-          value={manualInput}
-          onAdd={addChar}
-          onRemove={removeChar}
-          onSubmit={submitManual}
-          loading={loading}/>
+        {secours ? (
+          <ManualKeypad
+            value={manualInput}
+            onAdd={addChar}
+            onRemove={removeChar}
+            onSubmit={submitManual}
+            loading={loading}/>
+        ) : (
+          <div style={{
+            background: '#fff', borderRadius: 14, border: `0.5px solid ${COLORS.border}`,
+            padding: 'clamp(20px, 5vh, 48px)', textAlign: 'center', maxWidth: 520, width: '100%',
+          }}>
+            <div style={{
+              width: 'clamp(120px, 22vh, 200px)', height: 'clamp(120px, 22vh, 200px)', margin: '0 auto 16px',
+              border: `4px dashed ${COLORS.teal}`, borderRadius: 18, display: 'grid', placeItems: 'center',
+              color: COLORS.teal, fontSize: 15, fontWeight: 700,
+            }}>QR de votre espace</div>
+            <div style={{ fontSize: 15, color: COLORS.text, lineHeight: 1.5 }}>
+              Le QR de votre espace change toutes les 30 secondes : présentez celui affiché en ce moment.
+            </div>
+            <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 10 }}>
+              Pas de compte ? Commandez à la billetterie, puis touchez « J'ai un code ».
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Message d'erreur (en bas, surimpression) */}
@@ -713,6 +733,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
     try {
       const c = await lireCode(code)
       if (!c) setError('Code inconnu. Vérifiez les 6 chiffres.')
+      else if (c.statut === 'annule') setError('Ce code a été annulé. Refaites votre commande pour obtenir un nouveau code.')
       else if (c.statut !== 'en_attente') setError('Ce code a déjà été utilisé.')
       else setFound(c)
     } catch (e) {
@@ -736,6 +757,9 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
       return
     }
     try {
+      if (found?.origine === 'en-ligne') {
+        await apiFetch('/api/qr', { body: { action: 'identifier', ev: new URLSearchParams(window.location.search).get('ev'), commande: digits } })
+      }
       const r = await utiliserCode(digits, null, { stands })
       onConfirmed({
         ...r,
@@ -903,8 +927,7 @@ function ManualKeypad({ value, onAdd, onRemove, onSubmit, loading }) {
         border: `0.5px solid ${COLORS.border}`,
         flexShrink: 0,
       }}>
-        <span style={{ color: '#B4B2A9', fontWeight: 400 }}>FY-</span>
-        <span>{value}</span>
+        <span>{value.slice(0, 2)}{value.length >= 2 ? '-' : ''}{value.slice(2)}</span>
         <span style={{
           display: 'inline-block', width: 3,
           height: 'clamp(22px, 4vh, 36px)',
@@ -1671,6 +1694,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
       // les commandes borne des commandes staff classiques.
       const cmd = await createCommande({
         specId: spec.id,
+        specDocId: spec._docId,       // ← compte autorisé par le serveur (QR tournant)
         specNom: spec.nom,
         items,
         payNow: true,                 // ← débit immédiat du solde

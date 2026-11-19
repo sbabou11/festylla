@@ -158,7 +158,7 @@ export default async function printArtisteSheet(form, creneauId, eventId) {
   html += '<div class="qr-side">'
   html += '<div>'
   html += '<div class="qr-label">Espace personnel artiste</div>'
-  html += '<div class="qr-hint" style="margin-top:6px">Scannez le QR ou ouvrez le lien pour accéder à votre <strong>créneau</strong>, vos <strong>droits aux avantages</strong> (boissons / repas / eau) et présenter le QR au stand.</div>'
+  html += '<div class="qr-hint" style="margin-top:6px">Scannez le QR ou ouvrez le lien pour accéder à votre <strong>créneau</strong>, vos <strong>droits aux avantages</strong> (boissons / repas / eau) et présenter le QR à la borne.</div>'
   html += '</div>'
   html += '<div class="url-block">'
   html += '<div class="url-label">🔗 Lien direct</div>'

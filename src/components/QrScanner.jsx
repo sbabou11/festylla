@@ -27,14 +27,17 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import clsx from 'clsx'
 import { Camera, CameraOff, Keyboard, Search, X, Clock } from 'lucide-react'
 import useAppStore from '../store/useAppStore'
+import useAuthStore from '../store/useAuthStore'
 import { Tabs, Button, CodeInput, Field, focusFirstInvalid } from '../ui'
 import s from './QrScanner.module.css'
 import { extractSpecId } from '../utils/specCode'
+import { parseQrTournant } from '../utils/qrTournant'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
 
 // Le QR contient soit l'ID direct (FY-XXXX, ou FY- + 6 caractères pour un billet du site) soit une URL
-const parseSpecId = (text) => extractSpecId(text) || text.trim().toUpperCase()
+// Le QR tournant d'un espace spectateur (20/11/2026) passe avant tout : il est transmis entier
+const parseSpecId = (text) => parseQrTournant(text) || extractSpecId(text) || text.trim().toUpperCase()
 
 // Taille cible du scanner (carré). Sera réduite si l'écran est plus petit.
 const SCANNER_TARGET_SIZE = 280
@@ -43,9 +46,9 @@ const SCANNER_TARGET_SIZE = 280
 // hint     : consigne sous la caméra
 // simulate : valeurs du bouton « Simuler un scan », affiché en développement seulement
 export default function QrScanner({
-  onScan, onManual, placeholder = 'ID spectateur (ex: FY-4A2B)',
+  onScan, onManual, placeholder = 'Code de secours (ex : KT-4821)',
   parse = parseSpecId,
-  hint = 'Pointez la caméra vers le QR code du spectateur',
+  hint = "Pointez la caméra vers le QR affiché dans l'espace du spectateur",
   simulate = ['FY-4A2B', 'FY-9C7E', 'FY-1F3D'],
   codeLength, codeStatus = null,
 }) {
@@ -61,7 +64,10 @@ export default function QrScanner({
   const [focusTap, setFocusTap] = useState(null)
   // La recherche par nom et les « récemment servis » ne concernent que les comptes spectateurs :
   // un appelant qui fournit son propre parse (QR de poste…) garde la saisie simple.
-  const searchable = parse === parseSpecId
+  // Sécurité (20/11/2026) : on retrouve un spectateur avec son QR tournant ou son code de secours.
+  // La recherche par nom ou par code « FY-… » reste aux administrateurs, pour dépanner.
+  const role = useAuthStore(st => st.user?.role)
+  const searchable = parse === parseSpecId && ['admin', 'super_admin'].includes(role)
   const scannerRef = useRef(null)
   const containerRef = useRef(null)
   const mountedRef = useRef(true)
@@ -449,7 +455,7 @@ export default function QrScanner({
               <input
                 value={manualVal}
                 onChange={e => setManualVal(e.target.value)}
-                placeholder="Code (FY-1234) ou nom du client"
+                placeholder="Code de secours, ou nom du client"
                 aria-label="Code ou nom du client"
                 className={clsx(s.input, s.inputSearch)}
                 autoComplete="off"
@@ -462,7 +468,7 @@ export default function QrScanner({
               </button>
             )}
           </div>
-          <p className={s.searchHelp}>Tapez le code OU les premières lettres du nom</p>
+          <p className={s.searchHelp}>Administrateur : code de secours, ou premières lettres du nom</p>
 
           {/* Suggestions (apparaissent dès 2 caractères) */}
           {searchResults.length > 0 && (

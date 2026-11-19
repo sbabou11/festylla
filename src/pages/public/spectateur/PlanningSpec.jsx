@@ -143,9 +143,9 @@ function CarteArtisteSpec({ cr, onClose, isFav, onToggleFav, themeColor }) {
             <button onClick={() => {
               const text = cr.artiste + (cr.titre ? ' — ' + cr.titre : '') + '\n🕐 ' + fmt2Spec(cr.debut) + (cr.scene ? ' · 📍 ' + cr.scene : '')
               if (navigator.share) {
-                navigator.share({ title: cr.artiste, text, url: window.location.href }).catch(() => {})
+                navigator.share({ title: cr.artiste, text, url: lienPublic() }).catch(() => {})
               } else {
-                navigator.clipboard?.writeText(text + '\n' + window.location.href).then(() => toast.success('Lien copié')).catch(() => {})
+                navigator.clipboard?.writeText(text + '\n' + lienPublic()).then(() => toast.success('Lien copié')).catch(() => {})
               }
             }}
               style={{ flex:'1 1 140px', display:'flex', alignItems:'center', gap:6, padding:'8px 12px', background:'var(--bg2)', border:'0.5px solid var(--border)', borderRadius:10, fontSize:13, fontWeight:600, color:'var(--text)', cursor:'pointer', fontFamily:'system-ui', justifyContent:'center' }}>
@@ -513,5 +513,12 @@ function PlanningSpec({ planning, eventId, specId, themeColor }) {
   )
 }
 
+
+// Sécurité (20/11/2026) : on partage le programme public, jamais l'adresse de son espace (elle
+// contient le numéro du compte et sa clé)
+const lienPublic = () => {
+  const ev = new URLSearchParams(window.location.search).get('ev')
+  return `${window.location.origin}/live${ev ? `?ev=${encodeURIComponent(ev)}` : ''}`
+}
 
 export default PlanningSpec

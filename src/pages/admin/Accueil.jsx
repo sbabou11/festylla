@@ -69,7 +69,7 @@ const ACTIONS = [
   { key: 'debit',            icon: ShoppingCart,  tone: 'coral',   label: 'Encaisser',           desc: 'Vente au stand' },
   { key: 'commande-sur-place', icon: ShoppingBag, tone: 'coral',   label: 'Commande sur place',  desc: 'Client sans compte, code pour la borne' },
   { key: 'remboursement',    icon: Banknote,      tone: 'gold',    label: 'Remboursement',       desc: 'Ticket, code ou solde' },
-  { key: 'nouveau',          icon: QrCode,        tone: 'gold',    label: 'Nouveau QR code',     desc: 'Inscrire un spectateur' },
+  { key: 'nouveau',          icon: QrCode,        tone: 'gold',    label: 'Compte de secours',   desc: 'Si la liaison du site tombe' },
 ]
 const ACTION_KEYS = ACTIONS.map(a => a.key)
 

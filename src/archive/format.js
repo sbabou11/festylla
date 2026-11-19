@@ -23,6 +23,10 @@ export const ARCHIVE_COLLECTIONS = [
   'entrees', 'billetterie-recus', 'liens', 'benevoles-annuaire', 'programme-em', 'artistes', 'codes', 'demandes-remboursement',
 ]
 
+// Collections volontairement hors de l'archive : secrets et données éphémères que seul le serveur lit
+// (clés des comptes spectateurs). Une édition restaurée n'a plus besoin d'ouvrir les espaces.
+export const HORS_ARCHIVE = ['cles', 'jetons-lien']
+
 // Champs jamais archivés : mots de passe du personnel et des bénévoles
 export const SECRET_FIELDS = ['password', 'passwordHash']
 

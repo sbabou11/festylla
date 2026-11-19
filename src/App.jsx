@@ -69,6 +69,7 @@ const PAGES = {
   'commande-sur-place': lazy(() => import('./pages/billetterie/CommandeSurPlace')),
   nouveau:              lazy(() => import('./pages/billetterie/Nouveau')),
   remboursement:        lazy(() => import('./pages/billetterie/Remboursement')),
+  'lien-perdu':         lazy(() => import('./pages/billetterie/LienPerdu')),
   debit:                lazy(() => import('./pages/stand/Debit')),
   'mon-profil':         lazy(() => import('./pages/shared/MonProfil')),
 }
@@ -86,8 +87,8 @@ const PAGE_TITLES = {
   finances: 'Finances',
   'editeur-template': 'Éditeur template facture',
   menu: 'Carte & menu', staff: 'Équipe', settings: 'Paramètres', credit: 'Créditer',
-  nouveau: 'Nouveau QR', debit: 'Encaisser',
-  remboursement: 'Remboursement',
+  nouveau: 'Compte de secours', debit: 'Encaisser',
+  remboursement: 'Remboursement', 'lien-perdu': 'Lien perdu',
   'commande-sur-place': 'Commande sur place',
   'mon-profil': 'Mon profil',
 }
@@ -188,7 +189,8 @@ const LoginPage    = lazy(() => import('./pages/auth/Login'))
 const EspaceSelector = lazy(() => import('./pages/auth/EspaceSelector'))
 const BenevoleApp  = lazy(() => import('./pages/public/BenevoleApp'))
 const SoldePage    = lazy(() => import('./pages/public/SoldePage'))
-const Inscription  = lazy(() => import('./pages/public/Inscription'))
+// Sécurité (20/11/2026) : plus de création de compte hors du site internet
+const Inscription  = lazy(() => import('./pages/public/InscriptionFermee'))
 // Page de démonstration (identifiants affichés) : développement uniquement
 const DemoLogin    = import.meta.env.DEV ? lazy(() => import('./pages/auth/DemoLogin')) : null
 const LivePlanning = lazy(() => import('./pages/public/LivePlanning'))

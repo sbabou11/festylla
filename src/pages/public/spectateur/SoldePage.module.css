@@ -439,3 +439,11 @@
 .remb_especes { background: var(--green-light); color: var(--green-dark); }
 .rembText { flex: 1; min-width: 0; display: grid; gap: 2px; justify-items: start; }
 .rembInfo { margin: 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--green-light); color: var(--green-dark); font-size: var(--fs-13); line-height: 1.45; }
+
+/* ── QR tournant et code de secours (20/11/2026) ── */
+.secours { display: block; margin-top: 6px; padding: 6px 10px; border-radius: var(--radius-md); background: rgba(255,255,255,.16); font-size: var(--fs-12); }
+.secours b { font: 800 var(--fs-18) var(--font-display); letter-spacing: .06em; margin-left: 4px; }
+.qrBar { display: block; width: min(280px, 70vw); height: 5px; border-radius: 3px; background: #E0F4F4; overflow: hidden; }
+.qrBar i { display: block; height: 100%; background: #009090; transition: width 1s linear; }
+.secoursFull { display: grid; justify-items: center; gap: 2px; padding: 8px 14px; border-radius: 12px; background: #FAEED4; color: #6B4500; font-size: 13px; }
+.secoursFull b { font: 800 30px var(--font-display); letter-spacing: .08em; color: #003048; }

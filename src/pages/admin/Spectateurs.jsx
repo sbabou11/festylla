@@ -112,6 +112,11 @@ export default function Spectateurs({ onNavigate }) {
    *   - Si specsToPrint est null, imprime tous les filtrés ; sinon ce sous-ensemble
    */
   const printAccess = async (specsToPrint = null) => {
+    // Sécurité (20/11/2026) : plus de QR imprimés. La clé d'un compte n'est plus lisible depuis
+    // l'appli ; le spectateur ouvre son espace avec le lien reçu par e-mail et paie avec son QR tournant.
+    toast.info("Les accès ne s'impriment plus : le spectateur ouvre son espace avec le lien reçu par e-mail.")
+    return
+    // eslint-disable-next-line no-unreachable
     const list = specsToPrint || filtered
     if (list.length === 0) { toast.error('Aucun spectateur à imprimer.'); return }
     setPrinting(true)

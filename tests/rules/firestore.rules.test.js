@@ -99,8 +99,14 @@ describe('spectateur', () => {
     const db = as(SPEC)
     await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-K7Q3NP`), { solde: 99999 }))
     await assertFails(setDoc(doc(db, `events/${EV}/reservations/x`), { specId: 'FY-AB2C3D', status: 'pending' }))
-    await assertSucceeds(setDoc(doc(db, `events/${EV}/reservations/x`), { specId: 'FY-K7Q3NP', status: 'pending' }))
+    // Sécurité (20/11/2026) : plus de réservation créée depuis l'espace, seule l'annulation reste
+    await assertFails(setDoc(doc(db, `events/${EV}/reservations/x`), { specId: 'FY-K7Q3NP', status: 'pending' }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/reservations/r1`), { status: 'collected' }))
+    await assertSucceeds(updateDoc(doc(db, `events/${EV}/reservations/r1`), { status: 'cancelled', cancelledBy: 'Awa' }))
     await assertFails(setDoc(doc(db, `events/${EV}/transactions/x`), { specId: 'FY-K7Q3NP', type: 'credit', montant: 5000 }))
+    await assertFails(setDoc(doc(db, `events/${EV}/transactions/y`), { specId: 'FY-K7Q3NP', type: 'annulation', montant: 5000 }))
+    await assertSucceeds(setDoc(doc(db, `events/${EV}/transactions/z`), { specId: 'FY-K7Q3NP', type: 'annulation', montant: 0 }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/menu/m1`), { stock: 0 }))
   })
   it('ne voit rien d\'un autre événement', async () => {
     const { uid, ...claims } = SPEC
@@ -110,13 +116,13 @@ describe('spectateur', () => {
 })
 
 describe('bénévole', () => {
-  it('lit sa fiche, pas celles des autres ; met à jour sa seule consommation', async () => {
+  it('lit sa fiche, pas celles des autres ; ne modifie ni ses droits ni ses consommations', async () => {
     const db = as(BENEV)
     await assertSucceeds(getDoc(doc(db, `events/${EV}/benevoles/b1`)))
     await assertFails(getDoc(doc(db, `events/${EV}/benevoles/b2`)))
     await assertFails(getDocs(collection(db, `events/${EV}/benevoles`)))
-    await assertSucceeds(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { consommation: { repas: 1 } }))
-    await assertSucceeds(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { 'consoJours.2027-05-15.repas': 1 }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { consommation: { repas: 0 } }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { 'consoJours.2027-05-15.repas': 0 }))
     await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { droitsJours: { '2027-05-15': { repas: 9 } } }))
     await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { droits: { repas: 99 } }))
   })
@@ -157,8 +163,16 @@ describe('artiste, borne et écran', () => {
   })
   it('la borne lit un compte et débite son solde, sans rien d\'autre', async () => {
     const db = as(BORNE)
-    await assertSucceeds(getDocs(query(collection(db, `events/${EV}/spectateurs`), where('id', '==', 'FY-AB2C3D'))))
-    await assertSucceeds(updateDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`), { solde: 200 }))
+    // Sécurité (20/11/2026) : sans autorisation du serveur (QR tournant vérifié), ni lecture ni débit
+    await assertFails(getDocs(query(collection(db, `events/${EV}/spectateurs`), where('id', '==', 'FY-AB2C3D'))))
+    await assertFails(getDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`)))
+    await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`), { solde: 0 }))
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), `events/${EV}/autorisations/FY-AB2C3D`), { exp: new Date(Date.now() + 600000) })
+    })
+    await assertSucceeds(getDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`)))
+    await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`), { solde: 999999 }))
+    await assertSucceeds(updateDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`), { solde: 0 }))
     await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`), { nom: 'X' }))
     await assertFails(getDoc(doc(db, `events/${EV}/finances/f1`)))
   })

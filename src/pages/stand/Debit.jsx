@@ -19,6 +19,7 @@ import { Tabs, toast, ConnectionBar } from '../../ui'
 import useSunMode    from '../../store/useSunMode'
 import { friendlyError } from '../../utils/errors'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
+import { identifierSpectateur } from '../../utils/identSpectateur'
 import ArtistServeMode from './ArtistServeMode'
 import ProductGrid     from './pos/ProductGrid'
 import Ticket          from './pos/Ticket'
@@ -147,7 +148,10 @@ export default function Debit() {
 
   // ── Recherche du client (local, puis Firestore sur tous les événements) ──
   const findById = async (raw) => {
-    const uid = String(raw).toUpperCase().trim()
+    // QR tournant ou code de secours : vérifié par le serveur (20/11/2026)
+    let uid
+    try { uid = await identifierSpectateur(raw, { ev: user?.eventId || currentEventId, role: user?.role }) }
+    catch (e) { setScanError(e.message || 'QR non reconnu.'); return }
     if (lastSale.current.id === uid && Date.now() - lastSale.current.at < RESCAN_GUARD_MS) return
     if (client?.id === uid) return
     const local = spectateurs.find(x => x.id === uid)

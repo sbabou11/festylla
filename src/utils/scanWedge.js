@@ -10,6 +10,7 @@
  * Celle qui contient un code spectateur valide l'emporte.
  */
 import { SPEC_CODE } from './specCode'
+import { parseQrTournant } from './qrTournant'
 
 // Touche physique → caractère sur un clavier QWERTY américain : [sans Maj, avec Maj]
 const US = {
@@ -37,8 +38,9 @@ export function parseSpectatorCode(text) {
  * Crée un écouteur de lecteur. feed(event) reçoit chaque keydown ; onScan(code) est appelé
  * quand une rafale se termine par Entrée (ou après un silence) et contient un code valide.
  * onUnknown(texte, lectureCodes, lectureTouches) : rafale lue mais sans code spectateur (QR d'un autre usage).
+ * onTournant(jeton) : QR tournant d'un espace spectateur (20/11/2026), reconnu avant tout le reste.
  */
-export function createWedge({ onScan, onUnknown, maxGapMs = 60, minLength = 6, idleMs = 150, now = () => Date.now() }) {
+export function createWedge({ onScan, onUnknown, onTournant, maxGapMs = 60, minLength = 6, idleMs = 150, now = () => Date.now() }) {
   let byKey = '', byCode = '', last = 0, timer = null
 
   const reset = () => { byKey = ''; byCode = ''; clearTimeout(timer); timer = null }
@@ -46,6 +48,8 @@ export function createWedge({ onScan, onUnknown, maxGapMs = 60, minLength = 6, i
     const keyText = byKey, codeText = byCode
     reset()
     if (Math.max(keyText.length, codeText.length) < minLength) return false
+    const jeton = onTournant ? parseQrTournant(codeText, keyText) : null
+    if (jeton) { onTournant(jeton); return true }
     const code = parseSpectatorCode(keyText) || parseSpectatorCode(codeText)
     if (code) onScan?.(code)
     else onUnknown?.(keyText || codeText, codeText, keyText)

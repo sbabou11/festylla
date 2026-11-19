@@ -297,7 +297,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           Object.entries(grouped).forEach(([type, qty]) => {
             updates[consoPath(type, resa.jourConso || festDay(resa.createdAt))] = increment(-qty)
           })
-          await updateDoc(bRef, updates)
+          // Sécurité (20/11/2026) : le bénévole ne modifie plus ses compteurs ; pour une ancienne
+          // réservation, c'est l'équipe qui rend le droit (page Réservations)
+          await updateDoc(bRef, updates).catch(() => {})
         }
         // Rembourser le stock menu pour chaque article
         for (const it of (resa.items || [])) {
@@ -525,7 +527,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                   <BellRing size={18}/>
                   <span>
                     <b>{readyResas.length > 1 ? `${readyResas.length} commandes prêtes` : 'Votre commande est prête'}</b>
-                    <span>Code #{readyResas[0].code} · présentez votre QR au stand</span>
+                    <span>Code #{readyResas[0].code} · présentez-vous au stand</span>
                   </span>
                   <ChevronRight size={18}/>
                 </button>
@@ -637,7 +639,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
               <DernieresCommandes resas={resas} setTab={setTab}/>
 
               <Button size="lg" block icon={UtensilsCrossed} onClick={() => setTab('commander')}>Commander mon repas</Button>
-              <p className={s.hint}>Présentez votre QR code au stand pour retirer votre commande. Touchez votre pastille en haut à droite pour l'agrandir.</p>
+              <p className={s.hint}>Présentez votre QR code à la borne pour commander. Touchez votre pastille en haut à droite pour l'agrandir.</p>
             </>
           ) : (
             <div className={s.loading}>Chargement…</div>

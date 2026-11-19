@@ -1,8 +1,8 @@
 /**
  * pages/admin/QrEntree.jsx
- * Deux QR codes génériques à afficher dans le festival :
- * 1. Inscription → /inscription  (créer son espace)
- * 2. Mon solde   → /solde        (consulter son solde)
+ * QR code générique à afficher dans le festival : « Retrouver mon espace » → /solde.
+ * Depuis le 20/11/2026, les comptes se créent sur le site internet (plus de QR d'inscription) :
+ * ce QR rouvre l'espace déjà ouvert sur le téléphone du spectateur.
  * La page d'impression (fenêtre séparée) garde ses propres couleurs fixes.
  */
 import React, { useEffect, useRef } from 'react'
@@ -36,30 +36,24 @@ export default function QrEntree() {
   const { theme }    = useAppStore()
   const { currentEventId, events } = useEventStore()
   const festName     = theme?.festName || 'YllaCash'
-  const refInscription = useRef(null)
   const refSolde       = useRef(null)
   const currentEvent = events.find(e => e.id === currentEventId)
 
-  const inscriptionUrl = currentEventId
-    ? window.location.origin + '/inscription?ev=' + currentEventId
-    : window.location.origin + '/inscription'
   const soldeUrl = currentEventId
     ? window.location.origin + '/solde?ev=' + currentEventId
     : window.location.origin + '/solde'
 
   useEffect(() => {
-    if (refInscription.current)
-      QRCode.toCanvas(refInscription.current, inscriptionUrl, { width: 280, margin: 2, color: { dark: '#1a6b7a', light: '#ffffff' } })
     if (refSolde.current)
       QRCode.toCanvas(refSolde.current, soldeUrl, { width: 280, margin: 2, color: { dark: '#534AB7', light: '#ffffff' } })
-  }, [inscriptionUrl, soldeUrl])
+  }, [soldeUrl])
 
-  const printQr = (type) => {
-    const url    = type === 'inscription' ? inscriptionUrl : soldeUrl
-    const titre  = type === 'inscription' ? `${festName} — Créer mon espace` : `${festName} — Consulter mon solde`
-    const color  = type === 'inscription' ? '#009090' : '#6B3FA0'
-    const desc   = type === 'inscription' ? 'Scannez pour créer votre espace festival' : 'Scannez pour consulter votre solde'
-    const imgSrc = type === 'inscription' ? refInscription.current?.toDataURL() : refSolde.current?.toDataURL()
+  const printQr = () => {
+    const url    = soldeUrl
+    const titre  = `${festName} — Retrouver mon espace`
+    const color  = '#6B3FA0'
+    const desc   = 'Scannez pour rouvrir votre espace YllaCash'
+    const imgSrc = refSolde.current?.toDataURL()
     const evLogo = currentEvent?.logoSrc || ''
     const evNom  = currentEvent?.nom || festName
     const evHeader = evLogo || evNom
@@ -157,28 +151,16 @@ export default function QrEntree() {
       )}
 
       <div className={s.qrGrid}>
-        {/* QR 1 — Inscription */}
-        <QrCard
-          canvasRef={refInscription}
-          url={inscriptionUrl}
-          titre="QR code — Créer son espace festival"
-          description="À afficher à l'entrée ou à la billetterie. Les spectateurs scannent pour créer leur compte et obtenir leur QR code personnel."
-          tone="teal"
-          label="Scannez pour créer votre espace"
-          boutonLabel="Imprimer — Inscription"
-          onPrint={() => printQr('inscription')}
-        />
-
         {/* QR 2 — Mon solde */}
         <QrCard
           canvasRef={refSolde}
           url={soldeUrl}
-          titre="QR code — Consulter son solde"
-          description="À afficher aux stands, bars et points de vente. Les spectateurs scannent pour accéder à leur espace et vérifier leur solde."
+          titre="QR code — Retrouver mon espace"
+          description="À afficher près des bornes, des bars et de la billetterie. Le spectateur scanne pour rouvrir son espace sur son téléphone : solde, commande et QR de paiement."
           tone="violet"
-          label="Scannez pour voir votre solde"
-          boutonLabel="Imprimer — Solde"
-          onPrint={() => printQr('solde')}
+          label="Scannez pour rouvrir votre espace"
+          boutonLabel="Imprimer ce QR"
+          onPrint={printQr}
         />
       </div>
 
@@ -186,10 +168,10 @@ export default function QrEntree() {
       <Card title="Comment ça fonctionne ?">
         <ol className={s.steps}>
           {[
-            ['1', 'Inscription (QR vert)',  'Le spectateur scanne le QR vert → entre son nom → son compte est créé → il reçoit son QR code personnel unique.'],
-            ['2', 'Solde (QR violet)',       'Le spectateur scanne le QR violet → saisit son ID → consulte son solde, ses réservations et sa carte.'],
-            ['3', 'QR code personnel',       "Chaque spectateur a un QR unique généré à l'inscription. Il est lié à son compte et son solde."],
-            ['4', 'Plusieurs spots',         'Imprimez autant de QR que nécessaire et placez-les à différents endroits du festival.'],
+            ['1', 'Un compte par billet',   "Le spectateur prend son billet sur le site internet et reçoit par e-mail le lien de son espace."],
+            ['2', 'Ce QR',                  "Il rouvre l'espace déjà ouvert sur le téléphone. Il ne crée pas de compte et ne permet pas de payer."],
+            ['3', 'Payer',                  "Dans son espace, le spectateur présente à la borne son QR de paiement, qui change toutes les 30 secondes."],
+            ['4', 'Sans compte',            'On commande et on paie à la billetterie, qui remet un code à taper sur la borne.'],
           ].map(([num, titre, desc]) => (
             <li key={num} className={s.step}>
               <span className={s.stepNum} aria-hidden="true">{num}</span>
@@ -204,7 +186,7 @@ export default function QrEntree() {
 
       <div className={s.tip}>
         <Lightbulb size={16} aria-hidden="true" className={s.tipIcon}/>
-        <p><strong>Astuce :</strong> Multipliez les QR codes aux endroits stratégiques — entrée, bars, stands merch — pour que chaque spectateur puisse accéder à son espace facilement.</p>
+        <p><strong>Astuce :</strong> Multipliez les QR codes aux endroits stratégiques — entrée, bars, stands merch — pour que chaque spectateur retrouve son espace facilement.</p>
       </div>
     </div>
   )

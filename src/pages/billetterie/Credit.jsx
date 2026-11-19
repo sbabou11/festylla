@@ -3,6 +3,7 @@
  * Flux : scanner → choisir montant (1 tap) → confirmer
  * Boutons larges, coche de réussite et nouveau solde qui défile depuis l'ancien.
  */
+import { identifierSpectateur } from '../../utils/identSpectateur'
 import React, { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
@@ -46,7 +47,10 @@ export default function Credit() {
     : montant > 500 ? 'Le montant ne peut pas dépasser 500 €.' : null
 
   const findById = async (id) => {
-    const uid = id.toUpperCase().trim()
+    // QR tournant ou code de secours : vérifié par le serveur (20/11/2026)
+    let uid
+    try { uid = await identifierSpectateur(id, { ev: user?.eventId || currentEventId, role: user?.role }) }
+    catch (e) { setErr(e.message || 'QR non reconnu.'); return }
 
     // 1. Chercher dans le store local (rapide)
     const local = spectateurs.find(x => x.id === uid)
@@ -120,7 +124,7 @@ export default function Credit() {
       {/* Étape 1 — Scanner */}
       {!spec && (
         <Card title="Identifier le spectateur" subtitle="Scannez le QR code ou entrez l'ID">
-          <QrScanner onScan={findById} placeholder="Ex : FY-4A2B"/>
+          <QrScanner onScan={findById} placeholder="Code de secours (ex : KT-4821)" hint="Scannez le QR affiché dans l'espace du spectateur"/>
           {err && <p className={clsx(s.msg, err === 'Recherche en cours…' ? s.msgInfo : s.msgErr)} role="status">{err}</p>}
         </Card>
       )}

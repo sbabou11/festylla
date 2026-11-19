@@ -22,6 +22,7 @@ import QrScanner from '../../components/QrScanner'
 import { Tabs } from '../../ui'
 import { RemboursementTicketForm, AnnulationCodeForm } from './RemboursementTicket'
 import DemandesRemboursement from './DemandesRemboursement'
+import { identifierSpectateur } from '../../utils/identSpectateur'
 
 // Lot 5 : remboursement par ticket (défaut), annulation d'un code pas encore utilisé,
 // et l'ancien écran (solde restant, correction) dans le troisième onglet.
@@ -62,7 +63,10 @@ function RemboursementCompte() {
 
   // Recherche spectateur (par scan QR ou saisie)
   const findById = async (id) => {
-    const uid = id.toUpperCase().trim()
+    // QR tournant ou code de secours : vérifié par le serveur (20/11/2026)
+    let uid
+    try { uid = await identifierSpectateur(id, { ev: user?.eventId || currentEventId, role: user?.role }) }
+    catch (e) { setErr(e.message || 'QR non reconnu.'); return }
     setErr('Recherche en cours…')
     try {
       const staffEventId = user?.eventId || currentEventId
@@ -233,7 +237,7 @@ function RemboursementCompte() {
             <Banknote size={16} style={{ verticalAlign: 'text-bottom', marginRight: 6, color: 'var(--brand)' }}/>
             Scanner le QR du client
           </div>
-          <QrScanner onScan={findById} placeholder="FY-XXXX"/>
+          <QrScanner onScan={findById} placeholder="Code de secours (ex : KT-4821)" hint="Scannez le QR affiché dans l'espace du spectateur"/>
           {err && (
             <div style={{
               marginTop: 12, padding: '10px 12px',

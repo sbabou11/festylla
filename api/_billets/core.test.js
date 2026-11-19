@@ -60,8 +60,11 @@ describe('réception des ventes et annulations', () => {
     expect(r).toEqual({ created: 2, status: 201, body: { ok: true, crees: 2, retablis: 0 } })
     expect(store.docs.get(SPEC)).toMatchObject({
       id: 'FY-K7Q3NP', nom: 'Awa Exemple', solde: 0, source: 'festylla.com',
-      billet: { code: 'K7Q3NP', ref: '9c1f4e0a7b2d6c35', cle: 'f'.repeat(32), pass: 'Pass 2 jours', jours: 2, prix: 1000, commande: '1058', annule: false, entrees: {} },
+      billet: { code: 'K7Q3NP', ref: '9c1f4e0a7b2d6c35', pass: 'Pass 2 jours', jours: 2, prix: 1000, commande: '1058', annule: false, entrees: {} },
     })
+    // Sécurité (20/11/2026) : la clé n'est plus dans la fiche, mais dans la collection réservée au serveur
+    expect(store.docs.get(SPEC).billet.cle).toBeUndefined()
+    expect(store.docs.get('events/EV1/cles/FY-K7Q3NP')).toEqual({ cle: 'f'.repeat(32) })
     expect(store.docs.get('events/EV1/spectateurs/FY-AB2C3D').billet.prix).toBe(650)
   })
 
@@ -91,6 +94,7 @@ describe('réception des ventes et annulations', () => {
     const r = await handleMessage(store, vente(ID3), { ev: 'EV1', source: 'festylla.com' })
     expect(r.body).toMatchObject({ crees: 0, retablis: 2 })
     expect(store.docs.get(SPEC)).toMatchObject({ solde: 700, billet: { annule: false, entrees: { '2027-05-15': '14:02' } } })
+    expect(store.docs.get('events/EV1/cles/FY-K7Q3NP')).toEqual({ cle: 'f'.repeat(32) })   // la clé d'origine n'est jamais remplacée
   })
 
   it('répond 404 pour un événement inconnu', async () => {
