@@ -291,7 +291,7 @@ function Expected({ attendu, fond, loading }) {
       <div><Banknote size={18} /><span>Espèces attendues</span><b>{fmt(fond + attendu.especes.total)}</b><small>{attendu.especes.n} encaissement{attendu.especes.n > 1 ? 's' : ''}{fond ? ` + fond ${fmt(fond)}` : ''}</small></div>
       <div><CreditCard size={18} /><span>Carte attendue</span><b>{fmt(attendu.cb.total)}</b><small>{attendu.cb.n} encaissement{attendu.cb.n > 1 ? 's' : ''}</small></div>
       {attendu.inconnu.n > 0 && <div><HelpCircle size={18} /><span>{MOYENS.inconnu.label}</span><b>{fmt(attendu.inconnu.total)}</b><small>{attendu.inconnu.n} recharge{attendu.inconnu.n > 1 ? 's' : ''}</small></div>}
-      {attendu.enligne?.n > 0 && <div><Globe size={18} /><span>{MOYENS.enligne.label}</span><b>{fmt(attendu.enligne.total)}</b><small>{attendu.enligne.n} recharge{attendu.enligne.n > 1 ? 's' : ''} · hors caisse</small></div>}
+      {attendu.enligne?.n > 0 && <div><Globe size={18} /><span>{MOYENS.enligne.label}</span><b>{fmt(attendu.enligne.total)}</b><small>{attendu.enligne.n} recharge{attendu.enligne.n > 1 ? 's' : ''}, remboursements déduits · hors caisse</small></div>}
     </div>
   )
 }

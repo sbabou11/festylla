@@ -8,6 +8,18 @@ const tx = (h, montant, moyen, staff = 'Caisse Awa', type = 'credit') =>
   ({ type, montant, moyen, staff, timestamp: new Date(day + h * H).toISOString() })
 
 describe('clôture : montant attendu par mode de paiement', () => {
+  it('remboursements demandés par le spectateur : en ligne hors caisse, SumUp et espèces sortent de la caisse', () => {
+    const r = expectedTill([
+      tx(10, 2000, 'en-ligne', 'Stripe'), tx(11, 1000, 'cb'), tx(12, 1000, 'especes'),
+      { ...tx(13, 1500, 'en-ligne', 'Stripe', 'remboursement'), surPlace: true },
+      { ...tx(14, 750, 'cb', 'Caisse Awa', 'remboursement'), surPlace: true },
+      { ...tx(15, 500, 'especes', 'Caisse Awa', 'remboursement'), surPlace: true },
+    ], { from: day, to: day + 24 * H })
+    expect(r.enligne.total).toBe(500)
+    expect(r.cb.total).toBe(250)
+    expect(r.especes.total).toBe(500)
+  })
+
   const logs = [
     tx(1, 2000, 'especes'), tx(2, 3000, 'cb'), tx(3, 1000, 'especes', 'Caisse Karim'),
     tx(4, 500, undefined),                    // recharge ancienne, sans mode enregistré

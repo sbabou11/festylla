@@ -10,7 +10,7 @@ import s from './HoldButton.module.css'
 
 export default function HoldButton({
   onConfirm, duration = 1200, tone = 'danger', block = false, disabled = false,
-  icon: Icon, doneLabel, hint = 'Maintenir appuyé pour confirmer', className, children,
+  icon: Icon, doneLabel, fillingLabel, hint = 'Maintenir appuyé pour confirmer', className, children,
 }) {
   const [state, setState] = useState('idle') // idle | filling | done
   const timer = useRef(null)
@@ -54,7 +54,7 @@ export default function HoldButton({
       <span className={s.fill} aria-hidden="true" />
       <span className={s.label}>
         {Icon && <Icon size={16} aria-hidden="true" />}
-        {state === 'done' && doneLabel ? doneLabel : children}
+        {state === 'done' && doneLabel ? doneLabel : state === 'filling' && fillingLabel ? fillingLabel : children}
       </span>
       <span className={s.sr}>{hint}</span>
     </button>

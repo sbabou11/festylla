@@ -20,6 +20,7 @@ const SHEETS = {
   planning: { title: 'Planning', cents: [] },
   'volunteer-shifts': { title: 'Créneaux bénévoles', cents: [] },
   'artist-consumptions': { title: 'Consos artistes', cents: ['montant', 'total'] },
+  'demandes-remboursement': { title: 'Demandes de remboursement', cents: ['total'] },
   clotures: { title: 'Clôtures', cents: [] },
   audit: { title: 'Historique', cents: ['montant'] },
   notifications: { title: 'Notifications', cents: [] },

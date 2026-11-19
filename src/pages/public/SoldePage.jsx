@@ -4,12 +4,12 @@
  * barre d'onglets en bas : Solde | Commander | Mes résas | Programme.
  * La logique Firestore (compte, transactions, réservations) est celle de la v4.
  */
-import { ensureSpectatorSession, soldeUrl } from '../../firebase/publicSession'
+import { ensureSpectatorSession, soldeUrl, spectateurOuvert } from '../../firebase/publicSession'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
   Search, Wallet, Clock, Bookmark, LayoutList, BarChart2, CalendarDays, UtensilsCrossed,
-  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft,
+  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
@@ -30,7 +30,8 @@ import NotifBell from '../../components/NotifBell'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
 import { friendlyError } from '../../utils/errors'
-import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, focusFirstInvalid } from '../../ui'
+import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, HoldButton, focusFirstInvalid } from '../../ui'
+import { planRemboursement } from '../../utils/remboursementPlan'
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
 import sp from './spectateur/SoldePage.module.css'
@@ -134,6 +135,10 @@ export default function SoldePage({ demo = null }) {
   const [carte, setCarte]             = useState(demo?.carte || { rayons: [], stands: [] })
   const [categories, setCategories]   = useState(demo?.categories || [])
   const [codes, setCodes]             = useState(demo?.codes || [])
+  // Remboursement du solde demandé depuis l'espace (20/11/2026)
+  const [demandes, setDemandes]       = useState(demo?.demandes || [])
+  const [rembBusy, setRembBusy]       = useState(false)
+  const [rembErr, setRembErr]         = useState('')
   const [rayonId, setRayonId]         = useState(null)
   const [catKey, setCatKey]           = useState(null)
   const [cancelCode, setCancelCode]   = useState(null)
@@ -244,11 +249,25 @@ export default function SoldePage({ demo = null }) {
             snap => setCodes(snap.docs.map(x => x.data())), () => {})
         : () => {}
 
-      unsubsRef.current = [unsubSpec, unsubTx, unsubResa, unsubCodes]
+      const unsubDemandes = eventId
+        ? onSnapshot(query(collection(db, 'events', eventId, 'demandes-remboursement'), where('specId', '==', id)),
+            snap => setDemandes(snap.docs.map(x => ({ ...x.data(), id: x.id }))
+              .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))), () => {})
+        : () => {}
+
+      unsubsRef.current = [unsubSpec, unsubTx, unsubResa, unsubCodes, unsubDemandes]
     } catch { setErr('Erreur de connexion.'); setLoading(false) }
   }
 
   useEffect(() => { if (urlId) findSpec(urlId) }, [urlId, eventId])
+  // Sans numéro dans l'adresse (identifiant tapé à la main, retour de Stripe…) : on rouvre le compte
+  // déjà ouvert sur ce téléphone plutôt que de redemander l'identifiant (20/11/2026)
+  useEffect(() => {
+    if (urlId || demo || !eventId) return
+    let vivant = true
+    spectateurOuvert(eventId).then(id => { if (vivant && id) { setInputId(id); findSpec(id) } }).catch(() => {})
+    return () => { vivant = false }
+  }, [eventId])
 
   useEffect(() => {
     if (!spec?.id) return
@@ -298,7 +317,7 @@ export default function SoldePage({ demo = null }) {
     if (demo) { setRechargeErr('Aperçu : le paiement Stripe ne s\'ouvre pas ici.'); return }
     setRechargeBusy(true); setRechargeErr('')
     try {
-      const r = await apiFetch('/api/paiement', { body: { action: 'creer', ev: eventId, montant: montantChoisi, retour: window.location.href } })
+      const r = await apiFetch('/api/paiement', { body: { action: 'creer', ev: eventId, montant: montantChoisi, retour: soldeUrl(eventId, spec.id, '') } })   // numéro sans la clé : la clé ne part pas chez Stripe ; le téléphone la retient
       window.location.href = r.url
     } catch (e) { setRechargeErr(friendlyError(e, 'Le paiement en ligne est indisponible pour le moment.')); setRechargeBusy(false) }
   }
@@ -312,6 +331,34 @@ export default function SoldePage({ demo = null }) {
     go('accueil')
   }
   const rechargeRecue = retourStripe.session ? txs.find(t => t.stripeSession === retourStripe.session) : null
+
+  // ── Remboursement du solde (20/11/2026) ──
+  const planRemb = spec ? planRemboursement({ solde: spec.solde || 0, txs }) : null
+  const demandeEnCours = demandes.find(d => d.statut === 'en_attente') || null
+  const demandeRecente = demandes.find(d => d.timestamp && Date.now() - Date.parse(d.timestamp) < 10 * 60 * 1000) || null
+  const demandeVue = demandeEnCours || demandeRecente
+  const demanderRemboursement = async () => {
+    setRembErr(''); setRembBusy(true)
+    try {
+      if (demo) {
+        const p = planRemb
+        setDemandes(d => [{ id: 'demo', statut: p.sumup + p.especes > 0 ? 'en_attente' : 'rembourse', total: p.total, timestamp: new Date().toISOString(), date: nowStr(), heure: new Date().toLocaleTimeString('fr-FR'),
+          stripe: { montant: p.stripeTotal, statut: p.stripeTotal ? 'rembourse' : 'sans', rendu: p.stripeTotal },
+          sumup: { montant: p.sumup, statut: p.sumup ? 'a_traiter' : 'sans' }, especes: { montant: p.especes, statut: p.especes ? 'a_traiter' : 'sans' } }, ...d])
+        return
+      }
+      await apiFetch('/api/paiement', { body: { action: 'rembourser', ev: eventId } })
+    } catch (e) { setRembErr(friendlyError(e, 'La demande n\'a pas pu être envoyée. Réessayez.')) }
+    finally { setRembBusy(false) }
+  }
+  const annulerDemande = async () => {
+    if (!demandeEnCours) return
+    setRembErr('')
+    try {
+      if (demo) { setDemandes(d => d.map(x => x.id === demandeEnCours.id ? { ...x, statut: 'annule', sumup: { ...x.sumup, statut: x.sumup.statut === 'a_traiter' ? 'annule' : x.sumup.statut }, especes: { ...x.especes, statut: x.especes.statut === 'a_traiter' ? 'annule' : x.especes.statut } } : x)); return }
+      await apiFetch('/api/paiement', { body: { action: 'annulerDemande', ev: eventId, id: demandeEnCours.id } })
+    } catch (e) { setRembErr(friendlyError(e, 'L\'annulation n\'a pas pu être faite.')) }
+  }
 
   const annulerCode = async (code) => {
     if (demo) { setCodes(cs => cs.map(c => c.code === code ? { ...c, statut: 'annule' } : c)); return }
@@ -453,7 +500,7 @@ export default function SoldePage({ demo = null }) {
   }
 
   const NAV = [
-    { id: 'accueil',      label: 'Solde',     icon: Wallet,          match: ['accueil', 'historique', 'recharger'] },
+    { id: 'accueil',      label: 'Solde',     icon: Wallet,          match: ['accueil', 'historique', 'recharger', 'rembourser'] },
     { id: 'reserver',     label: 'Commander', icon: UtensilsCrossed, match: ['reserver'] },
     { id: 'reservations', label: 'Mes résas', icon: Bookmark,        match: ['reservations'], badge: activeResas.length + codesAttente.length },
     { id: 'programme',    label: 'Programme', icon: CalendarDays,    match: ['programme'], badge: nonLuPlanning },
@@ -564,6 +611,11 @@ export default function SoldePage({ demo = null }) {
               {/* Recharge en ligne par Stripe (19/11/2026) */}
               <Button variant="coral" size="lg" block icon={CreditCard} onClick={() => { setRechargeErr(''); go('recharger') }}>Recharger mon solde</Button>
               <p className={sp.topup}><Ticket size={14} aria-hidden="true" /> Carte, Apple Pay ou Google Pay · ou à la billetterie</p>
+              {(demandeEnCours || (spec.solde || 0) > 0) && (
+                <button type="button" className={sp.rembLink} onClick={() => { setRembErr(''); go('rembourser') }}>
+                  {demandeEnCours ? 'Suivre ma demande de remboursement' : 'Demander le remboursement de mon solde'}
+                </button>
+              )}
 
               <section className={sp.card}>
                 <header className={sp.cardHead}>
@@ -609,6 +661,66 @@ export default function SoldePage({ demo = null }) {
               )}
               <Button variant="ghost" block onClick={() => go('accueil')}>Retour au solde</Button>
             </section>
+          )}
+
+          {/* ── REMBOURSER LE SOLDE (20/11/2026) ── */}
+          {tab === 'rembourser' && (
+            <div className={sp.stack}>
+              <button type="button" className={sp.back} onClick={() => go('accueil')}><ArrowLeft size={16} /> Mon solde</button>
+              {demandeVue ? (
+                <section className={sp.card}>
+                  <div className={sp.rembHead}>
+                    <h2>Ma demande</h2>
+                    <Badge tone={{ en_attente: 'warning', rembourse: 'success', annule: 'neutral', refuse: 'danger', echec: 'danger' }[demandeVue.statut] || 'neutral'}>
+                      {{ en_attente: 'En cours', rembourse: 'Remboursé', annule: 'Annulée', refuse: 'Refusée', echec: 'Échec' }[demandeVue.statut] || '—'}
+                    </Badge>
+                  </div>
+                  <p className={sp.muted}>{fmt(demandeVue.total || 0)} · demandée le {String(demandeVue.date || '').slice(0, 5)} à {String(demandeVue.heure || '').slice(0, 5)}</p>
+                  <div className={sp.rembLines}>
+                    {demandeVue.stripe?.statut !== 'sans' && (
+                      <RembLigne kind="enligne" titre="Carte du paiement en ligne" montant={demandeVue.stripe.rendu ?? demandeVue.stripe.montant}
+                        etat={{ rembourse: ['success', 'Remboursé · 5 à 10 jours'], partiel: ['warning', 'Remboursé en partie'], echec: ['danger', 'Refusé par la banque'], en_cours: ['warning', 'En cours'] }[demandeVue.stripe.statut]} />
+                    )}
+                    {demandeVue.sumup?.statut !== 'sans' && (
+                      <RembLigne kind="sumup" titre="Carte utilisée à la billetterie" montant={demandeVue.sumup.rendu ?? demandeVue.sumup.montant} etat={ETAT_PART[demandeVue.sumup.statut]} />
+                    )}
+                    {demandeVue.especes?.statut !== 'sans' && (
+                      <RembLigne kind="especes" titre="Espèces" montant={demandeVue.especes.rendu ?? demandeVue.especes.montant} etat={ETAT_PART[demandeVue.especes.statut]} />
+                    )}
+                  </div>
+                  {demandeVue.statut === 'en_attente' && (
+                    <p className={sp.rembInfo}><b>Solde restant : {fmt(spec.solde || 0)}.</b> Présentez votre QR à la billetterie pour la suite. Vous pouvez encore dépenser votre solde d'ici là.</p>
+                  )}
+                  {demandeVue.stripe?.statut === 'echec' && (
+                    <p className={sp.error} role="alert">La banque a refusé le remboursement sur la carte : le montant est revenu sur votre solde. Présentez-vous à la billetterie.</p>
+                  )}
+                  {rembErr && <p className={sp.error} role="alert">{rembErr}</p>}
+                  {demandeVue.statut === 'en_attente'
+                    ? <Button variant="secondary" block onClick={annulerDemande}>Annuler la partie billetterie</Button>
+                    : (spec.solde || 0) > 0 && <Button variant="secondary" block onClick={() => setDemandes(d => d.map(x => x.id === demandeVue.id ? { ...x, timestamp: '' } : x))}>Nouvelle demande</Button>}
+                </section>
+              ) : planRemb && planRemb.total > 0 ? (
+                <section className={sp.card}>
+                  <h2>Remboursement</h2>
+                  <span className={sp.catTitle}>Solde restant</span>
+                  <b className={sp.rechargeMontant} style={{ color: 'var(--text)' }}>{fmt(planRemb.total)}</b>
+                  <div className={sp.rembLines}>
+                    {planRemb.stripeTotal > 0 && <RembLigne kind="enligne" titre="Rechargé en ligne" sous="remboursé tout de suite sur votre carte" montant={planRemb.stripeTotal} />}
+                    {planRemb.sumup > 0 && <RembLigne kind="sumup" titre="Carte à la billetterie" sous="remboursé par la billetterie" montant={planRemb.sumup} />}
+                    {planRemb.especes > 0 && <RembLigne kind="especes" titre="Espèces" sous="à reprendre à la billetterie" montant={planRemb.especes} />}
+                  </div>
+                  {rembErr && <p className={sp.error} role="alert">{rembErr}</p>}
+                  <HoldButton tone="coral" block duration={3000} disabled={rembBusy} onConfirm={demanderRemboursement}
+                    fillingLabel="Gardez appuyé…" doneLabel="Demande envoyée" hint="Gardez le doigt appuyé 3 secondes pour confirmer">
+                    Me faire rembourser {fmt(planRemb.total)}
+                  </HoldButton>
+                  <p className={clsx(sp.muted, sp.center)}>Gardez le doigt appuyé 3 secondes pour confirmer</p>
+                  <p className={clsx(sp.muted, sp.center)}>Aucun frais. Relâcher avant la fin n'envoie rien.</p>
+                </section>
+              ) : (
+                <Empty icon={Wallet} title="Rien à rembourser">Votre solde est à zéro.</Empty>
+              )}
+            </div>
           )}
 
           {/* ── RECHARGER (Stripe) ── */}
@@ -895,6 +1007,29 @@ export default function SoldePage({ demo = null }) {
         </>}>
         Le stand ne la préparera pas. Vous pourrez repasser commande à tout moment.
       </Dialog>
+    </div>
+  )
+}
+
+// ── Remboursement du solde : une ligne par chemin (carte en ligne, carte billetterie, espèces) ──
+const ETAT_PART = {
+  a_traiter: ['warning', 'À la billetterie'],
+  rembourse: ['success', 'Remboursé'],
+  annule:    ['neutral', 'Annulé'],
+  refuse:    ['danger', 'Refusé'],
+}
+const REMB_ICON = { enligne: Globe, sumup: CreditCard, especes: Banknote }
+function RembLigne({ kind, titre, sous, montant, etat }) {
+  const Icon = REMB_ICON[kind]
+  return (
+    <div className={sp.rembLine}>
+      <span className={clsx(sp.rembIcon, sp['remb_' + kind])}><Icon size={16} aria-hidden="true" /></span>
+      <span className={sp.rembText}>
+        <span>{titre}</span>
+        {sous && <span className={sp.muted}>{sous}</span>}
+        {etat && <Badge tone={etat[0]}>{etat[1]}</Badge>}
+      </span>
+      <b>{fmt(montant || 0)}</b>
     </div>
   )
 }

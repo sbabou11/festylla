@@ -1,0 +1,30 @@
+/* Demandes de remboursement du solde (20/11/2026) */
+.stack { display: grid; gap: var(--space-3); }
+.label { font-size: var(--fs-12); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.muted { margin: 0; font-size: var(--fs-12); color: var(--muted); line-height: 1.4; }
+.hint { margin: 0; font-size: var(--fs-13); color: var(--text); line-height: 1.45; }
+.err { margin: 0; padding: 10px 12px; border-radius: var(--radius); background: var(--red-light); color: var(--red-dark); font-size: var(--fs-13); font-weight: 600; }
+.back { justify-self: start; display: inline-flex; align-items: center; gap: 4px; min-height: 36px; padding: 0; border: none; background: none; color: var(--muted); font: 600 var(--fs-13) var(--font); cursor: pointer; }
+
+.row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.row:hover { border-color: var(--brand); }
+.rowMain { display: grid; gap: 2px; min-width: 0; }
+.rowEnd { display: grid; justify-items: end; gap: 4px; flex-shrink: 0; }
+.rowEnd b { font: 800 var(--fs-16) var(--font-display); font-variant-numeric: tabular-nums; }
+
+.card { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); }
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); }
+.head > div { display: grid; gap: 2px; }
+.nom { font: 800 var(--fs-18) var(--font-display); }
+.total { display: flex; justify-content: space-between; align-items: baseline; }
+.total b { font: 800 26px var(--font-display); font-variant-numeric: tabular-nums; }
+
+.part { display: grid; gap: var(--space-2); justify-items: start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg2); }
+.partHead { display: flex; align-items: center; gap: 10px; width: 100%; font-size: var(--fs-13); }
+.partHead > b { font-variant-numeric: tabular-nums; }
+.partText { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.part > button { justify-self: stretch; }
+.icon { width: 30px; height: 30px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); }
+.enligne { background: var(--brand-light); color: var(--brand-dark); }
+.sumup { background: var(--gold-light); color: var(--gold-dark); }
+.especes { background: var(--green-light); color: var(--green-dark); }

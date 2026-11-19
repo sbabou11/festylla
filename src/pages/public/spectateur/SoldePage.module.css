@@ -424,3 +424,18 @@
 /* Carte article : toucher ouvre la fiche (20/11/2026) */
 .itemClick { cursor: pointer; }
 .itemClick:hover { border-color: var(--brand); }
+
+/* ── Remboursement du solde (20/11/2026) ── */
+.rembLink { justify-self: center; min-height: 36px; padding: 0 8px; border: none; background: none; color: var(--brand); font: 600 var(--fs-13) var(--font); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.rembHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rembHead h2 { margin: 0; }
+.rembLines { display: grid; }
+.rembLine { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: var(--fs-13); }
+.rembLine + .rembLine { border-top: 1px dashed var(--border2); }
+.rembLine > b { font-variant-numeric: tabular-nums; }
+.rembIcon { width: 30px; height: 30px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); }
+.remb_enligne { background: var(--brand-light); color: var(--brand-dark); }
+.remb_sumup { background: var(--gold-light); color: var(--gold-dark); }
+.remb_especes { background: var(--green-light); color: var(--green-dark); }
+.rembText { flex: 1; min-width: 0; display: grid; gap: 2px; justify-items: start; }
+.rembInfo { margin: 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--green-light); color: var(--green-dark); font-size: var(--fs-13); line-height: 1.45; }

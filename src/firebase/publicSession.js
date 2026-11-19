@@ -27,6 +27,12 @@ export function soldeUrl(ev, id, cle = rememberedKey(ev, id)) {
   return `${window.location.origin}/solde?id=${id}${ev ? `&ev=${ev}` : ''}${cle ? `&k=${cle}` : ''}`
 }
 
+/** Compte spectateur déjà ouvert sur ce téléphone pour l'événement (retour de Stripe, appli installée…) */
+export async function spectateurOuvert(ev) {
+  const c = await claims()
+  return c?.type === 'spectateur' && (c.eventIds || []).includes(ev) && c.specId ? c.specId : null
+}
+
 /**
  * Ouvre (ou garde) une session sur le compte `id`. Renvoie { ok, error?, staff? }.
  * La clé vient de l'adresse (&k=) ou du téléphone, qui la retient après la première ouverture.

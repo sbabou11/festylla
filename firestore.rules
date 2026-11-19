@@ -196,6 +196,13 @@ service cloud.firestore {
                       && onlyChanges(['statut', 'annuleLe']);
         allow delete: if isAdmin();
       }
+      // Demandes de remboursement du solde (20/11/2026) : créées par le serveur (api/paiement) ;
+      // le spectateur lit les siennes ; la billetterie traite les parts SumUp et espèces.
+      match /demandes-remboursement/{id} {
+        allow read: if staffIn(ev) || legacy(ev)
+                    || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId);
+        allow update: if staffIn(ev) || legacy(ev);
+      }
       match /_counters/{id} {
         allow read, write: if staffIn(ev) || legacy(ev) || sess('borne', ev) || sess('benevole', ev);
       }

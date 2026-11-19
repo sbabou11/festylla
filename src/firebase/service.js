@@ -2557,6 +2557,7 @@ export const rembourserTicket = async ({ commandeId, ticketKey, numeroTicket, in
     const cmd = cSnap.data()
     const specSnap = specRef ? await txn.get(specRef) : null
     if (cmd.source === 'benevole') throw new Error('Commande de bénévole : offerte sur ses droits, rien à rembourser.')
+    if (cmd.source === 'artiste') throw new Error("Commande d'artiste : offerte sur ses avantages, rien à rembourser.")
     if (!cmd.paid) throw new Error("Cette commande n'a pas été payée : rien à rembourser.")
     if (cmd.refunded || cmd.status === 'cancelled') throw new Error('Cette commande a déjà été annulée et remboursée.')
     if (cmd.remboursements?.[ticketKey]) throw new Error('Ce ticket a déjà été remboursé.')
@@ -4315,4 +4316,75 @@ export const deleteFinanceDocument = async (financeId, path, evId = null) => {
   })
   await audit('FINANCE_DOC_DELETE', { financeId, userType: 'admin',
     label: 'Justificatif supprimé' })
+}
+
+// ════════════════════════════════════════════════════════════════════
+// DEMANDES DE REMBOURSEMENT DU SOLDE (20/11/2026)
+// ════════════════════════════════════════════════════════════════════
+// Le spectateur demande depuis son espace (api/paiement, action « rembourser ») : la part en ligne
+// est remboursée aussitôt par Stripe. La billetterie traite ici le reste :
+//   - part SumUp : remboursée dans l'appli SumUp, enregistrée ici (sortie « carte » du terminal) ;
+//   - part espèces : remise au spectateur (sortie du coffre).
+// Le montant rendu ne dépasse jamais le solde du moment (il a pu dépenser entre-temps).
+
+export const watchDemandesRemboursement = (cb, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) return () => {}
+  return onSnapshot(collection(db, 'events', eventId, 'demandes-remboursement'),
+    snap => cb(snap.docs.map(d => ({ ...d.data(), id: d.id }))
+      .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))), () => cb([]))
+}
+
+/** part : 'sumup' | 'especes' */
+export const traiterPartDemande = async ({ demandeId, part, staff }, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) throw new Error('Aucun événement courant')
+  if (!['sumup', 'especes'].includes(part)) throw new Error('Part inconnue')
+  const ref = doc(db, 'events', eventId, 'demandes-remboursement', demandeId)
+  const now = new Date()
+  const rendu = await runTransaction(db, async (txn) => {
+    const d = await txn.get(ref)
+    if (!d.exists()) throw new Error('Demande introuvable.')
+    const dem = d.data()
+    if (dem.statut !== 'en_attente' || dem[part]?.statut !== 'a_traiter') throw new Error('Cette part est déjà traitée.')
+    const specRef = doc(db, 'events', eventId, 'spectateurs', dem.specDoc)
+    const spec = await txn.get(specRef)
+    if (!spec.exists()) throw new Error('Compte introuvable.')
+    const solde = spec.data().solde || 0
+    const m = Math.min(dem[part].montant || 0, solde)
+    if (m <= 0) throw new Error('Le solde est déjà à zéro : rien à rendre.')
+    const autre = part === 'sumup' ? 'especes' : 'sumup'
+    const fini = dem[autre]?.statut !== 'a_traiter'
+    txn.update(specRef, { solde: increment(-m), ...(fini ? { demandeRemboursement: null } : {}) })
+    txn.set(doc(collection(db, 'events', eventId, 'transactions')), {
+      specId: dem.specId, specNom: dem.specNom || '—', type: 'remboursement', surPlace: true,
+      moyen: part === 'sumup' ? 'cb' : 'especes', demandeId,
+      label: part === 'sumup' ? `Remboursement sur carte (SumUp) — demande du spectateur` : `Remboursement en espèces — demande du spectateur`,
+      montant: m, staff: staff || '—', soldeBefore: solde, soldeAfter: solde - m,
+      date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'), createdAt: serverTimestamp(),
+    })
+    txn.update(ref, {
+      [`${part}.statut`]: 'rembourse', [`${part}.rendu`]: m, [`${part}.par`]: staff || '—', [`${part}.le`]: now.toISOString(),
+      ...(fini ? { statut: 'rembourse' } : {}),
+    })
+    return m
+  })
+  await audit('REMBOURSEMENT_DEMANDE', { montant: rendu, staff, label: `Remboursement ${part === 'sumup' ? 'SumUp' : 'en espèces'} de ${(rendu / 100).toFixed(2)} € (demande du spectateur)` })
+  return rendu
+}
+
+export const refuserDemande = async ({ demandeId, staff, motif }, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) throw new Error('Aucun événement courant')
+  const ref = doc(db, 'events', eventId, 'demandes-remboursement', demandeId)
+  await runTransaction(db, async (txn) => {
+    const d = await txn.get(ref)
+    if (!d.exists() || d.data().statut !== 'en_attente') throw new Error('Cette demande est déjà traitée.')
+    const dem = d.data()
+    const maj = { statut: 'refuse', refusPar: staff || '—', refusMotif: motif || '', refusLe: new Date().toISOString() }
+    ;['sumup', 'especes'].forEach(k => { if (dem[k]?.statut === 'a_traiter') maj[`${k}.statut`] = 'refuse' })
+    txn.update(ref, maj)
+    txn.update(doc(db, 'events', eventId, 'spectateurs', dem.specDoc), { demandeRemboursement: null })
+  })
+  await audit('REMBOURSEMENT_DEMANDE_REFUS', { staff, label: `Demande de remboursement refusée${motif ? ` : ${motif}` : ''}` })
 }

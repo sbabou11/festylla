@@ -21,21 +21,26 @@ import { rembourserSolde, crediterCorrection } from '../../firebase/service'
 import QrScanner from '../../components/QrScanner'
 import { Tabs } from '../../ui'
 import { RemboursementTicketForm, AnnulationCodeForm } from './RemboursementTicket'
+import DemandesRemboursement from './DemandesRemboursement'
 
 // Lot 5 : remboursement par ticket (défaut), annulation d'un code pas encore utilisé,
 // et l'ancien écran (solde restant, correction) dans le troisième onglet.
 export default function Remboursement() {
   const [vue, setVue] = useState('ticket')
+  const [nbDemandes, setNbDemandes] = useState(0)   // demandes des spectateurs à traiter (20/11/2026)
   return (
     <div style={{ maxWidth: 520, margin: '0 auto', display: 'grid', gap: 16 }}>
       <Tabs label="Type de remboursement" value={vue} onChange={setVue} items={[
         { value: 'ticket', label: 'Ticket' },
         { value: 'code',   label: 'Code non utilisé' },
         { value: 'compte', label: 'Solde du compte' },
+        { value: 'demandes', label: nbDemandes ? `Demandes (${nbDemandes})` : 'Demandes' },
       ]}/>
       {vue === 'ticket' && <RemboursementTicketForm/>}
       {vue === 'code' && <AnnulationCodeForm/>}
       {vue === 'compte' && <RemboursementCompte/>}
+      {/* Toujours monté (caché) pour tenir le compteur de l'onglet à jour */}
+      <div hidden={vue !== 'demandes'}><DemandesRemboursement onCount={setNbDemandes}/></div>
     </div>
   )
 }

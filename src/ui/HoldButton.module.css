@@ -25,6 +25,8 @@
 .danger .fill  { background: var(--red); }
 .brand   { background: var(--brand-light); color: var(--brand-dark); }
 .brand .fill   { background: var(--brand); }
+.coral   { background: var(--coral-light); color: var(--coral-dark); }
+.coral .fill   { background: var(--coral); }
 .warning { background: var(--gold-light);  color: var(--gold-dark); }
 .warning .fill { background: var(--gold); }
 
