@@ -13,12 +13,20 @@
  * remise (comptée dans le retour vers Event Manager), commande, valeur offerte (benev-retrait),
  * et code passé à « utilisé ». Un seul ticket, pour le stand coché « Stand des bénévoles ».
  * Limite d'essais sur les clés : la même que pour l'ouverture des pages publiques.
+ *
+ * Artistes (20/11/2026), même parcours :
+ *   { action: 'ouvrir', artiste: true, ev, id: <créneau>, cle }       QR de l'espace artiste
+ *   { action: 'commander', artiste: true, ev, id, cle, lignes }       commande à la borne
+ *   { action: 'commander', ev, code }                                 code d'origine 'artiste'
+ * Avantages décomptés à l'impression (consommations artist-consumptions, une par article),
+ * stock, commande, transaction « artist-gift », code utilisé. Un ticket par stand de l'article.
  */
 const { blockedMinutes, afterFailure, counterKey, PUBLIC_LIMIT, sameKey } = require('../_auth/core')
 const { admin, getDb, clientIp, verifyCaller } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { festDay } = require('../_em/retour')
 const { restants, preparerCommande, standBenevoles } = require('../_borne/benevole')
+const { avantagesDe, dejaPris, restantsArtiste, preparerCommandeArtiste } = require('../_borne/artiste')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/
@@ -47,20 +55,148 @@ module.exports = async (req, res) => {
   const jour = festDay(now)
 
   // Vérifie la clé du lien personnel (QR du bénévole), avec la limite d'essais
-  const verifierLien = async (id, cle) => {
+  const verifierLien = async (id, cle, kind = 'benevole') => {
     if (!ID.test(id)) throw new Refus(400, 'QR incomplet.')
     const ipRef = db.collection('securite-connexions').doc(counterKey('pub', clientIp(req)))
     const ipRec = (await ipRef.get()).data()
     const wait = blockedMinutes(ipRec, now)
     if (wait) throw new Refus(429, `Trop d'essais depuis cette borne. Réessayez dans ${wait} minutes.`)
-    const lien = await evRef.collection('liens').doc(`benevole-${id}`).get()
+    const lien = await evRef.collection('liens').doc(`${kind}-${id}`).get()
     if (!lien.exists || !sameKey(String(cle || '').toLowerCase(), lien.data().cle)) {
       await ipRef.set(afterFailure(ipRec, now, PUBLIC_LIMIT))
       throw new Refus(401, "Ce QR n'est pas ou plus valable. Demandez un nouveau lien à l'organisation.")
     }
   }
 
+  // ── Artistes : fiche (planning ou Event Manager), articles offerts, déjà pris, restants ──
+  const etatArtiste = async (cr, get = (ref) => ref.get()) => {
+    const [pl, em, offertsSnap] = await Promise.all([
+      get(evRef.collection('planning').doc(cr)), get(evRef.collection('artistes').doc(cr)), get(evRef.collection('settings').doc('artistes')),
+    ])
+    const creneau = pl.exists ? pl.data() : null
+    const fiche = !creneau && em.exists && em.data().actif !== false ? em.data() : null
+    if (!creneau && !fiche) throw new Refus(404, 'Artiste introuvable.')
+    if (creneau && creneau.statut === 'annule') throw new Refus(409, 'Ce créneau est annulé.')
+    const offerts = fiche ? ((offertsSnap.exists && offertsSnap.data().articles) || []).map(String) : []
+    const av = creneau ? creneau.avantages || {} : {}
+    const ids = [...new Set([...offerts, ...(av.mealIds || []), ...(av.drinkIds || []), ...(av.eauIds || [])].map(String).filter(x => ID.test(x)))]
+    const menuSnaps = await Promise.all(ids.map(x => get(evRef.collection('menu').doc(x))))
+    const menuById = new Map(menuSnaps.filter(m => m.exists).map(m => [m.id, m.data()]))
+    const { total, typeDe } = avantagesDe({ creneau, em: fiche, jour, offerts, menuById })
+    const [consosSnap, resasSnap] = await Promise.all([
+      get(evRef.collection('artist-consumptions').where('creneauId', '==', cr)),
+      get(evRef.collection('artist-reservations').where('creneauId', '==', cr)),
+    ])
+    // Fiche Event Manager : avantages par jour ; créneau du planning : pour tout le créneau
+    const duJour = (x, champ) => !fiche || festDay(x[champ] || x.timestamp) === jour
+    const consos = consosSnap.docs.map(d => d.data()).filter(c => duJour(c, 'servedAt'))
+    const resasEnAttente = resasSnap.docs.map(d => d.data()).filter(r => r.statut === 'pending' && duJour(r, 'createdAt'))
+    const reste = restantsArtiste(total, dejaPris({ consos, resasEnAttente }))
+    const nom = (creneau ? creneau.artiste : fiche.nom) || 'Artiste'
+    return { nom, reste, typeDe, menuById, total }
+  }
+
+  const commanderArtiste = async ({ cr, lignes, code }) => {
+    const counterRef = evRef.collection('_counters').doc(`commandes-${parisDay.format(new Date(now))}`)
+    const numero = await db.runTransaction(async (t) => {
+      const s = await t.get(counterRef)
+      const n = s.exists ? (s.data().next || 1) : 1
+      t.set(counterRef, { date: parisDay.format(new Date(now)), next: n + 1 }, { merge: true })
+      return n
+    })
+    const r = await db.runTransaction(async (t) => {
+      const codeRef = code ? evRef.collection('codes').doc(code) : null
+      const [codeSnap, carteSnap] = await Promise.all([codeRef ? t.get(codeRef) : null, t.get(evRef.collection('settings').doc('carte'))])
+      if (codeSnap) {
+        const st = codeSnap.data().statut
+        if (st === 'annule') throw new Refus(409, 'Ce code a été annulé.')
+        if (st !== 'en_attente') throw new Refus(409, 'Ce code a déjà été utilisé.')
+      }
+      const etat = await etatArtiste(cr, (ref) => t.get(ref))
+      // Stock lu dans la transaction pour tous les articles demandés (y compris hors avantages, refusés ensuite)
+      const demandes = [...new Set(lignes.map(l => String(l.id || '')).filter(x => ID.test(x)))]
+      const manquants = demandes.filter(x => !etat.menuById.has(x))
+      const extra = await Promise.all(manquants.map(x => t.get(evRef.collection('menu').doc(x))))
+      extra.filter(m => m.exists).forEach(m => etat.menuById.set(m.id, m.data()))
+      const stands = (carteSnap.exists && carteSnap.data().stands) || []
+      const standById = new Map(stands.map(st => [st.id, st]))
+      let prep
+      try { prep = preparerCommandeArtiste({ lignes, menuById: etat.menuById, typeDe: etat.typeDe, restants: etat.reste, standById }) }
+      catch (e) { throw new Refus(409, e.message) }
+
+      const ts = admin.firestore.FieldValue.serverTimestamp()
+      const inc = admin.firestore.FieldValue.increment
+      const date = parisDate.format(new Date(now)), heure = parisTime.format(new Date(now)), iso = new Date(now).toISOString()
+      const resaCode = code || `ART-${numero}`
+      const resume = prep.items.map(i => i.nom + (i.qty > 1 ? ` ×${i.qty}` : '')).join(', ')
+      const cmdRef = evRef.collection('commandes').doc()
+
+      prep.items.forEach(i => {
+        t.update(evRef.collection('menu').doc(i.id), { stock: inc(-i.qty) })
+        for (let k = 0; k < i.qty; k++) {
+          t.set(evRef.collection('artist-consumptions').doc(), {
+            creneauId: cr, artisteNom: etat.nom, articleId: i.id, articleNom: i.nom, type: i.type,
+            servedBy: { uid: null, name: 'Borne' }, servedAt: ts, source: 'borne', commandeId: cmdRef.id, commandeNumero: numero,
+          })
+        }
+      })
+      t.set(cmdRef, {
+        numero, numeroDay: parisDay.format(new Date(now)), specId: null, specNom: etat.nom, creneauId: cr,
+        items: prep.items.map(({ id, nom, qty, prixUnit, standId, standNumero, type }) => ({ id, nom, qty, prixUnit, total: 0, typeArtiste: type, standId, standNumero })),
+        total: 0, status: 'collected', paid: true, paidAt: ts, paidBy: 'Avantages artiste',
+        createdAt: ts, createdBy: 'Borne (artiste)', collectedAt: ts, collectedBy: 'Ticket imprimé',
+        readyAt: null, readyBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null, refunded: false,
+        date, timestamp: iso, heure, source: 'artiste', code: resaCode,
+      })
+      t.set(evRef.collection('transactions').doc(), {
+        type: 'artist-gift', label: `Avantage artiste — ${etat.nom} (borne #${numero}) : ${resume}`,
+        items: prep.items.map(({ nom, qty, type }) => ({ nom, qty, type })),
+        artisteNom: etat.nom, creneauId: cr, benevoleId: null, specId: null, benevoleNom: null, specNom: null,
+        montant: 0, staff: 'Borne', commandeNumero: numero, resaCode, date, timestamp: iso, heure, createdAt: ts,
+      })
+      if (codeRef) t.update(codeRef, { statut: 'utilise', utiliseLe: ts, commandeId: cmdRef.id, commandeNumero: numero })
+      return { items: prep.items, nom: etat.nom }
+    })
+    await evRef.collection('audit').add({
+      action: 'AVANTAGE_ARTISTE_BORNE', creneauId: cr, montant: 0, staff: 'Borne',
+      label: `Commande artiste #${numero} à la borne${code ? ` (code ${code})` : ''} — ${r.nom}`,
+      timestamp: new Date(now).toISOString(), createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }).catch(() => {})
+    return {
+      numero, artiste: r.nom,
+      items: r.items.map(({ nom, qty, prixUnit, standId, standNumero, type }) => ({ nom, qty, prix: prixUnit, standId, standNumero, type })),
+    }
+  }
+
   try {
+    if (body.action === 'ouvrir' && body.artiste) {
+      const id = String(body.id || '')
+      await verifierLien(id, body.cle, 'artiste')
+      const etat = await etatArtiste(id)
+      res.status(200).json({
+        artiste: { id, nom: etat.nom }, restants: etat.reste, total: etat.total, jour,
+        articles: [...etat.typeDe.entries()].filter(([x]) => etat.menuById.has(x)).map(([x, type]) => ({ id: x, type })),
+      })
+      return
+    }
+    if (body.action === 'commander' && body.artiste) {
+      const id = String(body.id || '')
+      await verifierLien(id, body.cle, 'artiste')
+      res.status(200).json(await commanderArtiste({ cr: id, lignes: Array.isArray(body.lignes) ? body.lignes.slice(0, 30) : [] }))
+      return
+    }
+    if (body.action === 'commander' && body.code != null) {
+      const code = String(body.code)
+      if (!CODE.test(code)) throw new Refus(400, 'Code à 6 chiffres attendu.')
+      const c = await evRef.collection('codes').doc(code).get()
+      if (c.exists && c.data().origine === 'artiste') {
+        const cr = String(c.data().creneauId || '')
+        if (!ID.test(cr)) throw new Refus(400, 'Artiste inconnu.')
+        res.status(200).json(await commanderArtiste({ cr, code, lignes: (c.data().items || []).map(i => ({ id: i.id, qty: i.qty })) }))
+        return
+      }
+    }
+
     if (body.action === 'ouvrir') {
       const id = String(body.id || '')
       await verifierLien(id, body.cle)

@@ -24,6 +24,7 @@ import Avatar   from './components/Avatar'
 import UpdateBanner from './components/UpdateBanner'
 import { hasYllaSession } from './firebase/session'
 import LinkGate from './components/LinkGate'
+import InstallPerso from './components/InstallPerso'
 import ArchiveBanner from './components/ArchiveBanner'
 import { useTheme }      from './hooks/useTheme'
 import { useOffline }    from './hooks/useOffline'
@@ -211,16 +212,16 @@ export default function App() {
       {/* Pages publiques (sans connexion staff) */}
       <Route path="/live"        element={page(<LivePlanning />)} />
       {/* Sécurité, lot 2 : ces pages ne s'ouvrent qu'avec un lien valable (&k=…) */}
-      <Route path="/artiste"     element={page(<LinkGate kind="artiste" idParam="cr"><EspaceArtiste /></LinkGate>)} />
+      <Route path="/artiste"     element={page(<InstallPerso nom="Espace artiste"><LinkGate kind="artiste" idParam="cr"><EspaceArtiste /></LinkGate></InstallPerso>)} />
       {DemoLogin && <Route path="/demo" element={page(<DemoLogin />)} />}
-      <Route path="/benevole"    element={page(<LinkGate kind="benevole" idParam="id"><BenevoleApp /></LinkGate>)} />
+      <Route path="/benevole"    element={page(<InstallPerso nom="Espace bénévole"><LinkGate kind="benevole" idParam="id"><BenevoleApp /></LinkGate></InstallPerso>)} />
       {/* Borne self-service au stand : /borne?ev=<eventId>&stand=<numéro> */}
-      <Route path="/borne"       element={page(<LinkGate kind="borne"><Borne /></LinkGate>)} />
+      <Route path="/borne"       element={page(<InstallPerso nom="Borne YllaCash"><LinkGate kind="borne"><Borne /></LinkGate></InstallPerso>)} />
       <Route path="/inscription" element={page(<Inscription />)} />
       <Route path="/register"    element={page(<Inscription />)} />
-      <Route path="/solde"       element={page(<SoldePage />)} />
-      <Route path="/balance"     element={page(<SoldePage />)} />
-      <Route path="/spectateur"  element={page(<SoldePage />)} />
+      <Route path="/solde"       element={page(<InstallPerso nom="Mon solde"><SoldePage /></InstallPerso>)} />
+      <Route path="/balance"     element={page(<InstallPerso nom="Mon solde"><SoldePage /></InstallPerso>)} />
+      <Route path="/spectateur"  element={page(<InstallPerso nom="Mon solde"><SoldePage /></InstallPerso>)} />
       {UiGallery && <Route path="/ui" element={page(<UiGallery />)} />}
       {DevDashboard && <Route path="/ui/dashboard" element={page(<DevDashboard />)} />}
       {DevCaisse && <Route path="/ui/caisse" element={page(<DevCaisse />)} />}

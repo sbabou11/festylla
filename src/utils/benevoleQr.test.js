@@ -14,3 +14,13 @@ describe('parseBenevoleQr', () => {
     expect(parseBenevoleQr('https://x/solde?id=FY-K7Q3NP')).toBeNull()
   })
 })
+
+describe('QR de l\'espace artiste', () => {
+  it('lit le créneau et la clé du lien personnel', async () => {
+    const { parseArtisteQr } = await import('./benevoleQr')
+    const k = 'a'.repeat(32)
+    expect(parseArtisteQr(`https://x.fr/artiste?ev=e1&cr=em-12&k=${k}`)).toEqual({ id: 'em-12', cle: k, ev: 'e1' })
+    expect(parseArtisteQr('{"ev":"e1","cr":"em-12","type":"artiste"}')).toBeNull()
+    expect(parseArtisteQr(`https://x.fr/benevole?ev=e1&id=b1&k=${k}`)).toBeNull()
+  })
+})

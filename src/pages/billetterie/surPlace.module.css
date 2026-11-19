@@ -116,3 +116,6 @@
 @media (max-width: 380px) { .code { font-size: 52px; } }
 .doneText { margin: 0; font-size: var(--fs-13); color: var(--muted); line-height: 1.5; }
 .doneMeta { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-weight: 700; color: var(--text); }
+
+/* Carte article : toucher ouvre la fiche (20/11/2026) */
+.cardClick { cursor: pointer; }

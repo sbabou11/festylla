@@ -36,7 +36,7 @@ import { collection, onSnapshot } from 'firebase/firestore'
 import { watchCarte } from '../../menu/carte'
 import { organiserCarte, ticketsParStand } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
-import { parseBenevoleQr } from '../../utils/benevoleQr'
+import { parseBenevoleQr, parseArtisteQr } from '../../utils/benevoleQr'
 import { apiFetch } from '../../firebase/session'
 
 // ─── Étapes du flux ─────────────────────────────────────────────────────
@@ -258,12 +258,39 @@ export default function Borne() {
     } finally { setLoading(false) }
   }, [])
 
+  // Artistes (20/11/2026) : même parcours ; le serveur renvoie les articles de ses avantages
+  // (type meal / drink / eau) et ses restants. Chaque article sort au stand de cet article.
+  const ouvrirArtiste = useCallback(async ({ id, cle }) => {
+    setError(''); setLoading(true); setStep(STEP.IDENTIFICATION)
+    try {
+      const r = await apiFetch('/api/borne', { body: { action: 'ouvrir', artiste: true, ev: evParam(), id, cle } })
+      const VERS = { meal: 'repas', drink: 'boisson', eau: 'eau' }
+      const rs = r.restants || {}
+      setBenev({
+        kind: 'artiste', id, cle, nom: r.artiste?.nom || 'Artiste',
+        restants: { repas: rs.meal || 0, boisson: rs.drink || 0, eau: rs.eau || 0 },
+        articles: Object.fromEntries((r.articles || []).map(a => [a.id, VERS[a.type]])),
+      })
+      setCart({}); setBenevErr('')
+      setStep(STEP.MENU)
+    } catch (e) {
+      setError(e.message || 'QR artiste non reconnu. Réessayez.')
+    } finally { setLoading(false) }
+  }, [])
+
+  // Ticket d'un artiste : un par stand, sans prix (avantages)
+  const ticketArtiste = (r) => ({
+    artiste: r.artiste || 'Artiste', numero: r.numero, total: 0,
+    items: (r.items || []).map(i => ({ nom: i.nom, qty: i.qty, prix: 0, standId: i.standId })),
+  })
+
   // body : { lignes } (commande à la borne) ou { code } (code de l'espace bénévole)
   const commanderBenevole = useCallback(async (body) => {
     setBenevBusy(true); setBenevErr('')
     try {
       const r = await apiFetch('/api/borne', { body: { action: 'commander', ev: evParam(), ...body } })
-      setLastResa({ benevole: true, numero: r.numero, stand: r.stand, items: r.items || [], parType: r.parType || {}, nom: r.benevole })
+      if (r.artiste) setLastResa(ticketArtiste(r))
+      else setLastResa({ benevole: true, numero: r.numero, stand: r.stand, items: r.items || [], parType: r.parType || {}, nom: r.benevole })
       setCart({})
       setStep(STEP.TICKET)
       return true
@@ -281,6 +308,8 @@ export default function Borne() {
   validateRef.current = validateSpec
   const benevRef = useRef(ouvrirBenevole)
   benevRef.current = ouvrirBenevole
+  const artisteRef = useRef(ouvrirArtiste)
+  artisteRef.current = ouvrirArtiste
   useEffect(() => {
     if (!scanActive) return
     const wedge = createWedge({
@@ -288,8 +317,10 @@ export default function Borne() {
       onUnknown: (texte, lectureCodes, lectureTouches) => {
         const b = parseBenevoleQr(lectureTouches, lectureCodes, texte)
         if (b) { benevRef.current(b); return }
+        const a = parseArtisteQr(lectureTouches, lectureCodes, texte)
+        if (a) { artisteRef.current(a); return }
         setStep(STEP.IDENTIFICATION)
-        setError('Ce QR code n\'est pas reconnu. Présentez le QR de votre espace YllaCash (spectateur ou bénévole).')
+        setError('Ce QR code n\'est pas reconnu. Présentez le QR de votre espace YllaCash (spectateur, bénévole ou artiste).')
       },
     })
     // Phase de capture : la rafale du lecteur (et son Entrée) n'atteint pas les boutons de la page
@@ -352,7 +383,7 @@ export default function Borne() {
           benev={benev}
           benevBusy={benevBusy}
           benevErr={benevErr}
-          onBenevoleCommande={(lignes) => commanderBenevole({ id: benev.id, cle: benev.cle, lignes }).catch(() => {})}
+          onBenevoleCommande={(lignes) => commanderBenevole({ ...(benev.kind === 'artiste' ? { artiste: true } : {}), id: benev.id, cle: benev.cle, lignes }).catch(() => {})}
           carte={carte}
           categories={categories}/>
       ) : step === STEP.PANIER ? (
@@ -699,7 +730,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
 
   const valider = async () => {
     setBusy(true); setError('')
-    if (found?.origine === 'benevole') {
+    if (found?.origine === 'benevole' || found?.origine === 'artiste') {
       try { await onBenevoleCode(digits) }
       catch (e) { setError(e.message || 'Impression impossible. Réessayez.'); setBusy(false) }
       return
@@ -719,7 +750,8 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
 
   const items = found?.items || []
   const enLigne = found?.origine === 'en-ligne'
-  const codeBenev = found?.origine === 'benevole'
+  const codeArtiste = found?.origine === 'artiste'
+  const codeBenev = found?.origine === 'benevole' || codeArtiste
   const keyStyle = {
     background: '#2C2C2A', color: '#fff', border: 'none', borderRadius: 12,
     fontSize: 'clamp(22px, 4vh, 30px)', fontWeight: 700, fontFamily: 'inherit',
@@ -745,7 +777,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
           {found ? 'Votre commande' : 'Entrez votre code'}
         </div>
         <div style={{ fontSize: 14, color: COLORS.muted, marginBottom: 18, textAlign: 'center' }}>
-          {found ? (codeBenev ? 'Commande bénévole : vos droits du jour seront décomptés à l\'impression.' : enLigne ? 'Commandée en ligne. Votre solde sera débité quand vous toucherez « Payer et imprimer ».' : 'Déjà payée à la billetterie. Vérifiez puis touchez « Mes tickets ».') : 'Les 6 chiffres reçus à la billetterie ou dans votre espace'}
+          {found ? (codeArtiste ? 'Commande artiste : vos avantages seront décomptés à l\'impression, un ticket par stand.' : codeBenev ? 'Commande bénévole : vos droits du jour seront décomptés à l\'impression.' : enLigne ? 'Commandée en ligne. Votre solde sera débité quand vous toucherez « Payer et imprimer ».' : 'Déjà payée à la billetterie. Vérifiez puis touchez « Mes tickets ».') : 'Les 6 chiffres reçus à la billetterie ou dans votre espace'}
         </div>
 
         {/* Six cases */}
@@ -1045,14 +1077,20 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
   // ─── Carte organisée : rayons > catégories > articles ───────────────
   // Articles sans stand écartés dès qu'un stand existe (menu/organiser.js)
   // Bénévole : seuls les articles « Consommation bénévole », tous servis au stand des bénévoles
+  // Artiste : seuls les articles de ses avantages, chacun à son stand (type donné par le serveur)
+  const menuVu = useMemo(() => benev?.kind === 'artiste'
+    ? menu.filter(m => benev.articles?.[m.id]).map(m => ({ ...m, typeConsommation: benev.articles[m.id] }))
+    : menu, [menu, benev])
   const org = useMemo(() => organiserCarte(benev
-    ? { menu: menu.filter(m => m.typeConsommation), categories, rayons: carte?.rayons || [], stands: [] }
+    ? benev.kind === 'artiste'
+      ? { menu: menuVu, categories, rayons: carte?.rayons || [], stands: carte?.stands || [] }
+      : { menu: menu.filter(m => m.typeConsommation), categories, rayons: carte?.rayons || [], stands: [] }
     : { menu, categories, rayons: carte?.rayons || [], stands: carte?.stands || [] },
-  ), [menu, categories, carte, benev])
+  ), [menu, menuVu, categories, carte, benev])
   // Droits du bénévole encore libres pour un type, en tenant compte du panier
   const libres = (type) => {
     if (!benev) return Infinity
-    const pris = Object.entries(cart).reduce((n, [id, q]) => n + (menu.find(m => m.id === id)?.typeConsommation === type ? q : 0), 0)
+    const pris = Object.entries(cart).reduce((n, [id, q]) => n + (menuVu.find(m => m.id === id)?.typeConsommation === type ? q : 0), 0)
     return (benev.restants?.[type] || 0) - pris
   }
   const rayon = org.rayons.find(r => r.id === activeRayon) || org.rayons[0] || null
@@ -1062,7 +1100,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
 
   // ─── Helpers panier ─────────────────────────────────────────────────
   const updateQty = (itemId, delta) => {
-    if (benev && delta > 0 && libres(menu.find(m => m.id === itemId)?.typeConsommation) <= 0) return
+    if (benev && delta > 0 && libres(menuVu.find(m => m.id === itemId)?.typeConsommation) <= 0) return
     setCart(prev => {
       const next = { ...prev }
       const current = next[itemId] || 0
@@ -1104,7 +1142,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
           </div>
           <div style={{ fontSize: 16, fontWeight: 600, color: COLORS.marine }}>
             {benev ? benev.nom : (spec?.nom || '—')}
-            {benev && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: '#FDE4D4', color: '#B8470F', borderRadius: 6, padding: '2px 8px' }}>Bénévole</span>}
+            {benev && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: '#FDE4D4', color: '#B8470F', borderRadius: 6, padding: '2px 8px' }}>{benev.kind === 'artiste' ? 'Artiste' : 'Bénévole'}</span>}
           </div>
         </div>
         {benev ? (
@@ -2039,6 +2077,11 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
             border: `1px dashed ${COLORS.border}`, boxShadow: '0 2px 10px rgba(0,48,72,.06)',
             padding: '16px 18px', display: 'grid', gap: 10,
           }}>
+            {resa?.artiste && (
+              <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 800, color: COLORS.marine, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Artiste · {resa.artiste}
+              </div>
+            )}
             {t.stand ? (
               <div style={{ textAlign: 'center', borderBottom: `1px dashed ${COLORS.border}`, paddingBottom: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Stand</div>
@@ -2050,9 +2093,9 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
                 <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 14, color: COLORS.text }}>
                   <span style={{ minWidth: 0 }}>
                     <b>{it.qty}×</b> {it.nom}
-                    <span style={{ display: 'block', fontSize: 11, color: COLORS.muted }}>{((it.prix || 0) / 100).toFixed(2)} € l'unité</span>
+                    {!resa?.artiste && <span style={{ display: 'block', fontSize: 11, color: COLORS.muted }}>{((it.prix || 0) / 100).toFixed(2)} € l'unité</span>}
                   </span>
-                  <span style={{ flexShrink: 0, fontWeight: 600 }}>{((it.prix || 0) * (it.qty || 0) / 100).toFixed(2)} €</span>
+                  {!resa?.artiste && <span style={{ flexShrink: 0, fontWeight: 600 }}>{((it.prix || 0) * (it.qty || 0) / 100).toFixed(2)} €</span>}
                 </div>
               ))}
             </div>
@@ -2060,8 +2103,8 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
               display: 'flex', justifyContent: 'space-between', paddingTop: 8,
               borderTop: `0.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, color: COLORS.marine,
             }}>
-              <span>{tickets.length > 1 ? 'Sous-total' : 'Total'}</span>
-              <span>{(t.sousTotal / 100).toFixed(2)} €</span>
+              <span>{resa?.artiste ? 'Avantages artiste' : tickets.length > 1 ? 'Sous-total' : 'Total'}</span>
+              <span>{resa?.artiste ? 'Offert' : `${(t.sousTotal / 100).toFixed(2)} €`}</span>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Commande</div>
@@ -2070,7 +2113,7 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
           </div>
         ))}
       </div>
-      {tickets.length > 1 && (
+      {tickets.length > 1 && !resa?.artiste && (
         <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.marine, marginBottom: 6 }}>
           Total payé : {(total / 100).toFixed(2)} €
         </div>

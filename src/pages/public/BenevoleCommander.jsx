@@ -11,6 +11,7 @@ import clsx from 'clsx'
 import { KeyRound, Minus, Plus } from 'lucide-react'
 import { organiserCarte } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
+import ArticleInfoModal from '../../components/ArticleInfoModal'
 import s from './benevole/BenevoleCommander.module.css'
 
 const TYPES = ['repas', 'boisson', 'eau']
@@ -20,9 +21,20 @@ const UNITE = { repas: 'repas', boisson: 'boisson', eau: 'eau' }
 export default function BenevoleCommander({
   menu, categories = [], carte = { rayons: [], stands: [] }, cartItems, qtys, setQtys,
   resaDone, setResaDone, resaLoading, resaErr, doCommande, quotaRestant, quotaDroit, setTab,
+  // Espace artiste (20/11/2026) : même écran, autres textes
+  textes = {},
 }) {
+  const T = {
+    droits: "Mes droits aujourd'hui",
+    ticket: 'Elle imprime votre ticket pour le stand des bénévoles.',
+    decompte: 'Vos droits seront décomptés à la borne, sur la journée du jour. Annulable sans frais avant, depuis « Résas ».',
+    ongletCodes: 'mes-resas',
+    epuise: 'Droits du jour atteints',
+    ...textes,
+  }
   const [rayonId, setRayonId] = useState(null)
   const [catKey, setCatKey] = useState(null)
+  const [fiche, setFiche] = useState(null)   // fiche article ouverte (20/11/2026)
 
   // Carte bénévole : articles « Consommation bénévole ». Le stand de chaque article ne compte pas
   // (tout part au stand des bénévoles), donc on organise sans filtrer par stand.
@@ -42,9 +54,9 @@ export default function BenevoleCommander({
         <span className={s.doneIcon}><KeyRound size={26}/></span>
         <h2>Votre code</h2>
         <b className={s.code} aria-label={`Code ${code.split('').join(' ')}`}>{code.slice(0, 3)} {code.slice(3)}</b>
-        <p>Tapez ce code sur la borne, touche « J'ai un code ». Elle imprime votre ticket pour le stand des bénévoles.</p>
-        <p className={s.muted}>Vos droits seront décomptés à la borne, sur la journée du jour. Annulable sans frais avant, depuis « Résas ».</p>
-        <button type="button" className={s.btnSecondary} onClick={() => { setResaDone(null); setTab('mes-resas') }}>Voir mes codes</button>
+        <p>Tapez ce code sur la borne, touche « J'ai un code ». {T.ticket}</p>
+        <p className={s.muted}>{T.decompte}</p>
+        <button type="button" className={s.btnSecondary} onClick={() => { setResaDone(null); setTab(T.ongletCodes) }}>Voir mes codes</button>
         <button type="button" className={s.btnPrimary} onClick={() => setResaDone(null)}>Commander autre chose</button>
       </section>
     )
@@ -53,7 +65,7 @@ export default function BenevoleCommander({
   return (
     <div className={s.stack}>
       <section className={s.card}>
-        <span className={s.label}>Mes droits aujourd'hui</span>
+        <span className={s.label}>{T.droits}</span>
         <div className={s.droits}>
           {TYPES.map(t => (
             <div key={t} className={clsx(s.droit, s[t])}>
@@ -107,11 +119,11 @@ export default function BenevoleCommander({
               const stock = Number(m.stock) || 0
               const canAdd = stock > q && dansPanier(type) < quotaRestant(type)
               return (
-                <div key={m.id} className={clsx(s.item, q > 0 && s.itemOn, stock === 0 && s.itemOut)}>
+                <div key={m.id} className={clsx(s.item, s.itemClick, q > 0 && s.itemOn, stock === 0 && s.itemOut)} onClick={() => setFiche(m)}>
                   <div className={s.photo}>{m.photoUrl ? <img src={m.photoUrl} alt=""/> : <span>{(m.nom || '?').charAt(0)}</span>}</div>
                   <b className={s.itemName}>{m.nom}</b>
                   <span className={clsx(s.badge, s[type])}>{stock === 0 ? 'Épuisé' : `1 ${UNITE[type]}`}</span>
-                  <span className={s.stepper}>
+                  <span className={s.stepper} onClick={e => e.stopPropagation()}>
                     <button type="button" disabled={q === 0} aria-label={`Retirer un ${m.nom}`}
                       onClick={() => setQtys(x => ({ ...x, [m.id]: Math.max(0, (x[m.id] || 0) - 1) }))}><Minus size={16}/></button>
                     <b aria-live="polite">{q}</b>
@@ -122,6 +134,16 @@ export default function BenevoleCommander({
               )
             })}
           </div>
+          {fiche && (() => {
+            const t = fiche.typeConsommation
+            const q = qtys[fiche.id] || 0
+            const max = Math.max(0, Math.min((Number(fiche.stock) || 0) - q, quotaRestant(t) - dansPanier(t)))
+            return (
+              <ArticleInfoModal item={fiche} qty={q} onClose={() => setFiche(null)} sousTitre={`1 ${UNITE[t] || 'article'}`}
+                maxAdd={max} raisonBloque={(Number(fiche.stock) || 0) === 0 ? 'Épuisé' : T.epuise}
+                onAddQty={(n) => setQtys(x => ({ ...x, [fiche.id]: (x[fiche.id] || 0) + n }))} />
+            )
+          })()}
         </section>
       )}
 

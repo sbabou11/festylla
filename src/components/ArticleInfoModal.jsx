@@ -1,196 +1,111 @@
 /**
- * components/ArticleInfoModal.jsx
+ * components/ArticleInfoModal.jsx — fiche article (photo, composition, allergènes, ajout)
  *
- * Modale qui s'ouvre au clic sur une carte article. Affiche :
- *   - L'image en grand (ou placeholder coloré)
- *   - Le nom et le prix
- *   - La description / composition libre
- *   - La liste des allergènes (UE + custom)
+ * S'ouvre au toucher d'une carte article. Sur téléphone, feuille qui monte du bas ; sur tablette
+ * et borne, fenêtre centrée. Maquette validée le 20/11/2026.
  *
- * Style "fiche produit" type Deliveroo/Uber Eats. Affichage en lecture seule
- * (l'ajout au panier reste sur les boutons de la carte parente).
+ * Deux façons d'ajouter :
+ *   onAdd()        un article (borne, caisse) — comportement historique
+ *   onAddQty(n)    choix de la quantité dans la fiche (espaces spectateur, bénévole, billetterie)
+ * maxAdd   : combien on peut encore ajouter (stock, droits) ; 0 = bouton remplacé par la raison
+ * sousTitre: remplace le prix (ex. « 1 repas » pour un bénévole)
  *
- * Utilisée dans : Borne.jsx, PrendreCommande.jsx, Debit.jsx, Carte.jsx
+ * Utilisée dans : Borne.jsx, Debit.jsx, SoldePage.jsx, BenevoleCommander.jsx, CommandeSurPlace.jsx
  */
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Info, AlertTriangle } from 'lucide-react'
+import { X, Info, AlertTriangle, Minus, Plus } from 'lucide-react'
 import { ALLERGENES_BY_CODE, labelAllergene } from '../utils/allergenes'
+import s from './ArticleInfoModal.module.css'
 
-export default function ArticleInfoModal({ item, onClose, onAdd = null, qty = 0 }) {
+const euros = (c) => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
+
+export default function ArticleInfoModal({ item, onClose, onAdd = null, onAddQty = null, qty = 0, maxAdd = Infinity, sousTitre = null, raisonBloque = 'Épuisé' }) {
+  const [n, setN] = useState(1)
+  useEffect(() => { setN(1) }, [item?.id])
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [onClose])
   if (!item) return null
 
-  // Compatibilité : photoUrl (nouveau champ Lot Image 1) ou image (legacy)
   const photoSrc = item.photoUrl || item.image
   const allergenes = Array.isArray(item.allergenes) ? item.allergenes : []
   const allergenesCustom = Array.isArray(item.allergenesCustom) ? item.allergenesCustom : []
   const hasAllergenes = allergenes.length > 0 || allergenesCustom.length > 0
   const hasDescription = item.description && item.description.trim().length > 0
   const placeholderHue = (item.nom || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 360
+  const max = Math.max(0, maxAdd)
+  const qte = Math.min(n, Math.max(1, max))
 
   return createPortal(
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0, 0, 0, 0.55)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1000, padding: 16,
-      }}>
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: '#fff', borderRadius: 16,
-          width: '100%', maxWidth: 440,
-          maxHeight: 'calc(100vh - 32px)', overflow: 'hidden',
-          display: 'flex', flexDirection: 'column',
-          boxSizing: 'border-box',
-        }}>
-        {/* Image hero + bouton close */}
-        <div style={{ position: 'relative', flexShrink: 0, aspectRatio: '1/1', background: '#1a1a1a', overflow: 'hidden' }}>
+    <div className={s.overlay} onClick={onClose}>
+      <div className={s.box} role="dialog" aria-modal="true" aria-label={item.nom} onClick={e => e.stopPropagation()}>
+        <div className={s.hero}>
           {photoSrc ? (
             <>
-              {/* Fond flouté pour combler les bandes laissées par contain */}
-              <div style={{
-                position: 'absolute', inset: 0,
-                backgroundImage: `url(${photoSrc})`,
-                backgroundSize: 'cover', backgroundPosition: 'center',
-                filter: 'blur(22px) brightness(0.7)',
-                transform: 'scale(1.2)',
-              }}/>
-              {/* Photo principale entière, centrée */}
-              <img src={photoSrc} alt={item.nom}
-                style={{
-                  position: 'absolute', inset: 0,
-                  margin: 'auto',
-                  maxWidth: '100%', maxHeight: '100%',
-                  objectFit: 'contain', display: 'block',
-                }}/>
+              <div className={s.heroBlur} style={{ backgroundImage: `url(${photoSrc})` }} />
+              <img className={s.heroImg} src={photoSrc} alt={item.nom} />
             </>
           ) : (
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: `linear-gradient(135deg, hsl(${placeholderHue},35%,55%), hsl(${(placeholderHue+30)%360},45%,30%))`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <span style={{ fontSize: 72, color: 'rgba(255,255,255,0.25)', fontWeight: 700 }}>
-                {item.nom?.[0]?.toUpperCase() || '?'}
-              </span>
+            <div className={s.heroPlaceholder}
+              style={{ background: `linear-gradient(135deg, hsl(${placeholderHue},35%,55%), hsl(${(placeholderHue + 30) % 360},45%,30%))` }}>
+              <span>{item.nom?.[0]?.toUpperCase() || '?'}</span>
             </div>
           )}
-          {item.photoGenerated && photoSrc && (
-            <span style={{
-              position: 'absolute', left: 10, bottom: 10,
-              background: 'rgba(0,0,0,0.5)', color: '#fff',
-              padding: '3px 8px', borderRadius: 4, fontSize: 10,
-            }}>Photo non contractuelle</span>
-          )}
-          <button
-            onClick={onClose}
-            aria-label="Fermer"
-            style={{
-              position: 'absolute', top: 10, right: 10,
-              width: 36, height: 36, borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.95)', border: 'none',
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
-            }}>
-            <X size={18}/>
-          </button>
+          {item.photoGenerated && photoSrc && <span className={s.nonContract}>Photo non contractuelle</span>}
+          <button type="button" className={s.close} onClick={onClose} aria-label="Fermer"><X size={18} /></button>
         </div>
 
-        {/* Contenu scrollable */}
-        <div style={{ padding: '16px 20px 20px', overflowY: 'auto', flex: 1 }}>
-          <h2 style={{
-            margin: '0 0 4px', fontSize: 18, fontWeight: 600,
-            color: 'var(--text, #1a1a1a)',
-          }}>
-            {item.nom}
-          </h2>
-          <div style={{
-            fontSize: 16, fontWeight: 600,
-            color: 'var(--green-dark, #0F6E56)',
-            marginBottom: 16,
-          }}>
-            {((item.prix || 0) / 100).toFixed(2).replace('.', ',')} €
+        <div className={s.body}>
+          <div className={s.titleRow}>
+            <h2 className={s.title}>{item.nom}</h2>
+            <span className={s.price}>{sousTitre ?? euros(item.prix)}</span>
           </div>
 
-          {/* Description / composition */}
           {hasDescription && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{
-                fontSize: 11, fontWeight: 500,
-                color: 'var(--muted, #64748b)',
-                textTransform: 'uppercase', letterSpacing: '0.05em',
-                marginBottom: 6,
-                display: 'flex', alignItems: 'center', gap: 4,
-              }}>
-                <Info size={11}/> Composition
-              </div>
-              <div style={{
-                fontSize: 13, lineHeight: 1.5,
-                color: 'var(--text, #1a1a1a)',
-                whiteSpace: 'pre-wrap',
-              }}>
-                {item.description}
-              </div>
+            <div className={s.block}>
+              <div className={s.label}><Info size={11} aria-hidden="true" /> Composition</div>
+              <div className={s.desc}>{item.description}</div>
             </div>
           )}
 
-          {/* Allergènes */}
           {hasAllergenes && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{
-                fontSize: 11, fontWeight: 500,
-                color: 'var(--muted, #64748b)',
-                textTransform: 'uppercase', letterSpacing: '0.05em',
-                marginBottom: 6,
-                display: 'flex', alignItems: 'center', gap: 4,
-              }}>
-                <AlertTriangle size={11}/> Allergènes
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <div className={s.block}>
+              <div className={s.label}><AlertTriangle size={11} aria-hidden="true" /> Allergènes</div>
+              <div className={s.tags}>
                 {allergenes.map(code => {
                   const a = ALLERGENES_BY_CODE[code]
-                  return (
-                    <span key={code} style={tagStyle}>
-                      {a?.emoji && <span style={{ marginRight: 4 }}>{a.emoji}</span>}
-                      {labelAllergene(code)}
-                    </span>
-                  )
+                  return <span key={code} className={s.tag}>{a?.emoji && <span aria-hidden="true">{a.emoji}</span>}{labelAllergene(code)}</span>
                 })}
-                {allergenesCustom.map((label, i) => (
-                  <span key={`c-${i}`} style={tagStyle}>{label}</span>
-                ))}
+                {allergenesCustom.map((label, i) => <span key={`c-${i}`} className={s.tag}>{label}</span>)}
               </div>
             </div>
           )}
 
-          {/* Pas d'info disponible */}
           {!hasDescription && !hasAllergenes && (
-            <div style={{
-              padding: '10px 12px',
-              background: 'var(--bg2, #f8f9fa)',
-              borderRadius: 8,
-              fontSize: 12, color: 'var(--muted, #64748b)',
-              fontStyle: 'italic', textAlign: 'center',
-            }}>
-              Aucune information de composition renseignée.
-            </div>
+            <div className={s.empty}>Aucune information de composition renseignée.</div>
           )}
 
-          {/* Bouton d'ajout (facultatif, selon contexte d'utilisation) */}
-          {onAdd && (
-            <button
-              onClick={() => { onAdd(); onClose() }}
-              style={{
-                width: '100%', marginTop: 12, padding: '12px 16px',
-                background: 'var(--green-dark, #0F6E56)', color: '#fff',
-                border: 'none', borderRadius: 10,
-                fontSize: 14, fontWeight: 600, cursor: 'pointer',
-                fontFamily: 'inherit',
-              }}>
+          {onAddQty && (
+            max > 0 ? (
+              <div className={s.addRow}>
+                <button type="button" className={s.step} onClick={() => setN(Math.max(1, qte - 1))} disabled={qte <= 1} aria-label="Un de moins"><Minus size={16} /></button>
+                <b className={s.qty} aria-live="polite">{qte}</b>
+                <button type="button" className={s.step} onClick={() => setN(Math.min(max, qte + 1))} disabled={qte >= max} aria-label="Un de plus"><Plus size={16} /></button>
+                <button type="button" className={s.add} onClick={() => { onAddQty(qte); onClose() }}>
+                  Ajouter{sousTitre ? '' : ` · ${euros((item.prix || 0) * qte)}`}
+                </button>
+              </div>
+            ) : (
+              <div className={s.blocked}>{raisonBloque}</div>
+            )
+          )}
+          {qty > 0 && onAddQty && <p className={s.inCart}>Déjà {qty} dans le panier</p>}
+
+          {onAdd && !onAddQty && (
+            <button type="button" className={s.add} style={{ width: '100%', marginTop: 12 }} onClick={() => { onAdd(); onClose() }}>
               {qty > 0 ? `Ajouter encore — déjà ${qty} dans le panier` : 'Ajouter au panier'}
             </button>
           )}
@@ -199,12 +114,4 @@ export default function ArticleInfoModal({ item, onClose, onAdd = null, qty = 0 
     </div>,
     document.body
   )
-}
-
-const tagStyle = {
-  display: 'inline-flex', alignItems: 'center',
-  fontSize: 11, padding: '4px 10px', borderRadius: 12,
-  background: 'var(--amber-light, #FAEEDA)',
-  color: 'var(--amber-dark, #854F0B)',
-  whiteSpace: 'nowrap',
 }

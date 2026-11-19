@@ -17,6 +17,7 @@ import { watchProgramme } from '../../programme/watchProgramme'
 import { getSettings, creerCodeEnLigne, annulerCodeEnLigne } from '../../firebase/service'
 import { watchCarte } from '../../menu/carte'
 import { apiFetch } from '../../firebase/session'
+import ArticleInfoModal from '../../components/ArticleInfoModal'
 import { organiserCarte } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
 import {
@@ -136,6 +137,7 @@ export default function SoldePage({ demo = null }) {
   const [rayonId, setRayonId]         = useState(null)
   const [catKey, setCatKey]           = useState(null)
   const [cancelCode, setCancelCode]   = useState(null)
+  const [fiche, setFiche]             = useState(null)   // fiche article ouverte (20/11/2026)
   // Recharge en ligne par Stripe (19/11/2026) : retour de la page de paiement avec ?recharge=<session> ou ?annule=1
   const [montantRecharge, setMontantRecharge] = useState(2000)
   const [autreMontant, setAutreMontant]       = useState('')
@@ -719,7 +721,7 @@ export default function SoldePage({ demo = null }) {
                           const stock = m.stock || 0
                           const q = qtys[m.id] || 0
                           return (
-                            <div key={m.id} className={clsx(sp.item, q > 0 && sp.itemOn, stock === 0 && sp.menuOut)}>
+                            <div key={m.id} className={clsx(sp.item, sp.itemClick, q > 0 && sp.itemOn, stock === 0 && sp.menuOut)} onClick={() => setFiche(m)}>
                               <div className={sp.itemPhoto}>
                                 {m.photoUrl ? <img src={m.photoUrl} alt="" /> : <span>{(m.nom || '?').charAt(0)}</span>}
                               </div>
@@ -728,7 +730,7 @@ export default function SoldePage({ demo = null }) {
                                 <span className={sp.price}>{fmt(m.prix || 0)}</span>
                                 {stock === 0 ? <Badge tone="danger">Rupture</Badge> : stock <= 10 ? <Badge tone="warning">{stock} restant{stock > 1 ? 's' : ''}</Badge> : null}
                               </span>
-                              <span className={sp.stepper}>
+                              <span className={sp.stepper} onClick={e => e.stopPropagation()}>
                                 <button type="button" onClick={() => changeQty(m.id, -1)} disabled={q === 0} aria-label={`Retirer un ${m.nom}`}><Minus size={16} /></button>
                                 <b aria-live="polite">{q}</b>
                                 <button type="button" className={sp.plus} onClick={() => changeQty(m.id, 1)} disabled={stock === 0 || q >= stock} aria-label={`Ajouter un ${m.nom}`}><Plus size={16} /></button>
@@ -737,6 +739,12 @@ export default function SoldePage({ demo = null }) {
                           )
                         })}
                       </div>
+                      {fiche && (
+                        <ArticleInfoModal item={fiche} qty={qtys[fiche.id] || 0} onClose={() => setFiche(null)}
+                          maxAdd={Math.max(0, (fiche.stock || 0) - (qtys[fiche.id] || 0))}
+                          raisonBloque={(fiche.stock || 0) === 0 ? 'Épuisé' : 'Stock atteint'}
+                          onAddQty={(n) => changeQty(fiche.id, n)} />
+                      )}
                     </section>
                   ) : (
                     <Empty icon={UtensilsCrossed} title="La carte n'est pas encore disponible">Les plats et boissons apparaîtront ici dès leur mise en ligne.</Empty>

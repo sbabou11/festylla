@@ -144,8 +144,9 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
       const parsed = JSON.parse(raw)
       if (parsed?.type === 'artiste' && parsed?.cr) crId = parsed.cr
     } catch {
-      // Pas du JSON — peut-être directement un ID
-      crId = raw.trim()
+      // Lien personnel de l'espace artiste (…/artiste?ev=…&cr=…&k=…), sinon directement un ID
+      const m = String(raw).match(/\/artiste\?([^\s#]+)/i)
+      crId = m ? new URLSearchParams(m[1]).get('cr') : raw.trim()
     }
     if (!crId) { setErr('QR invalide'); return }
     // On recherche dans les artistes et le planning déjà chargés (temps réel) — pas besoin de getDoc

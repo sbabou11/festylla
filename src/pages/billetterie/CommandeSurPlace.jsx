@@ -21,6 +21,7 @@ import { getIcon } from '../../menu/icons'
 import { fmt } from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
 import { Button, Sheet, Empty } from '../../ui'
+import ArticleInfoModal from '../../components/ArticleInfoModal'
 import s from './surPlace.module.css'
 
 const MOYENS = [
@@ -67,6 +68,7 @@ export default function CommandeSurPlace() {
   const total = lignes.reduce((t, l) => t + (l.prix || 0) * l.qty, 0)
   const count = lignes.reduce((t, l) => t + l.qty, 0)
 
+  const [fiche, setFiche] = useState(null)   // fiche article ouverte (20/11/2026)
   const setQty = (item, delta) => setCart(prev => {
     const next = { ...prev }
     const max = typeof item.stock === 'number' ? item.stock : Infinity
@@ -207,7 +209,7 @@ export default function CommandeSurPlace() {
               const q = cart[m.id] || 0
               const out = typeof m.stock === 'number' && m.stock <= 0
               return (
-                <div key={m.id} className={clsx(s.card, q > 0 && s.cardOn, out && s.cardOut)}>
+                <div key={m.id} className={clsx(s.card, s.cardClick, q > 0 && s.cardOn, out && s.cardOut)} onClick={() => setFiche(m)}>
                   <div className={s.photo}>
                     {m.photoUrl ? <img src={m.photoUrl} alt=""/> : <span>{(m.nom || '?').charAt(0)}</span>}
                     {q > 0 && <span className={s.qtyBadge}>{q}</span>}
@@ -216,7 +218,7 @@ export default function CommandeSurPlace() {
                     <span className={s.cardName}>{m.nom}</span>
                     <span className={s.cardPrice}>{out ? 'Épuisé' : fmt(m.prix || 0)}</span>
                   </div>
-                  <div className={s.cardActions}>
+                  <div className={s.cardActions} onClick={e => e.stopPropagation()}>
                     <button type="button" aria-label={`Retirer un ${m.nom}`} disabled={!q} onClick={() => setQty(m, -1)}><Minus size={16}/></button>
                     <button type="button" aria-label={`Ajouter un ${m.nom}`} className={s.add} disabled={out || (typeof m.stock === 'number' && q >= m.stock)} onClick={() => setQty(m, +1)}><Plus size={16}/></button>
                   </div>
@@ -224,6 +226,12 @@ export default function CommandeSurPlace() {
               )
             })}
           </div>
+        )}
+        {fiche && (
+          <ArticleInfoModal item={fiche} qty={cart[fiche.id] || 0} onClose={() => setFiche(null)}
+            maxAdd={typeof fiche.stock === 'number' ? Math.max(0, fiche.stock - (cart[fiche.id] || 0)) : Infinity}
+            raisonBloque={typeof fiche.stock === 'number' && fiche.stock <= 0 ? 'Épuisé' : 'Stock atteint'}
+            onAddQty={(n) => setQty(fiche, n)} />
         )}
       </div>
 

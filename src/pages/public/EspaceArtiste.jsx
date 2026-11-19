@@ -1,13 +1,18 @@
 /**
  * pages/public/EspaceArtiste.jsx — v6 Lot C, design system lot 8b
  * Espace personnel artiste — URL : /artiste?ev=EVENT_ID&cr=CRENEAU_ID
- * Onglets (barre du bas, mobile d'abord) : Droits, Consos, Réserver, Mes résas, Programme.
+ * Onglets (barre du bas, mobile d'abord) : Droits, Consos, Commander, Mes codes, Programme.
+ * Commander (20/11/2026) : comme les bénévoles, la commande donne un code à 6 chiffres (ou le QR
+ * se présente à la borne) ; les avantages sont décomptés à la borne par le serveur, et chaque
+ * article sort au stand de cet article. La réservation aux caissiers est remplacée.
  * Contenu des onglets : artiste/ArtisteSections.jsx ; styles : artiste/EspaceArtiste.module.css
  */
 import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
-import { getSettings, creerReservationArtiste, annulerReservationArtiste, watchArtistReservations, linkArtistToSpec, unlinkArtistFromSpec } from '../../firebase/service'
+import { getSettings, annulerReservationArtiste, watchArtistReservations, linkArtistToSpec, unlinkArtistFromSpec, creerCodeArtiste, annulerCodeEnLigne } from '../../firebase/service'
+import { watchCarte } from '../../menu/carte'
+import BenevoleCommander, { MesCodes } from './BenevoleCommander'
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore'
 import { Clock, MapPin, Gift, History, CalendarDays, Bookmark, ShoppingCart, AlertCircle, Link2, Wallet, Mic, Mic2, Maximize2, Ban, Bell, BellOff } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
@@ -19,7 +24,7 @@ import { useNotifications } from '../../hooks/useNotifications'
 import { friendlyError } from '../../utils/errors'
 import { Button, Dialog, Sheet, Empty, Field, Skeleton, toast, focusFirstInvalid } from '../../ui'
 import { TYPES, fmtHour, fmtDate } from './artiste/artisteUtils'
-import { DroitsTab, ConsosTab, ReserverTab, ResasTab, ProgrammeTab } from './artiste/ArtisteSections'
+import { DroitsTab, ConsosTab, ResasTab, ProgrammeTab } from './artiste/ArtisteSections'
 import s from './artiste/EspaceArtiste.module.css'
 import { watchProgramme } from '../../programme/watchProgramme'
 import { adaptArtisteEm, duJour } from '../../em/artiste'
@@ -51,9 +56,14 @@ export default function EspaceArtiste() {
   const [tab,          setTab]          = useState('droits')
   const [loading,      setLoading]      = useState(true)
   const [notFound,     setNotFound]     = useState(false)
-  const [cart,         setCart]         = useState({}) // { articleId+'-'+type: qty }
+  const [qtys,         setQtys]         = useState({}) // { articleId: qty }
   const [resaErr,      setResaErr]      = useState('')
-  const [resaSuccess,  setResaSuccess]  = useState('')
+  const [resaDone,     setResaDone]     = useState(null)
+  const [resaLoading,  setResaLoading]  = useState(false)
+  const [codes,        setCodes]        = useState([])
+  const [cancelCode,   setCancelCode]   = useState(null)
+  const [carte,        setCarte]        = useState({ rayons: [], stands: [] })
+  const [categories,   setCategories]   = useState([])
   const [showQrFull,   setShowQrFull]   = useState(false)
   const [showLinkModal, setShowLinkModal] = useState(false)
   const [linkInput, setLinkInput] = useState('')
@@ -147,7 +157,22 @@ export default function EspaceArtiste() {
     return unsub
   }, [eventId, creneauId])
 
-  // Charger le menu (pour onglet Réserver)
+  // Codes de l'espace artiste, carte (rayons, stands) et catégories (20/11/2026)
+  useEffect(() => {
+    if (!eventId || !creneauId) return
+    return onSnapshot(query(collection(db, 'events', eventId, 'codes'), where('creneauId', '==', creneauId)),
+      snap => setCodes(snap.docs.map(d => d.data()).sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))),
+      () => {})
+  }, [eventId, creneauId])
+  useEffect(() => {
+    if (!eventId) return
+    const offCarte = watchCarte(eventId, setCarte, () => {})
+    const offCats = onSnapshot(collection(db, 'events', eventId, 'categories'),
+      snap => setCategories(snap.docs.map(d => ({ ...d.data(), id: d.id }))), () => {})
+    return () => { offCarte(); offCats() }
+  }, [eventId])
+
+  // Charger le menu (pour onglet Commander)
   useEffect(() => {
     if (!eventId) return
     const col = collection(db, 'events', eventId, 'menu')
@@ -246,68 +271,56 @@ export default function EspaceArtiste() {
   const remainMeals  = Math.max(0, (av.meals  || 0) - consMeals  - pendingMeals)
   const remainEaux   = Math.max(0, (av.eaux   || 0) - consEaux   - pendingEaux)
 
-  // Articles éligibles
-  const eligibleArticles = []
-  if (remainDrinks > 0) {
-    (av.drinkIds || []).forEach(id => {
-      const a = menu.find(m => m.id === id)
-      if (a) eligibleArticles.push({ ...a, _type: 'drink', _typeIcon: '☕' })
-    })
-  }
-  if (remainMeals > 0) {
-    (av.mealIds || []).forEach(id => {
-      const a = menu.find(m => m.id === id)
-      if (a) eligibleArticles.push({ ...a, _type: 'meal', _typeIcon: '🍽' })
-    })
-  }
-  if (remainEaux > 0) {
-    (av.eauIds || []).forEach(id => {
-      const a = menu.find(m => m.id === id)
-      if (a) eligibleArticles.push({ ...a, _type: 'eau', _typeIcon: '💧' })
-    })
-  }
+  // Carte artiste : articles de ses avantages qui ont un stand de retrait (la borne imprime un ticket par stand)
+  const VERS_CONSO = { meal: 'repas', drink: 'boisson', eau: 'eau' }
+  const DE_CONSO = { repas: 'meal', boisson: 'drink', eau: 'eau' }
+  const typeDe = new Map()
+  ;(av.mealIds || []).forEach(id => typeDe.set(id, 'meal'))
+  ;(av.drinkIds || []).forEach(id => typeDe.set(id, 'drink'))
+  ;(av.eauIds || []).forEach(id => typeDe.set(id, 'eau'))
+  const standIds = new Set((carte.stands || []).map(st => st.id))
+  const menuArtiste = menu
+    .filter(m => typeDe.has(m.id) && m.actif !== false && standIds.has(m.standId))
+    .map(m => ({ ...m, typeConsommation: VERS_CONSO[typeDe.get(m.id)] }))
+  const remain = { meal: remainMeals, drink: remainDrinks, eau: remainEaux }
+  const totalAv = { meal: av.meals || 0, drink: av.drinks || 0, eau: av.eaux || 0 }
+  const cartItems = Object.entries(qtys).filter(([, q]) => q > 0)
+    .map(([id, qty]) => { const m = menuArtiste.find(x => x.id === id); return m ? { ...m, qty } : null }).filter(Boolean)
+  const cartTotal = cartItems.reduce((a, i) => a + i.qty, 0)
+  const codesEnAttente = codes.filter(c => c.statut === 'en_attente').length
 
-  // Panier : compte le nombre d'items par type pour ne pas dépasser
-  const cartTypes = { drink: 0, meal: 0, eau: 0 }
-  Object.entries(cart).forEach(([key, qty]) => {
-    const type = key.split('-').pop()
-    if (cartTypes[type] !== undefined) cartTypes[type] += qty
-  })
-
-  const cartTotal = Object.values(cart).reduce((s, q) => s + q, 0)
-
-  const qrPayload = JSON.stringify({ ev: eventId, cr: creneauId, type: 'artiste' })
+  // QR de l'espace : le lien personnel (lu par la borne) ; à défaut de clé, l'ancien format (caisse)
+  const cleLien = (() => {
+    const k = params.get('k')
+    if (k) return k.toLowerCase()
+    try { return localStorage.getItem(`yllacash-lien-artiste-${eventId}-${creneauId}`) || '' } catch { return '' }
+  })()
+  const qrPayload = cleLien
+    ? `${window.location.origin}/artiste?ev=${encodeURIComponent(eventId)}&cr=${encodeURIComponent(creneauId)}&k=${cleLien}`
+    : JSON.stringify({ ev: eventId, cr: creneauId, type: 'artiste' })
   const artCode   = 'ART-' + creneauId.slice(-6).toUpperCase()
 
   const isAnnule = creneau.statut === 'annule'
 
-  // Réserver
-  const handleReserve = async () => {
-    setResaErr(''); setResaSuccess('')
-    const items = []
-    Object.entries(cart).forEach(([key, qty]) => {
-      if (qty <= 0) return
-      const [articleId, type] = [key.substring(0, key.lastIndexOf('-')), key.split('-').pop()]
-      const article = menu.find(m => m.id === articleId)
-      if (!article) return
-      for (let i = 0; i < qty; i++) {
-        items.push({ id: article.id, nom: article.nom, type, _type: type })
-      }
-    })
-    if (items.length === 0) { setResaErr('Sélectionnez au moins un article.'); return }
+  // Commander : un code à taper sur la borne (rien n'est décompté ici)
+  const doCommande = async () => {
+    if (!cartItems.length) return
+    setResaLoading(true); setResaErr('')
     try {
-      await creerReservationArtiste(creneau, items, eventId)
-      setResaSuccess('Réservation envoyée ! Les caissiers ont été notifiés.')
-      toast.success('Réservation envoyée, les caissiers sont prévenus')
-      setCart({})
-      setTimeout(() => setResaSuccess(''), 4000)
-      setTab('resas')
-    } catch (e) {
-      setResaErr(friendlyError(e, "La réservation n'a pas pu être envoyée."))
-    }
+      for (const t of ['meal', 'drink', 'eau']) {
+        const n = cartItems.filter(i => DE_CONSO[i.typeConsommation] === t).reduce((a, i) => a + i.qty, 0)
+        if (n > remain[t]) throw new Error(`Avantages insuffisants (il en reste ${remain[t]}).`)
+      }
+      const r = await creerCodeArtiste({
+        creneauId, artisteNom: creneau.artiste || '',
+        items: cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, type: DE_CONSO[i.typeConsommation] })),
+      }, eventId)
+      setResaDone(r); setQtys({})
+    } catch (e) { setResaErr(friendlyError(e, "La commande n'a pas été enregistrée.")) }
+    finally { setResaLoading(false) }
   }
 
-  // Annulation : confirmée dans la fenêtre « Annuler cette réservation ? »
+  // Anciennes réservations encore en attente : toujours annulables
   const handleCancelResa = async (resaId) => {
     try {
       await annulerReservationArtiste(resaId, eventId)
@@ -315,25 +328,6 @@ export default function EspaceArtiste() {
     } catch (e) {
       toast.error(friendlyError(e, "La réservation n'a pas pu être annulée."), { action: { label: 'Réessayer', onClick: () => handleCancelResa(resaId) } })
     }
-  }
-
-  const addToCart = (article) => {
-    const key = article.id + '-' + article._type
-    const currentInCart = cart[key] || 0
-    // Vérifier qu'on ne dépasse pas
-    const t = article._type
-    const max = t === 'drink' ? remainDrinks : t === 'meal' ? remainMeals : remainEaux
-    if (currentInCart >= max) return
-    setCart(c => ({ ...c, [key]: currentInCart + 1 }))
-  }
-  const removeFromCart = (article) => {
-    const key = article.id + '-' + article._type
-    setCart(c => {
-      const next = { ...c }
-      if ((next[key] || 0) <= 1) delete next[key]
-      else next[key] = next[key] - 1
-      return next
-    })
   }
 
   const handleLinkSpec = async () => {
@@ -369,8 +363,8 @@ export default function EspaceArtiste() {
   const NAV = [
     { id: 'droits',    label: 'Droits',    icon: Gift },
     { id: 'consos',    label: 'Consos',    icon: History },
-    { id: 'reserver',  label: 'Réserver',  icon: ShoppingCart, badge: cartTotal },
-    { id: 'resas',     label: 'Mes résas', icon: Bookmark,     badge: pendingResa.length },
+    { id: 'commander', label: 'Commander', icon: ShoppingCart, badge: cartTotal },
+    { id: 'codes',     label: 'Mes codes', icon: Bookmark,     badge: codesEnAttente + pendingResa.length },
     { id: 'programme', label: 'Programme', icon: CalendarDays },
   ]
 
@@ -496,13 +490,33 @@ export default function EspaceArtiste() {
             pending={{ drink: pendingDrinks, meal: pendingMeals, eau: pendingEaux }}/>
         )}
         {tab === 'consos' && <ConsosTab consumptions={consumptions}/>}
-        {tab === 'reserver' && (
-          <ReserverTab av={av} eligibleArticles={eligibleArticles} cart={cart} cartTotal={cartTotal}
-            remain={{ drink: remainDrinks, meal: remainMeals, eau: remainEaux }}
-            onAdd={addToCart} onRemove={removeFromCart} onReserve={handleReserve} resaErr={resaErr}
-            onSeeResas={() => setTab('resas')}/>
+        {tab === 'commander' && (
+          <BenevoleCommander menu={menuArtiste} categories={categories} carte={carte}
+            cartItems={cartItems} qtys={qtys} setQtys={setQtys}
+            resaDone={resaDone} setResaDone={setResaDone} resaLoading={resaLoading} resaErr={resaErr} doCommande={doCommande}
+            quotaRestant={(t) => remain[DE_CONSO[t]] || 0} quotaDroit={(t) => totalAv[DE_CONSO[t]] || 0} setTab={setTab}
+            textes={{
+              droits: creneau._em ? "Mes avantages aujourd'hui" : 'Mes avantages',
+              ticket: 'Elle imprime un ticket pour chaque stand où retirer vos articles.',
+              decompte: 'Vos avantages ne sont décomptés qu\'à la borne. Annulable sans frais avant, depuis « Mes codes ».',
+              ongletCodes: 'codes',
+              epuise: 'Avantages atteints',
+            }}/>
         )}
-        {tab === 'resas' && <ResasTab reservations={reservations} onCancel={setCancelAsk} onReserve={() => setTab('reserver')}/>}
+        {tab === 'codes' && (
+          <>
+            {codes.length === 0 && reservations.filter(r => r.statut === 'pending').length === 0 && (
+              <Empty icon={Bookmark} title="Aucun code pour l'instant"
+                action={<Button size="sm" variant="secondary" icon={ShoppingCart} onClick={() => setTab('commander')}>Commander</Button>}>
+                Commandez vos avantages : vous recevrez un code à taper sur la borne.
+              </Empty>
+            )}
+            <MesCodes codes={codes} onCancel={setCancelCode}/>
+            {reservations.some(r => r.statut === 'pending') && (
+              <ResasTab reservations={reservations.filter(r => r.statut === 'pending')} onCancel={setCancelAsk} onReserve={() => setTab('commander')}/>
+            )}
+          </>
+        )}
         {tab === 'programme' && <ProgrammeTab planning={planning} creneauId={creneauId} artisteNom={creneau._em ? creneau.artiste : null}/>}
         </PageTransition>
 
@@ -564,6 +578,19 @@ export default function EspaceArtiste() {
           <Button variant="danger" onClick={() => { const id = cancelAsk; setCancelAsk(null); handleCancelResa(id) }}>Annuler la réservation</Button>
         </>}>
         <p className={s.muted}>Les articles réservés seront de nouveau disponibles dans vos avantages.</p>
+      </Dialog>
+
+      {/* Annulation d'un code pas encore utilisé */}
+      <Dialog open={!!cancelCode} onClose={() => setCancelCode(null)} title="Annuler ce code ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setCancelCode(null)}>Garder</Button>
+          <Button variant="danger" onClick={async () => {
+            const c = cancelCode; setCancelCode(null)
+            try { await annulerCodeEnLigne(c, eventId); toast.success('Code annulé') }
+            catch (e) { toast.error(friendlyError(e, "Le code n'a pas pu être annulé.")) }
+          }}>Annuler le code</Button>
+        </>}>
+        <p className={s.muted}>Rien n'a été décompté : vos avantages restent disponibles.</p>
       </Dialog>
 
       {/* Confirmation de déliaison (aucun bouton ne l'ouvre pour l'instant, comme avant) */}

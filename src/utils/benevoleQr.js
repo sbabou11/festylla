@@ -17,3 +17,16 @@ export function parseBenevoleQr(...lectures) {
   }
   return null
 }
+
+/** QR de l'espace artiste (20/11/2026) : …/artiste?ev=<événement>&cr=<créneau>&k=<clé> */
+export function parseArtisteQr(...lectures) {
+  for (const t of lectures) {
+    const m = String(t || '').match(/\/artiste\?([^\s#]+)/i)
+    if (!m) continue
+    const p = new URLSearchParams(m[1])
+    const id = p.get('cr') || ''
+    const cle = (p.get('k') || '').toLowerCase()
+    if (/^[\w-]{1,128}$/.test(id) && /^[0-9a-f]{20,64}$/.test(cle)) return { id, cle, ev: p.get('ev') || null }
+  }
+  return null
+}

@@ -52,3 +52,7 @@
 .btnPrimary, .btnSecondary { width: 100%; min-height: 44px; border-radius: var(--radius-md); font: 700 var(--fs-14, 14px) var(--font); cursor: pointer; }
 .btnPrimary { border: none; background: var(--brand); color: #fff; }
 .btnSecondary { border: 1px solid var(--border2); background: var(--bg2); color: var(--text); }
+
+/* Carte article : toucher ouvre la fiche (20/11/2026) */
+.itemClick { cursor: pointer; }
+.itemClick:hover { border-color: var(--brand); }

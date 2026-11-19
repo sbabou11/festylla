@@ -2462,7 +2462,37 @@ export const creerCodeBenevole = async ({ benevoleId, benevoleNom, items }, evId
   throw last || new Error('Aucun code libre trouvé, réessayez.')
 }
 
-/** Le spectateur ou le bénévole annule un code pas encore utilisé (sans frais : rien n'a été décompté) */
+/**
+ * Espace artiste (20/11/2026) : la commande donne un code ; aucun avantage n'est décompté ici.
+ * La borne le fait valider par le serveur (api/borne.js), qui décompte les avantages.
+ * items : [{ id, nom, qty, type }] — type : 'meal' | 'drink' | 'eau'
+ */
+export const creerCodeArtiste = async ({ creneauId, artisteNom, items }, evId) => {
+  if (!evId) throw new Error('Aucun événement courant')
+  if (!Array.isArray(items) || items.length === 0) throw new Error('Aucun article dans la commande')
+  const lignes = items.map(it => ({
+    id: it.id || '', nom: String(it.nom || ''), qty: Math.max(1, Number(it.qty) || 1), type: it.type || '',
+  }))
+  let last = null
+  for (let essai = 0; essai < 8; essai++) {
+    const code = genererCode()
+    try {
+      await setDoc(codeRef(evId, code), {
+        code, origine: 'artiste', creneauId, artisteNom: artisteNom || '—',
+        items: lignes, total: 0, statut: 'en_attente',
+        createdAt: serverTimestamp(), timestamp: new Date().toISOString(),
+        utiliseLe: null, commandeId: null, commandeNumero: null,
+      })
+      return { code }
+    } catch (e) {
+      last = e
+      if (e?.code !== 'permission-denied') throw e
+    }
+  }
+  throw last || new Error('Aucun code libre trouvé, réessayez.')
+}
+
+/** Le spectateur, le bénévole ou l'artiste annule un code pas encore utilisé (sans frais : rien n'a été décompté) */
 export const annulerCodeEnLigne = (code, evId) =>
   updateDoc(codeRef(evId, code), { statut: 'annule', annuleLe: serverTimestamp() })
 

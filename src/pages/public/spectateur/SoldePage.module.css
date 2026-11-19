@@ -420,3 +420,7 @@
 .nouveauSolde b { font: 800 var(--fs-18) var(--font-display); font-variant-numeric: tabular-nums; }
 .rechargeMontant { font: 800 36px var(--font-display); color: var(--green-dark); font-variant-numeric: tabular-nums; }
 .center { text-align: center; display: flex; align-items: center; justify-content: center; gap: 4px; }
+
+/* Carte article : toucher ouvre la fiche (20/11/2026) */
+.itemClick { cursor: pointer; }
+.itemClick:hover { border-color: var(--brand); }

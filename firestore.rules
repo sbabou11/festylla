@@ -185,6 +185,15 @@ service cloud.firestore {
         allow update: if sess('benevole', ev) && resource.data.benevoleId == benevoleId()
                       && resource.data.statut == 'en_attente' && request.resource.data.statut == 'annule'
                       && onlyChanges(['statut', 'annuleLe']);
+        // Espace artiste (20/11/2026) : mêmes droits, sur les codes de son créneau. Les avantages
+        // sont décomptés à la borne par le serveur (api/borne.js), jamais depuis le téléphone.
+        allow read: if sess('artiste', ev) && resource.data.creneauId == request.auth.token.creneauId;
+        allow create: if sess('artiste', ev) && request.resource.data.creneauId == request.auth.token.creneauId
+                      && request.resource.data.origine == 'artiste' && request.resource.data.statut == 'en_attente'
+                      && request.resource.data.commandeId == null;
+        allow update: if sess('artiste', ev) && resource.data.creneauId == request.auth.token.creneauId
+                      && resource.data.statut == 'en_attente' && request.resource.data.statut == 'annule'
+                      && onlyChanges(['statut', 'annuleLe']);
         allow delete: if isAdmin();
       }
       match /_counters/{id} {
