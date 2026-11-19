@@ -16,7 +16,8 @@ import {
   serverTimestamp, increment,
 } from 'firebase/firestore'
 import { nowStr, makeResaCode } from '../../utils/helpers'
-import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleToPost, pointerArrivee, getNextCommandeNumero } from '../../firebase/service'
+import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleToPost, pointerArrivee, creerCodeBenevole, annulerCodeEnLigne } from '../../firebase/service'
+import { watchCarte } from '../../menu/carte'
 import { APP_VERSION_LABEL, APP_FULL_LABEL } from '../../utils/buildInfo'
 import CheckUpdateButton from '../../components/CheckUpdateButton'
 import PageTransition from '../../components/PageTransition'
@@ -26,7 +27,7 @@ import {
   currentOrNext, myShifts, relativeLabel, canCheckIn, fmtHour,
   parsePostScan, postQrText, CHECKIN_EARLY_MIN,
 } from '../../utils/shiftTime'
-import BenevoleCommander from './BenevoleCommander'
+import BenevoleCommander, { MesCodes } from './BenevoleCommander'
 import BenevoleResas     from './BenevoleResas'
 import BenevoleProfil    from './BenevoleProfil'
 import QRCode from 'qrcode'
@@ -84,6 +85,11 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     eventId: demo ? null : eventId,
   })
   const [menu,        setMenu]        = useState(demo?.menu || [])
+  // Parcours borne (19/11/2026) : carte en rayons et catégories, commande = code à taper sur la borne
+  const [carte,       setCarte]       = useState(demo?.carte || { rayons: [], stands: [] })
+  const [categories,  setCategories]  = useState(demo?.categories || [])
+  const [codes,       setCodes]       = useState(demo?.codes || [])
+  const [cancelCode,  setCancelCode]  = useState(null)
   const [resas,       setResas]       = useState(demo?.resas || [])
   const [eventMeta,   setEventMeta]   = useState(demo?.eventMeta || null)
   const [benevoles,   setBenevoles]   = useState(demo?.benevoles || [])  // pour afficher les noms dans le planning
@@ -154,6 +160,21 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     })
     return () => unsub()
   }, [eventId])
+
+  // Rayons, catégories et codes du bénévole (parcours borne)
+  useEffect(() => {
+    if (!eventId || demo) return
+    const offCarte = watchCarte(eventId, setCarte, () => {})
+    const offCats = onSnapshot(collection(db, 'events', eventId, 'categories'),
+      snap => setCategories(snap.docs.map(d => ({ ...d.data(), id: d.id }))), () => {})
+    return () => { offCarte(); offCats() }
+  }, [eventId])
+  useEffect(() => {
+    if (!eventId || !docId || demo) return
+    return onSnapshot(query(collection(db, 'events', eventId, 'codes'), where('benevoleId', '==', docId)),
+      snap => setCodes(snap.docs.map(d => d.data()).sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))),
+      () => {})
+  }, [eventId, docId])
 
   // Liste de tous les bénévoles (pour afficher les noms dans le planning d'auto-inscription)
   useEffect(() => {
@@ -229,6 +250,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const jour   = festDay(now)
   const quotas = quotasDuJour(benev, jour)
   const quotaRestant = (type) => Math.max(0, (quotas.droits[type] || 0) - (quotas.conso[type] || 0))
+  const quotaDroit = (type) => quotas.droits[type] || 0
   // Champ de consommation à faire évoluer pour une commande d'une journée donnée
   const consoPath = (type, j = jour) => em ? `consoJours.${j}.${type}` : `consommation.${type}`
 
@@ -315,151 +337,29 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     } catch (e) { toast.error(friendlyError(e, "La réservation n'a pas pu être annulée.")) } // pas de « Réessayer » : le quota pourrait être rendu deux fois
   }
 
+  // Parcours borne (19/11/2026) : la commande donne un code à taper sur la borne. On vérifie
+  // qu'il reste assez de droits, mais ils ne sont décomptés qu'à la borne (serveur, api/borne.js).
   const doCommande = async () => {
     if (!benev || !cartItems.length) return
     setResaLoading(true); setResaErr('')
     try {
-      const code = 'BNV-' + makeResaCode()
-
-      // Vérifier quota avant
       const grouped = {}
-      cartItems.forEach(i => {
-        const t = i.typeConsommation
-        grouped[t] = (grouped[t] || 0) + i.qty
-      })
-
+      cartItems.forEach(i => { grouped[i.typeConsommation] = (grouped[i.typeConsommation] || 0) + i.qty })
       for (const [type, qty] of Object.entries(grouped)) {
         const restant = quotaRestant(type)
-        if (qty > restant) {
-          throw new Error(`Quota insuffisant pour ${TYPE_CFG[type]?.label || type} (restant: ${restant})`)
-        }
+        if (qty > restant) throw new Error(`Droits insuffisants pour ${TYPE_CFG[type]?.label || type} aujourd'hui (il en reste ${restant}).`)
       }
-
-      // Créer la réservation bénévole
-      const itemsWithPrice = cartItems.map(i => ({
-        id: i.id, nom: i.nom,
-        prix: i.prix || 0,
-        typeConsommation: i.typeConsommation,
-        qty: i.qty
-      }))
-      const total = itemsWithPrice.reduce((acc, i) => acc + (i.prix * i.qty), 0)
-
       if (demo) {
-        setResas(rs => [{ id: 'd' + Date.now(), code, items: itemsWithPrice, total, status: 'processing', date: nowStr() }, ...rs])
-        setBenev(b => {
-          if (em) {
-            const conso = { ...(b.consoJours?.[jour] || {}) }
-            Object.entries(grouped).forEach(([t, q]) => { conso[t] = (conso[t] || 0) + q })
-            return { ...b, consoJours: { ...(b.consoJours || {}), [jour]: conso } }
-          }
-          const conso = { ...(b.consommation || {}) }
-          Object.entries(grouped).forEach(([t, q]) => { conso[t] = (conso[t] || 0) + q })
-          return { ...b, consommation: conso }
-        })
-        setResaDone({ code, items: cartItems })
-        setQtys({})
-        return
+        const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0')
+        setCodes(c => [{ code, origine: 'benevole', statut: 'en_attente', items: cartItems.map(i => ({ nom: i.nom, qty: i.qty })), timestamp: new Date().toISOString() }, ...c])
+        setResaDone({ code }); setQtys({}); return
       }
-
-      // Numéro séquentiel partagé avec les commandes et résas spectateurs (Lot 1 Cuisine unifiée).
-      // Permet à la cuisine d'afficher #42 plutôt que le code interne BNV-XXXX.
-      const numero = await getNextCommandeNumero(eventId)
-
-      await addDoc(resaCol(), {
-        benevoleId:  docId,
-        benevoleNom: benev.nom + ' ' + benev.prenom,
-        items:  itemsWithPrice,
-        total,
-        // Status 'processing' direct (= "pris en charge automatiquement") pour que la
-        // cuisine puisse marquer prête sans étape "prendre en charge" préalable.
-        // Aligné avec creerReservation (spectateurs) post-Lot 1.
-        status: 'processing',
-        code, numero,
-        assignedStaffId: '__auto__',
-        assignedStaff: 'Auto (bénévole)',
-        date:       nowStr(),
-        isBenev:    true,
-        ...(em ? { jourConso: jour } : {}),   // journée dont le quota est utilisé (rendu à l'annulation)
-        createdAt:  serverTimestamp(),
-        processingAt: serverTimestamp(),
-      })
-
-      // Décrémenter le stock du menu pour chaque article
-      for (const it of itemsWithPrice) {
-        if (!it.id) continue
-        try {
-          const menuRef = eventId
-            ? doc(db, 'events', eventId, 'menu', it.id)
-            : doc(db, 'menu', it.id)
-          await updateDoc(menuRef, { stock: increment(-(it.qty || 1)) })
-        } catch (e) {
-          console.warn('Stock decrement error for ' + it.id + ':', e)
-        }
-      }
-
-      // Décrémenter le quota
-      const bRef = eventId
-        ? doc(db, 'events', eventId, 'benevoles', docId)
-        : doc(db, 'benevoles', docId)
-      const updates = {}
-      Object.entries(grouped).forEach(([type, qty]) => {
-        updates[consoPath(type)] = increment(qty)
-      })
-      await updateDoc(bRef, updates)
-
-      setResaDone({ code, items: cartItems })
-      setQtys({})
-
-      // Transaction bénévole reservation
-      const txCol = eventId
-        ? collection(db, 'events', eventId, 'transactions')
-        : collection(db, 'transactions')
-      const itemsLabel = cartItems.map(i => i.nom + (i.qty>1?` x${i.qty}`:'')).join(', ')
-      const nowTx = new Date()
-      await addDoc(txCol, {
-        benevoleId:  docId,
-        benevoleNom: benevNom || '—',
-        specId:      null,
-        specNom:     null,
-        type:        'benev-reservation',
-        label:       `Résa bénévole #${code} : ${itemsLabel}`,
-        items:       itemsWithPrice,
-        montant:     total,
-        resaCode:    code,
-        date:        nowStr(),
-        timestamp:   nowTx.toISOString(),
-        heure:       nowTx.toLocaleTimeString('fr-FR'),
-        createdAt:   serverTimestamp(),
-      })
-
-      // Notif staff : nouvelle réservation bénévole
-      const notifCol = eventId
-        ? collection(db, 'events', eventId, 'notifications')
-        : collection(db, 'notifications')
-      await addDoc(notifCol, {
-        type:      'RESA_CREEE',
-        titre:     '🛒 Nouvelle réservation bénévole',
-        message:   `${benevNom} a réservé : ${itemsLabel}`,
-        specId:    null,
-        benevoleId: docId,
-        resaCode:  code,
-        lu:        false,
-        timestamp: new Date().toISOString(),
-        createdAt: serverTimestamp(),
-      })
-      // Log audit
-      const auditCol = eventId ? collection(db, 'events', eventId, 'audit') : collection(db, 'audit')
-      const nowAudit = new Date()
-      await addDoc(auditCol, {
-        action: 'BENEV_RESERVATION', benevoleId: docId,
-        benevoleNom: benevNom,
-        resaCode: code, montant: total, items: itemsLabel,
-        userType: 'benevole',
-        label: `Réservation bénévole #${code} : ${itemsLabel}`,
-        date: nowAudit.toLocaleString('fr-FR'), timestamp: nowAudit.toISOString(),
-        createdAt: serverTimestamp(),
-      })
-    } catch (e) { setResaErr(friendlyError(e, "La commande n'a pas été envoyée.")) }
+      const r = await creerCodeBenevole({
+        benevoleId: docId, benevoleNom: benevNom,
+        items: cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, typeConsommation: i.typeConsommation })),
+      }, eventId)
+      setResaDone(r); setQtys({})
+    } catch (e) { setResaErr(friendlyError(e, "La commande n'a pas été enregistrée.")) }
     finally { setResaLoading(false) }
   }
 
@@ -755,7 +655,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
           {tab === 'commander' && (
             <BenevoleCommander
-              menu={menu} cartItems={cartItems}
+              menu={menu} categories={categories} carte={carte} cartItems={cartItems} quotaDroit={quotaDroit}
               qtys={qtys} setQtys={setQtys} resaDone={resaDone} setResaDone={setResaDone}
               resaLoading={resaLoading} resaErr={resaErr} doCommande={doCommande}
               quotaRestant={quotaRestant} TYPE_CFG={TYPE_CFG} BRAND={BRAND}
@@ -763,6 +663,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             />
           )}
 
+        {tab === 'mes-resas' && <MesCodes codes={codes} onCancel={setCancelCode}/>}
         {tab === 'mes-resas' && (
           <BenevoleResas
             resas={resas} BRAND={BRAND} AMBER={AMBER} AMBER_L={AMBER_L}
@@ -835,6 +736,20 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           </div>
         )}
       </Sheet>
+
+      {/* Annulation d'un code pas encore utilisé à la borne (rien n'a été décompté) */}
+      <Dialog open={!!cancelCode} onClose={() => setCancelCode(null)} title="Annuler ce code ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setCancelCode(null)}>Garder</Button>
+          <Button variant="danger" onClick={async () => {
+            const c = cancelCode; setCancelCode(null)
+            if (demo) { setCodes(cs => cs.map(x => x.code === c ? { ...x, statut: 'annule' } : x)); return }
+            try { await annulerCodeEnLigne(c, eventId); toast.success('Code annulé') }
+            catch (e) { toast.error(friendlyError(e, "L'annulation n'est pas passée.")) }
+          }}>Annuler le code</Button>
+        </>}>
+        <p className={s.muted}>Rien n'a été décompté : le code ne pourra plus servir à la borne.</p>
+      </Dialog>
 
       {/* Confirmation d'annulation */}
       <Dialog open={!!cancelAsk} onClose={() => setCancelAsk(null)} title="Annuler cette réservation ?"

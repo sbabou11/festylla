@@ -2432,7 +2432,37 @@ export const creerCodeEnLigne = async ({ specId, specNom, specDocId, items }, ev
   throw last || new Error('Aucun code libre trouvé, réessayez.')
 }
 
-/** Le spectateur annule un code pas encore utilisé (sans frais : rien n'a été débité) */
+/**
+ * Espace bénévole (19/11/2026) : la commande donne un code ; aucun droit n'est décompté ici.
+ * La borne le fait valider par le serveur (api/borne.js), qui décompte les droits du jour.
+ */
+export const creerCodeBenevole = async ({ benevoleId, benevoleNom, items }, evId) => {
+  if (!evId) throw new Error('Aucun événement courant')
+  if (!Array.isArray(items) || items.length === 0) throw new Error('Aucun article dans la commande')
+  const lignes = items.map(it => ({
+    id: it.id || '', nom: String(it.nom || ''), qty: Math.max(1, Number(it.qty) || 1),
+    typeConsommation: it.typeConsommation || '',
+  }))
+  let last = null
+  for (let essai = 0; essai < 8; essai++) {
+    const code = genererCode()
+    try {
+      await setDoc(codeRef(evId, code), {
+        code, origine: 'benevole', benevoleId, benevoleNom: benevoleNom || '—',
+        items: lignes, total: 0, statut: 'en_attente',
+        createdAt: serverTimestamp(), timestamp: new Date().toISOString(),
+        utiliseLe: null, commandeId: null, commandeNumero: null,
+      })
+      return { code }
+    } catch (e) {
+      last = e
+      if (e?.code !== 'permission-denied') throw e
+    }
+  }
+  throw last || new Error('Aucun code libre trouvé, réessayez.')
+}
+
+/** Le spectateur ou le bénévole annule un code pas encore utilisé (sans frais : rien n'a été décompté) */
 export const annulerCodeEnLigne = (code, evId) =>
   updateDoc(codeRef(evId, code), { statut: 'annule', annuleLe: serverTimestamp() })
 
@@ -2496,6 +2526,7 @@ export const rembourserTicket = async ({ commandeId, ticketKey, numeroTicket, in
     const cSnap = await txn.get(cmdRef)
     const cmd = cSnap.data()
     const specSnap = specRef ? await txn.get(specRef) : null
+    if (cmd.source === 'benevole') throw new Error('Commande de bénévole : offerte sur ses droits, rien à rembourser.')
     if (!cmd.paid) throw new Error("Cette commande n'a pas été payée : rien à rembourser.")
     if (cmd.refunded || cmd.status === 'cancelled') throw new Error('Cette commande a déjà été annulée et remboursée.')
     if (cmd.remboursements?.[ticketKey]) throw new Error('Ce ticket a déjà été remboursé.')
@@ -2553,6 +2584,7 @@ export const annulerCodeBilletterie = async ({ code, staff, motif }, evId = null
     if (!snap.exists()) throw new Error('Code inconnu.')
     const c = snap.data()
     if (c.origine === 'en-ligne') throw new Error("Code commandé en ligne : rien n'a été payé, le client l'annule lui-même dans son espace.")
+    if (c.origine === 'benevole') throw new Error("Code d'un bénévole : rien n'a été payé, il l'annule lui-même dans son espace.")
     if (c.statut === 'annule') throw new Error('Ce code est déjà annulé.')
     if (c.statut !== 'en_attente') throw new Error('Ce code a déjà été utilisé à la borne : remboursez plutôt le ticket.')
     const items = c.items || []

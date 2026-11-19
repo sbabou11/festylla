@@ -36,6 +36,8 @@ import { collection, onSnapshot } from 'firebase/firestore'
 import { watchCarte } from '../../menu/carte'
 import { organiserCarte, ticketsParStand } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
+import { parseBenevoleQr } from '../../utils/benevoleQr'
+import { apiFetch } from '../../firebase/session'
 
 // ─── Étapes du flux ─────────────────────────────────────────────────────
 // Codé en const pour pouvoir étendre facilement (lots suivants : 'menu',
@@ -236,19 +238,58 @@ export default function Borne() {
     }
   }, [])
 
+  // ─── Bénévoles (19/11/2026) : QR de l'espace bénévole ou code à 6 chiffres ──
+  // La borne n'a aucun accès direct aux fiches : le serveur vérifie la clé, décompte les droits
+  // du jour et crée la commande (api/borne.js). Un seul ticket, pour le stand des bénévoles.
+  const [benev, setBenev] = useState(null)          // { id, cle, nom, restants }
+  const [benevBusy, setBenevBusy] = useState(false)
+  const [benevErr, setBenevErr] = useState('')
+  const evParam = () => new URLSearchParams(window.location.search).get('ev')
+
+  const ouvrirBenevole = useCallback(async ({ id, cle }) => {
+    setError(''); setLoading(true); setStep(STEP.IDENTIFICATION)
+    try {
+      const r = await apiFetch('/api/borne', { body: { action: 'ouvrir', ev: evParam(), id, cle } })
+      setBenev({ id, cle, nom: r.benevole?.nom || 'Bénévole', restants: r.restants || {} })
+      setCart({}); setBenevErr('')
+      setStep(STEP.MENU)
+    } catch (e) {
+      setError(e.message || 'QR bénévole non reconnu. Réessayez.')
+    } finally { setLoading(false) }
+  }, [])
+
+  // body : { lignes } (commande à la borne) ou { code } (code de l'espace bénévole)
+  const commanderBenevole = useCallback(async (body) => {
+    setBenevBusy(true); setBenevErr('')
+    try {
+      const r = await apiFetch('/api/borne', { body: { action: 'commander', ev: evParam(), ...body } })
+      setLastResa({ benevole: true, numero: r.numero, stand: r.stand, items: r.items || [], parType: r.parType || {}, nom: r.benevole })
+      setCart({})
+      setStep(STEP.TICKET)
+      return true
+    } catch (e) {
+      setBenevErr(e.message || 'Commande impossible. Réessayez.')
+      throw e
+    } finally { setBenevBusy(false) }
+  }, [])
+
   // ─── Lecteur de QR (USB ou Bluetooth, mode clavier) ────────────────────
   // Actif sur l'accueil et l'identification : présenter son QR suffit, même sans toucher l'écran.
   // Ignoré pendant la commande, pour qu'un QR présenté par erreur ne change pas de client.
   const scanActive = eventReady && !loading && (step === STEP.ACCUEIL || step === STEP.IDENTIFICATION)
   const validateRef = useRef(validateSpec)
   validateRef.current = validateSpec
+  const benevRef = useRef(ouvrirBenevole)
+  benevRef.current = ouvrirBenevole
   useEffect(() => {
     if (!scanActive) return
     const wedge = createWedge({
       onScan: (code) => { setStep(STEP.IDENTIFICATION); validateRef.current(code) },
-      onUnknown: () => {
+      onUnknown: (texte, lectureCodes, lectureTouches) => {
+        const b = parseBenevoleQr(lectureTouches, lectureCodes, texte)
+        if (b) { benevRef.current(b); return }
         setStep(STEP.IDENTIFICATION)
-        setError('Ce QR code n\'est pas un code spectateur. Présentez le QR de votre espace YllaCash.')
+        setError('Ce QR code n\'est pas reconnu. Présentez le QR de votre espace YllaCash (spectateur ou bénévole).')
       },
     })
     // Phase de capture : la rafale du lecteur (et son Entrée) n'atteint pas les boutons de la page
@@ -262,6 +303,8 @@ export default function Borne() {
   // Appelé après commande terminée, inactivité, ou bouton "Terminer".
   const resetSession = useCallback(() => {
     setSpec(null)
+    setBenev(null)
+    setBenevErr('')
     setCart({})
     setLastResa(null)
     setError('')
@@ -287,6 +330,7 @@ export default function Borne() {
         <Accueil onStart={() => setStep(STEP.IDENTIFICATION)} onCode={() => setStep(STEP.CODE)} logoUrl={logoUrl}/>
       ) : step === STEP.CODE ? (
         <CodeScreen stands={carte.stands}
+          onBenevoleCode={(code) => commanderBenevole({ code })}
           onCancel={resetSession}
           onTimeout={resetSession}
           onConfirmed={(resa) => { setLastResa(resa); setStep(STEP.TICKET) }}/>
@@ -305,7 +349,10 @@ export default function Borne() {
           onTimeout={resetSession}
           onGoToCart={() => setStep(STEP.PANIER)}
           onTerminate={resetSession}
-         
+          benev={benev}
+          benevBusy={benevBusy}
+          benevErr={benevErr}
+          onBenevoleCommande={(lignes) => commanderBenevole({ id: benev.id, cle: benev.cle, lignes }).catch(() => {})}
           carte={carte}
           categories={categories}/>
       ) : step === STEP.PANIER ? (
@@ -322,7 +369,9 @@ export default function Borne() {
             setStep(STEP.TICKET)
           }}/>
       ) : step === STEP.TICKET ? (
-        <Ticket resa={lastResa} onDone={resetSession} logoUrl={logoUrl} stands={carte.stands}/>
+        lastResa?.benevole
+          ? <TicketBenevole resa={lastResa} onDone={resetSession} logoUrl={logoUrl}/>
+          : <Ticket resa={lastResa} onDone={resetSession} logoUrl={logoUrl} stands={carte.stands}/>
       ) : null}
     </div>
   )
@@ -616,7 +665,7 @@ function Identification({ onValidated, onCancel, loading, error }) {
 // ════════════════════════════════════════════════════════════════════
 // Le client tape son code, voit sa commande, puis touche « Mes tickets » :
 // la commande part déjà payée et le code ne peut plus servir (utiliserCode).
-function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [] }) {
+function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleCode }) {
   const [digits, setDigits] = useState('')
   const [found, setFound] = useState(null)     // contenu du code
   const [busy, setBusy] = useState(false)
@@ -650,6 +699,11 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [] }) {
 
   const valider = async () => {
     setBusy(true); setError('')
+    if (found?.origine === 'benevole') {
+      try { await onBenevoleCode(digits) }
+      catch (e) { setError(e.message || 'Impression impossible. Réessayez.'); setBusy(false) }
+      return
+    }
     try {
       const r = await utiliserCode(digits, null, { stands })
       onConfirmed({
@@ -665,6 +719,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [] }) {
 
   const items = found?.items || []
   const enLigne = found?.origine === 'en-ligne'
+  const codeBenev = found?.origine === 'benevole'
   const keyStyle = {
     background: '#2C2C2A', color: '#fff', border: 'none', borderRadius: 12,
     fontSize: 'clamp(22px, 4vh, 30px)', fontWeight: 700, fontFamily: 'inherit',
@@ -690,7 +745,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [] }) {
           {found ? 'Votre commande' : 'Entrez votre code'}
         </div>
         <div style={{ fontSize: 14, color: COLORS.muted, marginBottom: 18, textAlign: 'center' }}>
-          {found ? (enLigne ? 'Commandée en ligne. Votre solde sera débité quand vous toucherez « Payer et imprimer ».' : 'Déjà payée à la billetterie. Vérifiez puis touchez « Mes tickets ».') : 'Les 6 chiffres reçus à la billetterie ou dans votre espace'}
+          {found ? (codeBenev ? 'Commande bénévole : vos droits du jour seront décomptés à l\'impression.' : enLigne ? 'Commandée en ligne. Votre solde sera débité quand vous toucherez « Payer et imprimer ».' : 'Déjà payée à la billetterie. Vérifiez puis touchez « Mes tickets ».') : 'Les 6 chiffres reçus à la billetterie ou dans votre espace'}
         </div>
 
         {/* Six cases */}
@@ -720,19 +775,20 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [] }) {
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 16,
                   borderBottom: i < items.length - 1 ? `0.5px solid ${COLORS.border}` : 'none' }}>
                   <span><b>{it.qty}×</b> {it.nom}</span>
-                  <span style={{ color: COLORS.muted }}>{(((it.prixUnit || 0) * (it.qty || 0)) / 100).toFixed(2)} €</span>
+                  {!codeBenev && <span style={{ color: COLORS.muted }}>{(((it.prixUnit || 0) * (it.qty || 0)) / 100).toFixed(2)} €</span>}
                 </div>
               ))}
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, marginTop: 4,
                 borderTop: `0.5px solid ${COLORS.border}`, fontSize: 17, fontWeight: 800, color: COLORS.marine }}>
-                <span>{enLigne ? 'À débiter de votre solde' : 'Total payé'}</span><span>{((found.total || 0) / 100).toFixed(2)} €</span>
+                <span>{codeBenev ? 'Droits bénévole' : enLigne ? 'À débiter de votre solde' : 'Total payé'}</span>
+                {!codeBenev && <span>{((found.total || 0) / 100).toFixed(2)} €</span>}
               </div>
             </div>
             <button onClick={valider} disabled={busy}
               style={{ background: busy ? COLORS.border : COLORS.coral, color: '#fff', border: 'none', borderRadius: 12,
                 padding: '20px', fontSize: 20, fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              {busy ? <><RefreshCw size={18} style={{ animation: 'borne-spin 1s linear infinite' }}/> Envoi…</> : (enLigne ? 'Payer et imprimer mes tickets →' : 'Mes tickets →')}
+              {busy ? <><RefreshCw size={18} style={{ animation: 'borne-spin 1s linear infinite' }}/> Envoi…</> : (codeBenev ? 'Imprimer mon ticket →' : enLigne ? 'Payer et imprimer mes tickets →' : 'Mes tickets →')}
             </button>
             <button onClick={() => { setFound(null); setDigits(''); setError('') }} disabled={busy}
               style={{ background: 'transparent', border: 'none', color: COLORS.muted, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -951,7 +1007,7 @@ function useIdleWatcher({ warnSec, timeoutSec, onWarn, onTimeout, enabled = true
 // Affiche le solde + les articles du menu, avec ajout/retrait au panier.
 // Filtres catégories. Compteur d'inactivité visible. Bouton Terminer
 // permanent en haut à droite.
-function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, categories }) {
+function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, categories, benev = null, benevBusy = false, benevErr = '', onBenevoleCommande }) {
   // Items du menu (chargés en live depuis Firestore)
   const [menu, setMenu] = useState([])
   // Rayon et catégorie affichés (null = le premier)
@@ -988,9 +1044,17 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
 
   // ─── Carte organisée : rayons > catégories > articles ───────────────
   // Articles sans stand écartés dès qu'un stand existe (menu/organiser.js)
-  const org = useMemo(() => organiserCarte({
-    menu, categories, rayons: carte?.rayons || [], stands: carte?.stands || [],
-  }), [menu, categories, carte])
+  // Bénévole : seuls les articles « Consommation bénévole », tous servis au stand des bénévoles
+  const org = useMemo(() => organiserCarte(benev
+    ? { menu: menu.filter(m => m.typeConsommation), categories, rayons: carte?.rayons || [], stands: [] }
+    : { menu, categories, rayons: carte?.rayons || [], stands: carte?.stands || [] },
+  ), [menu, categories, carte, benev])
+  // Droits du bénévole encore libres pour un type, en tenant compte du panier
+  const libres = (type) => {
+    if (!benev) return Infinity
+    const pris = Object.entries(cart).reduce((n, [id, q]) => n + (menu.find(m => m.id === id)?.typeConsommation === type ? q : 0), 0)
+    return (benev.restants?.[type] || 0) - pris
+  }
   const rayon = org.rayons.find(r => r.id === activeRayon) || org.rayons[0] || null
   const cat = rayon ? (rayon.cats.find(c => c.key === activeCat) || rayon.cats[0]) : null
   const showRayons = org.rayons.length > 1 || !!org.rayons[0]?.nom
@@ -998,6 +1062,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
 
   // ─── Helpers panier ─────────────────────────────────────────────────
   const updateQty = (itemId, delta) => {
+    if (benev && delta > 0 && libres(menu.find(m => m.id === itemId)?.typeConsommation) <= 0) return
     setCart(prev => {
       const next = { ...prev }
       const current = next[itemId] || 0
@@ -1038,9 +1103,19 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
             Bonjour
           </div>
           <div style={{ fontSize: 16, fontWeight: 600, color: COLORS.marine }}>
-            {spec?.nom || '—'}
+            {benev ? benev.nom : (spec?.nom || '—')}
+            {benev && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: '#FDE4D4', color: '#B8470F', borderRadius: 6, padding: '2px 8px' }}>Bénévole</span>}
           </div>
         </div>
+        {benev ? (
+          <div style={{ display: 'flex', gap: 8, paddingLeft: 20, flexWrap: 'wrap' }}>
+            {[['repas', 'Repas', '#E0F4F4', '#006666'], ['boisson', 'Boissons', '#FAEED4', '#6B4500'], ['eau', 'Eau', '#D7EFE9', '#04504A']].map(([t, l, bg, fg]) => (
+              <span key={t} style={{ background: bg, color: fg, borderRadius: 8, padding: '6px 10px', fontSize: 13, fontWeight: 700 }}>
+                {l} {Math.max(0, libres(t))}
+              </span>
+            ))}
+          </div>
+        ) : (
         <div style={{ textAlign: 'left', paddingLeft: 20 }}>
           <div style={{ fontSize: 10, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Solde
@@ -1049,6 +1124,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
             {((spec?.solde || 0) / 100).toFixed(2)} €
           </div>
         </div>
+        )}
         {/* Compteur d'inactivité */}
         <div style={{
           background: COLORS.bg,
@@ -1106,7 +1182,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
       )}
 
       {/* ─── Colonne catégories + grille des articles ─────────────────── */}
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: rayon && rayon.cats.length > 1 ? '150px minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: rayon && rayon.cats.length > 1 ? '176px minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
         {rayon && rayon.cats.length > 1 && (
           <nav aria-label="Catégories" style={{
             overflowY: 'auto', background: '#fff',
@@ -1159,6 +1235,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
                 {cat.items.map(item => (
                   <MenuCard key={item.id}
                     item={item}
+                    benevole={!!benev}
                     qty={cart[item.id] || 0}
                     onAdd={() => updateQty(item.id, +1)}
                     onRemove={() => updateQty(item.id, -1)}
@@ -1189,14 +1266,18 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
               </div>
             </div>
           </div>
-          <button onClick={onGoToCart}
+          {benevErr && <span style={{ flex: 1, fontSize: 13, color: '#FCE2E2' }}>{benevErr}</span>}
+          <button onClick={benev
+              ? () => onBenevoleCommande(Object.entries(cart).map(([id, qty]) => ({ id, qty })))
+              : onGoToCart}
+            disabled={benevBusy}
             style={{
               background: COLORS.coral, color: '#fff',
               border: 'none', borderRadius: 10,
               padding: '14px 28px', fontSize: 16, fontWeight: 700,
-              cursor: 'pointer', fontFamily: 'inherit',
+              cursor: benevBusy ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: benevBusy ? .7 : 1,
             }}>
-            Ma commande →
+            {benev ? (benevBusy ? 'Impression…' : 'Imprimer mon ticket →') : 'Ma commande →'}
           </button>
         </div>
       )}
@@ -1220,7 +1301,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
 }
 
 // ─── Petits composants Menu ─────────────────────────────────────────────
-function MenuCard({ item, qty, onAdd, onRemove, onShowInfo }) {
+function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false }) {
   const outOfStock = typeof item.stock === 'number' && item.stock <= 0
   const inCart = qty > 0
   // Compatibilité : photoUrl (nouveau champ Lot Image 1) ou image (legacy)
@@ -1333,7 +1414,9 @@ function MenuCard({ item, qty, onAdd, onRemove, onShowInfo }) {
             fontSize: 16, fontWeight: 700,
             textShadow: '0 1px 3px rgba(0,0,0,0.5)',
           }}>
-            {((item.prix || 0) / 100).toFixed(2)} €
+            {benevole
+              ? ({ repas: '1 repas', boisson: '1 boisson', eau: '1 eau' }[item.typeConsommation] || '')
+              : `${((item.prix || 0) / 100).toFixed(2)} €`}
           </span>
           {outOfStock ? (
             <span style={{ fontSize: 11, opacity: 0.8 }}>Indispo.</span>
@@ -2053,6 +2136,47 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
           100% { transform: scale(1); opacity: 1; }
         }
       `}</style>
+    </div>
+  )
+}
+
+
+// ════════════════════════════════════════════════════════════════════
+// Ticket bénévole (19/11/2026) : « Dirigez-vous au stand bénévoles »
+// ════════════════════════════════════════════════════════════════════
+function TicketBenevole({ resa, onDone, logoUrl }) {
+  const [secondsLeft, setSecondsLeft] = useState(TICKET_TIMEOUT_SEC)
+  useEffect(() => {
+    if (secondsLeft <= 0) { onDone(); return }
+    const t = setTimeout(() => setSecondsLeft(x => x - 1), 1000)
+    return () => clearTimeout(t)
+  }, [secondsLeft, onDone])
+  const items = resa?.items || []
+  const p = resa?.parType || {}
+  const droits = [['repas', 'repas'], ['boisson', 'boisson'], ['eau', 'eau']]
+    .filter(([t]) => p[t]).map(([t, l]) => `${p[t]} ${l}${p[t] > 1 && t !== 'eau' ? 's' : ''}`).join(', ')
+  const numero = resa?.stand ? `${resa.numero}-${resa.stand.numero}` : String(resa?.numero ?? '—')
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 30, background: COLORS.bg, overflowY: 'auto' }}>
+      {logoUrl && <img src={logoUrl} alt="" style={{ maxHeight: 48, maxWidth: 160, marginBottom: 14, objectFit: 'contain' }}/>}
+      <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.marine, marginBottom: 14 }}>Votre ticket est prêt</div>
+      <div style={{ background: '#fff', borderRadius: 14, width: 280, border: `1px dashed ${COLORS.border}`, padding: '16px 18px', display: 'grid', gap: 10, textAlign: 'center' }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Bénévole</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.marine }}>Dirigez-vous au stand bénévoles</div>
+        {resa?.stand && <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1, color: COLORS.marine }}>N° {resa.stand.numero}</div>}
+        <div style={{ borderTop: `1px dashed ${COLORS.border}`, paddingTop: 8, textAlign: 'left', display: 'grid', gap: 4 }}>
+          {items.map((it, i) => <div key={i} style={{ fontSize: 15 }}><b>{it.qty}×</b> {it.nom}</div>)}
+        </div>
+        {droits && <div style={{ fontSize: 12, color: COLORS.muted, textAlign: 'left' }}>Droits utilisés : {droits}</div>}
+        <div>
+          <div style={{ fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Commande</div>
+          <div style={{ fontSize: 30, fontWeight: 800, color: COLORS.coral, lineHeight: 1.1 }}>{numero}</div>
+        </div>
+        {resa?.nom && <div style={{ fontSize: 12, color: COLORS.muted }}>{resa.nom}</div>}
+      </div>
+      <button onClick={onDone} style={{ marginTop: 18, background: COLORS.marine, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 36px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+        Terminer ({secondsLeft} s)
+      </button>
     </div>
   )
 }

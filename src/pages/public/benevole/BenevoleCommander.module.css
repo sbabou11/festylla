@@ -1,0 +1,54 @@
+/* Onglet Conso de l'espace bénévole (19/11/2026) : droits du jour, rayons, tuiles, cartes, code */
+.stack { display: grid; gap: var(--space-3); padding-bottom: 72px; }
+.card { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); }
+.label { font-size: var(--fs-11); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.muted { margin: 0; font-size: var(--fs-12); color: var(--muted); }
+.empty { text-align: center; color: var(--muted); font-size: var(--fs-13); }
+.err { margin: 0; padding: 10px 12px; border-radius: var(--radius); background: var(--red-light); color: var(--red-dark); font-size: var(--fs-13); font-weight: 600; }
+
+.droits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.droit { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--radius-md); font-size: var(--fs-11); }
+.droit b { font: 800 var(--fs-18) var(--font-display); font-variant-numeric: tabular-nums; }
+.repas { background: var(--brand-light); color: var(--brand-dark); }
+.boisson { background: var(--gold-light); color: var(--gold-dark); }
+.eau { background: var(--green-light); color: var(--green-dark); }
+
+.rayons { display: flex; gap: var(--space-2); }
+.rayon { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg2); color: var(--text); font: 800 var(--fs-15) var(--font-display); cursor: pointer; }
+.rayonOn { border-color: transparent; background: var(--text); color: var(--bg); }
+.cats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.cat { display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 88px; padding: var(--space-2); border: 1.5px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); color: var(--text); cursor: pointer; }
+.catOn { border-color: var(--coral); background: var(--coral-light); }
+.catIcon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--radius); background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); }
+.catName { font-size: 14px; font-weight: 700; line-height: 1.2; text-align: center; word-break: keep-all; overflow-wrap: normal; hyphens: none; }
+
+.items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.item { display: grid; gap: 6px; align-content: start; padding: var(--space-2); border: 1.5px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); }
+.itemOn { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
+.itemOut { opacity: .5; }
+.photo { aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; border-radius: var(--radius-md); background: var(--grad-marine-teal, linear-gradient(135deg, #003048, #007878 55%, #F07848)); color: #fff; font: 800 30px var(--font-display); }
+.photo img { width: 100%; height: 100%; object-fit: cover; }
+.itemName { font-size: var(--fs-13); font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.badge { justify-self: start; padding: 1px 8px; border-radius: 6px; font-size: var(--fs-11); font-weight: 700; }
+.stepper { display: flex; align-items: center; justify-content: space-between; }
+.stepper b { min-width: 24px; text-align: center; font-size: var(--fs-18); font-weight: 800; }
+.stepper button { width: 36px; height: 36px; min-height: 0; display: grid; place-items: center; border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg2); color: var(--text); cursor: pointer; }
+.stepper .plus { border-color: var(--brand); background: var(--brand); color: #fff; }
+.stepper button:disabled { opacity: .3; cursor: not-allowed; }
+
+.bar {
+  position: sticky; bottom: 76px; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  padding: 10px 12px; border-radius: var(--radius-lg); background: var(--text); color: var(--bg);
+  font-size: var(--fs-13); font-weight: 600; box-shadow: 0 8px 24px rgba(0,48,72,.25);
+}
+.bar button { min-height: 44px; padding: 0 16px; border: none; border-radius: var(--radius-md); background: var(--coral); color: #fff; font: 800 var(--fs-14, 14px) var(--font); cursor: pointer; }
+
+.done { justify-items: center; text-align: center; padding: var(--space-5) var(--space-4); }
+.done h2 { margin: 0; font: 800 var(--fs-18) var(--font-display); }
+.done p { margin: 0; font-size: var(--fs-13); line-height: 1.45; }
+.doneIcon { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--green-light); color: var(--green-dark); }
+.code { font: 800 52px var(--font-display); letter-spacing: .08em; line-height: 1; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.btnPrimary, .btnSecondary { width: 100%; min-height: 44px; border-radius: var(--radius-md); font: 700 var(--fs-14, 14px) var(--font); cursor: pointer; }
+.btnPrimary { border: none; background: var(--brand); color: #fff; }
+.btnSecondary { border: 1px solid var(--border2); background: var(--bg2); color: var(--text); }

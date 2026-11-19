@@ -193,8 +193,8 @@ export default function Menu() {
 
   // ── Stands ────────────────────────────────────────────────────────
   const nextNumero = () => stands.reduce((m, st) => Math.max(m, st.numero || 0), 0) + 1
-  const startNewStand  = () => { setStandTried(false); setStandForm({ id:'new', numero: nextNumero(), nom:'' }) }
-  const startEditStand = (st) => { setStandTried(false); setStandForm({ id:st.id, numero:st.numero, nom:st.nom }) }
+  const startNewStand  = () => { setStandTried(false); setStandForm({ id:'new', numero: nextNumero(), nom:'', benevoles: false }) }
+  const startEditStand = (st) => { setStandTried(false); setStandForm({ id:st.id, numero:st.numero, nom:st.nom, benevoles: st.benevoles === true }) }
   const standNumeroErr = (f) => {
     const n = parseInt(f?.numero)
     if (!(n > 0)) return 'Indique un numéro supérieur à 0'
@@ -205,9 +205,13 @@ export default function Menu() {
     const nom = standForm.nom.trim()
     if (!nom || standNumeroErr(standForm)) { setStandTried(true); focusFirstInvalid(standFormRef.current); return }
     const numero = parseInt(standForm.numero)
+    const benevoles = standForm.benevoles === true
+    const id = standForm.id === 'new' ? newId() : standForm.id
+    // Un seul « Stand des bénévoles » : le cocher ici le retire des autres
+    const base = (benevoles ? stands.map(st => ({ ...st, benevoles: false })) : stands)
     const next = standForm.id === 'new'
-      ? [...stands, { id: newId(), numero, nom }]
-      : stands.map(st => st.id === standForm.id ? { ...st, numero, nom } : st)
+      ? [...base, { id, numero, nom, benevoles }]
+      : base.map(st => st.id === id ? { ...st, numero, nom, benevoles } : st)
     try { await saveStands(currentEventId, next); setStandForm(null) }
     catch (e) { toast.error(friendlyError(e, "Le stand n'a pas été enregistré.")) }
   }
@@ -593,8 +597,13 @@ export default function Menu() {
                 <div className={s.catRow}>
                   <span className={s.standNum}>{st.numero}</span>
                   <div className={s.catInfo}>
-                    <div className={s.catName}>{st.nom}</div>
-                    <div className={s.catMeta}>{plural(count, 'article')}</div>
+                    <div className={s.catName}>
+                      {st.nom}{' '}
+                      {st.benevoles && <Badge tone="coral">Stand des bénévoles</Badge>}
+                    </div>
+                    <div className={s.catMeta}>
+                      {st.benevoles ? 'Reçoit toutes les commandes de bénévoles' : plural(count, 'article')}
+                    </div>
                   </div>
                   <div className={s.rowActions}>
                     <Button variant="secondary" size="sm" icon={Pencil} onClick={() => startEditStand(st)}>Modifier</Button>
@@ -892,6 +901,14 @@ export default function Menu() {
             <input autoFocus value={standForm?.nom ?? ''} placeholder="ex : Cuisine"
               onChange={e => setStandForm(f => ({ ...f, nom: e.target.value }))}/>
           </Field>
+          <label className={s.checkRow}>
+            <input type="checkbox" checked={standForm?.benevoles === true}
+              onChange={e => setStandForm(f => ({ ...f, benevoles: e.target.checked }))}/>
+            <span>
+              <b>Stand des bénévoles</b>
+              <small>Toute commande de bénévole sort en un seul ticket pour ce stand. Un seul stand peut l'être.</small>
+            </span>
+          </label>
         </form>
       </Dialog>
 

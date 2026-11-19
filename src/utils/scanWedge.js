@@ -36,7 +36,7 @@ export function parseSpectatorCode(text) {
 /**
  * Crée un écouteur de lecteur. feed(event) reçoit chaque keydown ; onScan(code) est appelé
  * quand une rafale se termine par Entrée (ou après un silence) et contient un code valide.
- * onUnknown(texte) : rafale lue mais sans code spectateur (QR d'un autre usage).
+ * onUnknown(texte, lectureCodes, lectureTouches) : rafale lue mais sans code spectateur (QR d'un autre usage).
  */
 export function createWedge({ onScan, onUnknown, maxGapMs = 60, minLength = 6, idleMs = 150, now = () => Date.now() }) {
   let byKey = '', byCode = '', last = 0, timer = null
@@ -48,7 +48,7 @@ export function createWedge({ onScan, onUnknown, maxGapMs = 60, minLength = 6, i
     if (Math.max(keyText.length, codeText.length) < minLength) return false
     const code = parseSpectatorCode(keyText) || parseSpectatorCode(codeText)
     if (code) onScan?.(code)
-    else onUnknown?.(keyText || codeText)
+    else onUnknown?.(keyText || codeText, codeText, keyText)
     return true
   }
 

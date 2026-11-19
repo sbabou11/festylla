@@ -176,6 +176,15 @@ service cloud.firestore {
         allow update: if sess('spectateur', ev) && resource.data.specId == request.auth.token.specId
                       && resource.data.statut == 'en_attente' && request.resource.data.statut == 'annule'
                       && onlyChanges(['statut', 'annuleLe']);
+        // Espace bénévole (19/11/2026) : mêmes droits, sur ses propres codes. Les droits du jour
+        // sont décomptés à la borne par le serveur (api/borne.js), jamais depuis le téléphone.
+        allow read: if sess('benevole', ev) && resource.data.benevoleId == benevoleId();
+        allow create: if sess('benevole', ev) && request.resource.data.benevoleId == benevoleId()
+                      && request.resource.data.origine == 'benevole' && request.resource.data.statut == 'en_attente'
+                      && request.resource.data.commandeId == null;
+        allow update: if sess('benevole', ev) && resource.data.benevoleId == benevoleId()
+                      && resource.data.statut == 'en_attente' && request.resource.data.statut == 'annule'
+                      && onlyChanges(['statut', 'annuleLe']);
         allow delete: if isAdmin();
       }
       match /_counters/{id} {

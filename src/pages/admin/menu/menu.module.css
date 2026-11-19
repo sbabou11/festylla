@@ -224,3 +224,9 @@
 }
 .inputWarn { border-color: var(--red); }
 .fieldHint { font-size: var(--fs-12); color: var(--muted); }
+
+/* Case « Stand des bénévoles » */
+.checkRow { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border2); border-radius: var(--radius-md); background: var(--brand-light); cursor: pointer; }
+.checkRow input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--brand); flex-shrink: 0; }
+.checkRow span { display: grid; gap: 2px; font-size: var(--fs-13); color: var(--text); }
+.checkRow small { font-size: var(--fs-12); color: var(--muted); }

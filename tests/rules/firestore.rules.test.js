@@ -185,6 +185,17 @@ describe('artiste, borne et écran', () => {
     await assertFails(updateDoc(doc(db, `events/${EV}/codes/333333`), { total: 1 }))
     await assertSucceeds(updateDoc(doc(db, `events/${EV}/codes/333333`), { statut: 'annule' }))
   })
+  it('le bénévole crée, lit et annule ses codes, jamais ceux des autres', async () => {
+    const db = as(BENEV)
+    const mien = { code: '666666', origine: 'benevole', benevoleId: 'b1', statut: 'en_attente', total: 0, items: [], commandeId: null }
+    await assertSucceeds(setDoc(doc(db, `events/${EV}/codes/666666`), mien))
+    await assertFails(setDoc(doc(db, `events/${EV}/codes/777777`), { ...mien, benevoleId: 'b2' }))
+    await assertFails(setDoc(doc(db, `events/${EV}/codes/888888`), { ...mien, origine: 'en-ligne' }))
+    await assertSucceeds(getDocs(query(collection(db, `events/${EV}/codes`), where('benevoleId', '==', 'b1'))))
+    await assertFails(getDoc(doc(db, `events/${EV}/codes/482913`)))
+    await assertFails(updateDoc(doc(db, `events/${EV}/codes/666666`), { statut: 'utilise' }))
+    await assertSucceeds(updateDoc(doc(db, `events/${EV}/codes/666666`), { statut: 'annule' }))
+  })
   it("l'équipe crée et lit les codes", async () => {
     await assertSucceeds(setDoc(doc(as(STAND), `events/${EV}/codes/222222`), { statut: 'en_attente', total: 500 }))
     await assertSucceeds(getDocs(collection(as(STAND), `events/${EV}/codes`)))
