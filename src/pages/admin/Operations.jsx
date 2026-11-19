@@ -234,6 +234,17 @@ export default function Operations({ onNavigate }) {
             ]}
           />
 
+          {/* Commande sur place : client sans compte, code à 6 chiffres pour la borne */}
+          <PancartePrincipale
+            onClick={() => onNavigate && onNavigate('commande-sur-place', 'operations')}
+            isMobile={isMobile}
+            gradient="linear-gradient(135deg, #F07848 0%, #B8470F 100%)"
+            icon={<ShoppingBag size={isMobile ? 36 : 44} strokeWidth={2}/>}
+            titre="Commande sur place"
+            description="Encaisser un client sans compte et lui donner son code borne"
+            stats={[]}
+          />
+
           {/* Pancarte 2 : Nouveau QR code */}
           <PancartePrincipale
             onClick={() => onNavigate && onNavigate('nouveau', 'operations')}

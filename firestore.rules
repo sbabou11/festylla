@@ -158,6 +158,26 @@ service cloud.firestore {
         allow create: if staffIn(ev) || legacy(ev) || sess('borne', ev);
         allow update, delete: if staffIn(ev) || legacy(ev);
       }
+      // Codes à 6 chiffres (commande sur place à la billetterie, lot 3) : l'équipe les gère ;
+      // la borne lit un code dont elle connaît les chiffres (jamais la liste) et le fait
+      // seulement passer de « en attente » à « utilisé »
+      match /codes/{code} {
+        allow read, create, update: if staffIn(ev) || legacy(ev);
+        allow get: if sess('borne', ev);
+        allow update: if sess('borne', ev) && resource.data.statut == 'en_attente'
+                      && request.resource.data.statut == 'utilise'
+                      && onlyChanges(['statut', 'utiliseLe', 'commandeId', 'commandeNumero']);
+        // Espace spectateur (lot 4) : il crée un code en attente à son nom, lit les siens,
+        // et annule un code pas encore utilisé. Le débit se fait à la borne, au prix de la carte.
+        allow read: if sess('spectateur', ev) && resource.data.specId == request.auth.token.specId;
+        allow create: if sess('spectateur', ev) && request.resource.data.specId == request.auth.token.specId
+                      && request.resource.data.origine == 'en-ligne' && request.resource.data.statut == 'en_attente'
+                      && request.resource.data.commandeId == null;
+        allow update: if sess('spectateur', ev) && resource.data.specId == request.auth.token.specId
+                      && resource.data.statut == 'en_attente' && request.resource.data.statut == 'annule'
+                      && onlyChanges(['statut', 'annuleLe']);
+        allow delete: if isAdmin();
+      }
       match /_counters/{id} {
         allow read, write: if staffIn(ev) || legacy(ev) || sess('borne', ev) || sess('benevole', ev);
       }

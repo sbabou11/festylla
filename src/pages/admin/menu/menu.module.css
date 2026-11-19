@@ -182,3 +182,45 @@
 .importFails { margin: 0; padding-left: 18px; font-size: var(--fs-12); max-height: 180px; overflow: auto; }
 .importTrack { height: 8px; border-radius: 4px; background: var(--bg2); overflow: hidden; }
 .importFill { height: 100%; background: var(--brand); transition: width var(--dur-slow, 250ms) ease; }
+
+/* ── Rayons (groupes de catégories) ─────────────────────── */
+.rayon { display: grid; gap: var(--space-2); }
+.rayonHead { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
+.rayonIcon { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--brand-light); color: var(--brand-dark); }
+.rayonLabel { font-size: var(--fs-11); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.rayonName { font: 700 var(--fs-18, 18px) var(--font-display); color: var(--text); overflow-wrap: anywhere; }
+.rayonCats { display: grid; gap: 6px; }
+.catLine { padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg); }
+.catLine[draggable="true"] { cursor: grab; }
+.dragging { opacity: .45; }
+.grip { display: grid; place-items: center; color: var(--muted); opacity: .7; }
+.addCat {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 40px; padding: 0 var(--space-3);
+  border: 1.5px dashed var(--border2); border-radius: var(--radius-md);
+  background: transparent; color: var(--brand-dark);
+  font: 700 var(--fs-13) var(--font); cursor: pointer;
+}
+.addCat:hover { border-color: var(--brand); background: var(--brand-light); }
+.hint, .warn { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--fs-13); line-height: 1.45; }
+.hint { background: var(--brand-light); color: var(--brand-dark); }
+.warn { background: var(--red-light); color: var(--red-dark); }
+.hint svg, .warn svg { flex-shrink: 0; margin-top: 2px; }
+
+/* Aperçu de la tuile client (icône au-dessus du nom, nom entier en 14) */
+.tile {
+  width: 150px; min-height: 88px; display: grid; justify-items: center; align-content: center; gap: 6px;
+  padding: var(--space-2); border: 1.5px solid var(--border); border-radius: var(--radius-lg, 12px);
+  background: var(--bg); text-align: center;
+}
+.tileIcon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: var(--radius); background: color-mix(in srgb, var(--c) 14%, transparent); color: var(--c); }
+.tileName { font-size: 14px; font-weight: 700; line-height: 1.2; color: var(--text); word-break: keep-all; overflow-wrap: normal; hyphens: none; }
+
+/* Stands */
+.standNum {
+  min-width: 48px; height: 48px; padding: 0 8px; flex-shrink: 0; display: grid; place-items: center;
+  border-radius: var(--radius-md); background: var(--text); color: var(--bg);
+  font: 800 22px var(--font-display); font-variant-numeric: tabular-nums;
+}
+.inputWarn { border-color: var(--red); }
+.fieldHint { font-size: var(--fs-12); color: var(--muted); }

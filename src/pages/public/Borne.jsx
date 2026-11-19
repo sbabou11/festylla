@@ -25,12 +25,17 @@
  *   - Pas d'historique, pas d'infos personnelles affichées.
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
-import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2, ScanLine } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2, ScanLine, KeyRound, Delete } from 'lucide-react'
 import useKioskMode from '../../hooks/useKioskMode'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
 import { createWedge } from '../../utils/scanWedge'
 import { SPEC_CODE } from '../../utils/specCode'
-import { getSpectateur, setCurrentEvent, watchMenu, createCommande, getSettings } from '../../firebase/service'
+import { getSpectateur, setCurrentEvent, watchMenu, createCommande, getSettings, lireCode, utiliserCode } from '../../firebase/service'
+import { db } from '../../firebase/config'
+import { collection, onSnapshot } from 'firebase/firestore'
+import { watchCarte } from '../../menu/carte'
+import { organiserCarte, ticketsParStand } from '../../menu/organiser'
+import { getIcon } from '../../menu/icons'
 
 // ─── Étapes du flux ─────────────────────────────────────────────────────
 // Codé en const pour pouvoir étendre facilement (lots suivants : 'menu',
@@ -42,6 +47,8 @@ const STEP = {
   MENU:           'menu',
   PANIER:         'panier',
   TICKET:         'ticket',
+  // Code à 6 chiffres remis par la billetterie (commande déjà payée)
+  CODE:           'code',
 }
 
 // ─── Helpers couleur ────────────────────────────────────────────────────
@@ -151,6 +158,9 @@ export default function Borne() {
   // Le rerender propage automatiquement aux composants enfants via les props.
   const [palette, setPalette] = useState(() => buildPalette(null))
   const [logoUrl, setLogoUrl] = useState('')
+  // Rayons, stands (settings/carte) et catégories de l'organisateur, lus en direct
+  const [carte, setCarte] = useState({ rayons: [], stands: [] })
+  const [categories, setCategories] = useState([])
 
   // ─── Initialisation : lecture des params URL ──────────────────────────
   // On lit l'eventId depuis l'URL et on l'installe dans le store/localStorage
@@ -182,6 +192,16 @@ export default function Borne() {
       if (s?.logoDataUrl) setLogoUrl(s.logoDataUrl)
     }).catch(e => console.warn('Borne settings:', e.message))
   }, [])
+
+  useEffect(() => {
+    if (!eventReady) return
+    const ev = new URLSearchParams(window.location.search).get('ev')
+    const offCarte = watchCarte(ev, setCarte, e => console.warn('Borne carte:', e.message))
+    const offCats = onSnapshot(collection(db, 'events', ev, 'categories'),
+      snap => setCategories(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
+      e => console.warn('Borne catégories:', e.message))
+    return () => { offCarte(); offCats() }
+  }, [eventReady])
 
   // ─── Validation d'un ID spectateur (commun QR + saisie manuelle) ──────
   // Recherche dans Firestore, valide, puis passe à l'étape suivante.
@@ -268,7 +288,12 @@ export default function Borne() {
       {!eventReady ? (
         <ConfigError error={error}/>
       ) : step === STEP.ACCUEIL ? (
-        <Accueil onStart={() => setStep(STEP.IDENTIFICATION)} standName={standName} logoUrl={logoUrl}/>
+        <Accueil onStart={() => setStep(STEP.IDENTIFICATION)} onCode={() => setStep(STEP.CODE)} standName={standName} logoUrl={logoUrl}/>
+      ) : step === STEP.CODE ? (
+        <CodeScreen stands={carte.stands}
+          onCancel={resetSession}
+          onTimeout={resetSession}
+          onConfirmed={(resa) => { setLastResa(resa); setStep(STEP.TICKET) }}/>
       ) : step === STEP.IDENTIFICATION ? (
         <Identification
           onValidated={validateSpec}
@@ -284,7 +309,9 @@ export default function Borne() {
           onTimeout={resetSession}
           onGoToCart={() => setStep(STEP.PANIER)}
           onTerminate={resetSession}
-          standName={standName}/>
+          standName={standName}
+          carte={carte}
+          categories={categories}/>
       ) : step === STEP.PANIER ? (
         <Panier
           spec={spec}
@@ -293,12 +320,13 @@ export default function Borne() {
           onTimeout={resetSession}
           onBack={() => setStep(STEP.MENU)}
           onTerminate={resetSession}
+          stands={carte.stands}
           onConfirmed={(resa) => {
             setLastResa(resa)
             setStep(STEP.TICKET)
           }}/>
       ) : step === STEP.TICKET ? (
-        <Ticket resa={lastResa} onDone={resetSession} logoUrl={logoUrl}/>
+        <Ticket resa={lastResa} onDone={resetSession} logoUrl={logoUrl} stands={carte.stands}/>
       ) : null}
     </div>
   )
@@ -335,7 +363,7 @@ function ConfigError({ error }) {
 // Le fond utilise la couleur de marque du festival (settings.brandColor),
 // avec un gradient vers une variante plus sombre pour la profondeur.
 // Le logo (settings.logoDataUrl) est affiché en haut s'il est défini.
-function Accueil({ onStart, standName, logoUrl }) {
+function Accueil({ onStart, onCode, standName, logoUrl }) {
   // Texte sur le fond brand — soit blanc soit noir selon luminance
   const onBrand = COLORS.textOnBrand || '#fff'
   // Couleur des labels secondaires : variante avec opacité réduite
@@ -441,6 +469,21 @@ function Accueil({ onStart, standName, logoUrl }) {
       }}>
         Toucher pour commencer
       </div>
+      {/* Code à 6 chiffres reçu à la billetterie : la commande est déjà payée */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onCode() }}
+        onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); onCode() }}
+        style={{
+          marginTop: 28, padding: '16px 34px', borderRadius: 14,
+          background: 'rgba(255,255,255,0.12)', color: onBrand,
+          border: `1.5px solid ${onBrandFaint}`,
+          fontSize: 'clamp(16px, 2.2vw, 20px)', fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'inherit',
+          display: 'inline-flex', alignItems: 'center', gap: 10,
+          WebkitTapHighlightColor: 'transparent',
+        }}>
+        <KeyRound size={22}/> J'ai un code
+      </button>
       <div style={{
         position: 'absolute', bottom: 20, left: 0, right: 0,
         textAlign: 'center', fontSize: 12, color: onBrandFaint,
@@ -577,6 +620,155 @@ function Identification({ onValidated, onCancel, loading, error, standName }) {
           `}</style>
         </div>
       )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Code à 6 chiffres (commande payée à la billetterie)
+// ════════════════════════════════════════════════════════════════════
+// Le client tape son code, voit sa commande, puis touche « Mes tickets » :
+// la commande part déjà payée et le code ne peut plus servir (utiliserCode).
+function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [] }) {
+  const [digits, setDigits] = useState('')
+  const [found, setFound] = useState(null)     // contenu du code
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [showWarn, setShowWarn] = useState(false)
+  const { idleSec, touchActivity } = useIdleWatcher({
+    warnSec: IDLE_WARN_SEC, timeoutSec: IDLE_LOGOUT_SEC,
+    onWarn: () => setShowWarn(true), onTimeout, enabled: !busy,
+  })
+  const secondsLeft = Math.max(0, IDLE_LOGOUT_SEC - idleSec)
+
+  const chercher = async (code) => {
+    setBusy(true); setError('')
+    try {
+      const c = await lireCode(code)
+      if (!c) setError('Code inconnu. Vérifiez les 6 chiffres.')
+      else if (c.statut !== 'en_attente') setError('Ce code a déjà été utilisé.')
+      else setFound(c)
+    } catch (e) {
+      console.error('Borne lireCode:', e)
+      setError('Erreur de connexion. Réessayez dans un instant.')
+    } finally { setBusy(false) }
+  }
+  const add = (d) => {
+    if (busy || found || digits.length >= 6) return
+    const next = digits + d
+    setDigits(next); setError('')
+    if (next.length === 6) chercher(next)
+  }
+  const del = () => { if (!busy && !found) { setDigits(v => v.slice(0, -1)); setError('') } }
+
+  const valider = async () => {
+    setBusy(true); setError('')
+    try {
+      const r = await utiliserCode(digits, null, { stands })
+      onConfirmed({
+        ...r,
+        items: (r.items || []).map(i => ({ nom: i.nom, qty: i.qty, prix: i.prixUnit, standId: i.standId })),
+      })
+    } catch (e) {
+      console.error('Borne utiliserCode:', e)
+      setError(e.message || 'Erreur lors de la validation. Réessayez.')
+      setBusy(false)
+    }
+  }
+
+  const items = found?.items || []
+  const enLigne = found?.origine === 'en-ligne'
+  const keyStyle = {
+    background: '#2C2C2A', color: '#fff', border: 'none', borderRadius: 12,
+    fontSize: 'clamp(22px, 4vh, 30px)', fontWeight: 700, fontFamily: 'inherit',
+    padding: 'clamp(12px, 2.6vh, 22px) 0', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+    display: 'grid', placeItems: 'center',
+  }
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: COLORS.bg, padding: 'clamp(12px, 2vh, 24px)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
+        <button onClick={onCancel} disabled={busy}
+          style={{ background: 'transparent', border: 'none', color: COLORS.muted, fontSize: 14, padding: '8px 12px',
+            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+          <ArrowLeft size={16}/> Annuler
+        </button>
+        <div style={{ fontSize: 12, color: secondsLeft <= 15 ? COLORS.red : COLORS.muted, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Clock size={13}/> {secondsLeft}s
+        </div>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div style={{ fontSize: 'clamp(20px, 3.4vh, 26px)', fontWeight: 700, color: COLORS.marine, marginBottom: 4, textAlign: 'center' }}>
+          {found ? 'Votre commande' : 'Entrez votre code'}
+        </div>
+        <div style={{ fontSize: 14, color: COLORS.muted, marginBottom: 18, textAlign: 'center' }}>
+          {found ? (enLigne ? 'Commandée en ligne. Votre solde sera débité quand vous toucherez « Payer et imprimer ».' : 'Déjà payée à la billetterie. Vérifiez puis touchez « Mes tickets ».') : 'Les 6 chiffres reçus à la billetterie ou dans votre espace'}
+        </div>
+
+        {/* Six cases */}
+        <div style={{ display: 'flex', gap: 'clamp(6px, 1.2vw, 12px)', marginBottom: 18 }} aria-label={`Code saisi : ${digits.split('').join(' ')}`}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} style={{
+              width: 'clamp(44px, 7vw, 64px)', height: 'clamp(56px, 9vh, 76px)', borderRadius: 12,
+              display: 'grid', placeItems: 'center', background: '#fff',
+              border: `2px solid ${i === digits.length && !found ? COLORS.coral : COLORS.border}`,
+              fontSize: 'clamp(26px, 4.5vh, 38px)', fontWeight: 800, color: COLORS.marine,
+              marginLeft: i === 3 ? 'clamp(6px, 1.2vw, 14px)' : 0,
+            }}>{digits[i] || ''}</div>
+          ))}
+        </div>
+
+        {error && (
+          <div role="alert" style={{ background: '#FCEBEB', color: '#791F1F', border: '0.5px solid #F09595', borderRadius: 10,
+            padding: '12px 16px', fontSize: 15, marginBottom: 14, textAlign: 'center', maxWidth: 480 }}>
+            {error}
+          </div>
+        )}
+
+        {found ? (
+          <div style={{ width: '100%', maxWidth: 520, display: 'grid', gap: 14 }}>
+            <div style={{ background: '#fff', borderRadius: 12, border: `0.5px solid ${COLORS.border}`, padding: '12px 16px' }}>
+              {items.map((it, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 16,
+                  borderBottom: i < items.length - 1 ? `0.5px solid ${COLORS.border}` : 'none' }}>
+                  <span><b>{it.qty}×</b> {it.nom}</span>
+                  <span style={{ color: COLORS.muted }}>{(((it.prixUnit || 0) * (it.qty || 0)) / 100).toFixed(2)} €</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, marginTop: 4,
+                borderTop: `0.5px solid ${COLORS.border}`, fontSize: 17, fontWeight: 800, color: COLORS.marine }}>
+                <span>{enLigne ? 'À débiter de votre solde' : 'Total payé'}</span><span>{((found.total || 0) / 100).toFixed(2)} €</span>
+              </div>
+            </div>
+            <button onClick={valider} disabled={busy}
+              style={{ background: busy ? COLORS.border : COLORS.coral, color: '#fff', border: 'none', borderRadius: 12,
+                padding: '20px', fontSize: 20, fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              {busy ? <><RefreshCw size={18} style={{ animation: 'borne-spin 1s linear infinite' }}/> Envoi…</> : (enLigne ? 'Payer et imprimer mes tickets →' : 'Mes tickets →')}
+            </button>
+            <button onClick={() => { setFound(null); setDigits(''); setError('') }} disabled={busy}
+              style={{ background: 'transparent', border: 'none', color: COLORS.muted, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Ce n'est pas ma commande
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'clamp(6px, 1.2vh, 10px)', width: '100%', maxWidth: 420 }}>
+            {['1','2','3','4','5','6','7','8','9'].map(d => (
+              <button key={d} style={keyStyle} disabled={busy} onClick={() => add(d)}>{d}</button>
+            ))}
+            <button style={{ ...keyStyle, background: '#D3D1C7', color: '#2C2C2A' }} disabled={busy || !digits} onClick={del} aria-label="Effacer">
+              <Delete size={24}/>
+            </button>
+            <button style={keyStyle} disabled={busy} onClick={() => add('0')}>0</button>
+            <div style={{ display: 'grid', placeItems: 'center', color: COLORS.muted }}>
+              {busy && <RefreshCw size={22} style={{ animation: 'borne-spin 1s linear infinite' }}/>}
+            </div>
+          </div>
+        )}
+      </div>
+      <style>{`@keyframes borne-spin { to { transform: rotate(360deg); } }`}</style>
+      {showWarn && <IdleWarning onContinue={() => { touchActivity(); setShowWarn(false) }} secondsLeft={secondsLeft}/>}
     </div>
   )
 }
@@ -772,10 +964,11 @@ function useIdleWatcher({ warnSec, timeoutSec, onWarn, onTimeout, enabled = true
 // Affiche le solde + les articles du menu, avec ajout/retrait au panier.
 // Filtres catégories. Compteur d'inactivité visible. Bouton Terminer
 // permanent en haut à droite.
-function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, standName }) {
+function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, standName, carte, categories }) {
   // Items du menu (chargés en live depuis Firestore)
   const [menu, setMenu] = useState([])
-  // Filtre catégorie actif (null = toutes)
+  // Rayon et catégorie affichés (null = le premier)
+  const [activeRayon, setActiveRayon] = useState(null)
   const [activeCat, setActiveCat] = useState(null)
   // Modale "Vous êtes toujours là ?" (warning d'inactivité)
   const [showWarn, setShowWarn] = useState(false)
@@ -806,19 +999,15 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, standNa
     setShowWarn(false)
   }
 
-  // ─── Catégories dérivées ────────────────────────────────────────────
-  // On trie les catégories par ordre alphabétique pour stabilité d'affichage
-  const cats = useMemo(() => {
-    const set = new Set()
-    menu.forEach(m => { if (m.cat) set.add(m.cat) })
-    return Array.from(set).sort()
-  }, [menu])
-
-  // Items filtrés par catégorie active
-  const filteredMenu = useMemo(() => {
-    if (!activeCat) return menu
-    return menu.filter(m => m.cat === activeCat)
-  }, [menu, activeCat])
+  // ─── Carte organisée : rayons > catégories > articles ───────────────
+  // Articles sans stand écartés dès qu'un stand existe (menu/organiser.js)
+  const org = useMemo(() => organiserCarte({
+    menu, categories, rayons: carte?.rayons || [], stands: carte?.stands || [],
+  }), [menu, categories, carte])
+  const rayon = org.rayons.find(r => r.id === activeRayon) || org.rayons[0] || null
+  const cat = rayon ? (rayon.cats.find(c => c.key === activeCat) || rayon.cats[0]) : null
+  const showRayons = org.rayons.length > 1 || !!org.rayons[0]?.nom
+  const chooseRayon = (id) => { setActiveRayon(id); setActiveCat(null) }
 
   // ─── Helpers panier ─────────────────────────────────────────────────
   const updateQty = (itemId, delta) => {
@@ -902,56 +1091,96 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, standNa
         </button>
       </div>
 
-      {/* ─── Tabs catégories ──────────────────────────────────────────── */}
-      <div style={{
-        padding: '10px 24px', background: '#fff',
-        borderBottom: `0.5px solid ${COLORS.border}`,
-        display: 'flex', gap: 8, overflowX: 'auto',
-        WebkitOverflowScrolling: 'touch',
-      }}>
-        <CategoryTab
-          active={activeCat === null}
-          onClick={() => setActiveCat(null)}>
-          Tout ({menu.length})
-        </CategoryTab>
-        {cats.map(cat => {
-          const count = menu.filter(m => m.cat === cat).length
-          return (
-            <CategoryTab key={cat}
-              active={activeCat === cat}
-              onClick={() => setActiveCat(cat)}>
-              {cat} ({count})
-            </CategoryTab>
-          )
-        })}
-      </div>
+      {/* ─── Rayons (Plats, Boissons…) ─────────────────────────────── */}
+      {showRayons && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 10,
+          padding: '12px 24px', background: '#fff',
+          borderBottom: `0.5px solid ${COLORS.border}`,
+        }}>
+          {org.rayons.map(r => {
+            const on = r.id === rayon?.id
+            const Icon = getIcon(r.icon)
+            return (
+              <button key={r.id || 'autres'} onClick={() => chooseRayon(r.id)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 10,
+                  minHeight: 56, padding: '0 26px', borderRadius: 14,
+                  border: on ? 'none' : `1px solid ${COLORS.border}`,
+                  background: on ? COLORS.marine : COLORS.bg,
+                  color: on ? '#fff' : COLORS.marine,
+                  fontSize: 18, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                <Icon size={22}/> {r.nom}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
-      {/* ─── Grille des articles ──────────────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-        {filteredMenu.length === 0 ? (
-          <div style={{
-            textAlign: 'center', padding: 60, color: COLORS.muted,
+      {/* ─── Colonne catégories + grille des articles ─────────────────── */}
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: rayon && rayon.cats.length > 1 ? '150px minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
+        {rayon && rayon.cats.length > 1 && (
+          <nav aria-label="Catégories" style={{
+            overflowY: 'auto', background: '#fff',
+            borderRight: `0.5px solid ${COLORS.border}`,
+            padding: '10px 8px', display: 'grid', alignContent: 'start', gap: 6,
           }}>
-            {menu.length === 0
-              ? 'Chargement du menu…'
-              : 'Aucun article dans cette catégorie.'}
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-            gap: 12,
-          }}>
-            {filteredMenu.map(item => (
-              <MenuCard key={item.id}
-                item={item}
-                qty={cart[item.id] || 0}
-                onAdd={() => updateQty(item.id, +1)}
-                onRemove={() => updateQty(item.id, -1)}
-                onShowInfo={() => setSelectedItem(item)}/>
-            ))}
-          </div>
+            {rayon.cats.map(c => {
+              const on = c.key === cat?.key
+              const Icon = getIcon(c.icon)
+              const col = c.couleur || COLORS.marine
+              return (
+                <button key={c.key} onClick={() => setActiveCat(c.key)}
+                  aria-current={on ? 'true' : undefined}
+                  style={{
+                    position: 'relative', display: 'grid', justifyItems: 'center', gap: 6,
+                    padding: '12px 6px', borderRadius: 12,
+                    border: on ? `1.5px solid ${COLORS.coral}` : '1.5px solid transparent',
+                    background: on ? '#FDE4D4' : 'transparent',
+                    color: COLORS.marine, cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                  <span style={{
+                    width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center',
+                    background: `color-mix(in srgb, ${col} 16%, transparent)`, color: col,
+                  }}><Icon size={22}/></span>
+                  <span style={{
+                    fontSize: 14, fontWeight: 700, lineHeight: 1.2, textAlign: 'center',
+                    wordBreak: 'keep-all', overflowWrap: 'normal', hyphens: 'none',
+                  }}>{c.nom}</span>
+                </button>
+              )
+            })}
+          </nav>
         )}
+
+        <div style={{ overflowY: 'auto', padding: '16px 24px' }}>
+          {!cat ? (
+            <div style={{ textAlign: 'center', padding: 60, color: COLORS.muted }}>
+              {menu.length === 0 ? 'Chargement du menu…' : 'Aucun article disponible pour le moment.'}
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.marine, marginBottom: 12 }}>
+                {cat.nom}
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                gap: 12,
+              }}>
+                {cat.items.map(item => (
+                  <MenuCard key={item.id}
+                    item={item}
+                    qty={cart[item.id] || 0}
+                    onAdd={() => updateQty(item.id, +1)}
+                    onRemove={() => updateQty(item.id, -1)}
+                    onShowInfo={() => setSelectedItem(item)}/>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* ─── Barre panier en bas (visible quand panier non vide) ──────── */}
@@ -980,7 +1209,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, standNa
               padding: '14px 28px', fontSize: 16, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'inherit',
             }}>
-            Voir le panier →
+            Ma commande →
           </button>
         </div>
       )}
@@ -1004,22 +1233,6 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, standNa
 }
 
 // ─── Petits composants Menu ─────────────────────────────────────────────
-function CategoryTab({ active, onClick, children }) {
-  return (
-    <button onClick={onClick}
-      style={{
-        background: active ? COLORS.marine : 'transparent',
-        color: active ? '#fff' : COLORS.muted,
-        border: active ? 'none' : `0.5px solid ${COLORS.border}`,
-        borderRadius: 20, padding: '8px 18px',
-        fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
-        cursor: 'pointer', fontFamily: 'inherit',
-      }}>
-      {children}
-    </button>
-  )
-}
-
 function MenuCard({ item, qty, onAdd, onRemove, onShowInfo }) {
   const outOfStock = typeof item.stock === 'number' && item.stock <= 0
   const inCart = qty > 0
@@ -1239,7 +1452,7 @@ function IdleWarning({ onContinue, secondsLeft }) {
 // La résa n'est PAS débitée du solde du spectateur ici — c'est fait par
 // validerRetrait quand la cuisine remet la commande. Comportement cohérent
 // avec l'espace spectateur existant.
-function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirmed }) {
+function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirmed, stands = [] }) {
   // Items du menu pour récupérer prix/nom (le panier ne stocke que les qty)
   const [menu, setMenu] = useState([])
   // Modale "Vous êtes toujours là ?" (warning d'inactivité)
@@ -1311,6 +1524,9 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
   // avec PrendreCommande, plus de risque de double-commande au-delà du solde,
   // et le terme "réservation" devient cohérent (réservé = client paie à la
   // remise, plus rare).
+  const standById = useMemo(() => new Map(stands.map(st => [st.id, st])), [stands])
+  const standOf = (i) => standById.get(i.standId) || null
+
   const handleConfirm = async () => {
     if (cartItems.length === 0) return
     if (isInsufficient) {
@@ -1329,6 +1545,8 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
         qty: i.qty,
         // Type de consommation conservé pour compat menu (ex: sur place/à emporter)
         ...(i.typeConsommation ? { typeConsommation: i.typeConsommation } : {}),
+        // Stand de retrait : imprimé sur le ticket de ce stand (un ticket par stand)
+        ...(standOf(i) ? { standId: standOf(i).id, standNumero: standOf(i).numero } : {}),
       }))
       // Génère un code court 'BRN-XXX-NNN' côté client. C'est purement
       // informatif (le numero séquentiel reste l'identifiant principal).
@@ -1358,7 +1576,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
       const orderForTicket = {
         ...cmd,
         items: items.map(i => ({
-          nom: i.nom, qty: i.qty, prix: i.prixUnit,
+          nom: i.nom, qty: i.qty, prix: i.prixUnit, standId: i.standId,
         })),
         total,
       }
@@ -1673,9 +1891,9 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
 // IMPORTANT : pas de timer d'inactivité ici. Le compte à rebours est
 // strict, indépendant des interactions. Le seul moyen de prolonger
 // l'affichage est de NE PAS cliquer Terminer. Sinon → retour auto.
-const TICKET_TIMEOUT_SEC = 10
+const TICKET_TIMEOUT_SEC = 20
 
-function Ticket({ resa, onDone, logoUrl }) {
+function Ticket({ resa, onDone, logoUrl, stands = [] }) {
   const [secondsLeft, setSecondsLeft] = useState(TICKET_TIMEOUT_SEC)
 
   // Décompte simple. Pas d'écoute des interactions — le timer est strict
@@ -1689,6 +1907,8 @@ function Ticket({ resa, onDone, logoUrl }) {
   // Items de la résa (fallback sur tableau vide si la résa est mal formée)
   const items = Array.isArray(resa?.items) ? resa.items : []
   const total = resa?.total || items.reduce((s, i) => s + (i.prix || 0) * (i.qty || 0), 0)
+  // Un ticket par stand (« Stand N° 4 », n° 47-4) ; un seul ticket si aucun stand n'est créé
+  const tickets = ticketsParStand(items, stands, resa?.numero ?? '—')
 
   // Calcul du progrès du cercle (0 → 1)
   const progress = (TICKET_TIMEOUT_SEC - secondsLeft) / TICKET_TIMEOUT_SEC
@@ -1730,81 +1950,63 @@ function Ticket({ resa, onDone, logoUrl }) {
         fontSize: 13, color: COLORS.muted, marginBottom: 22,
         textAlign: 'center', maxWidth: 420, lineHeight: 1.5,
       }}>
-        Votre numéro sera affiché sur l'écran du stand lorsque votre commande sera prête.
+        {tickets.length > 1
+          ? `Prenez vos ${tickets.length} tickets et présentez chacun au stand indiqué.`
+          : tickets[0]?.stand
+            ? 'Prenez votre ticket et présentez-le au stand indiqué.'
+            : "Votre numéro sera affiché sur l'écran du stand lorsque votre commande sera prête."}
       </div>
 
-      {/* Numéro en grand + code court */}
+      {/* Tickets : un par stand */}
       <div style={{
-        background: '#fff', padding: '20px 48px', borderRadius: 14,
-        border: `0.5px solid ${COLORS.border}`,
-        marginBottom: 16, textAlign: 'center',
+        display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 14,
+        width: '100%', maxWidth: 900, marginBottom: 14,
       }}>
-        <div style={{
-          fontSize: 11, color: COLORS.muted,
-          textTransform: 'uppercase', letterSpacing: '0.04em',
-          marginBottom: 2,
-        }}>Votre numéro</div>
-        <div style={{
-          fontSize: 64, fontWeight: 800, color: COLORS.coral,
-          lineHeight: 1, marginBottom: 4,
-        }}>
-          #{resa?.numero || '—'}
-        </div>
-        {resa?.code && (
-          <div style={{
-            fontSize: 10, color: COLORS.muted,
-            fontFamily: 'monospace', letterSpacing: '0.05em',
+        {tickets.map(t => (
+          <div key={t.numero} style={{
+            background: '#fff', borderRadius: 14, width: 260,
+            border: `1px dashed ${COLORS.border}`, boxShadow: '0 2px 10px rgba(0,48,72,.06)',
+            padding: '16px 18px', display: 'grid', gap: 10,
           }}>
-            {resa.code}
-          </div>
-        )}
-      </div>
-
-      {/* Récap articles (compact, max 4 visibles, le reste agrégé) */}
-      {items.length > 0 && (
-        <div style={{
-          background: '#fff', borderRadius: 12,
-          border: `0.5px solid ${COLORS.border}`,
-          padding: '12px 16px',
-          maxWidth: 480, width: '100%',
-          marginBottom: 18,
-        }}>
-          {items.slice(0, 4).map((it, idx) => (
-            <div key={idx} style={{
-              display: 'flex', justifyContent: 'space-between',
-              padding: '4px 0',
-              fontSize: 13, color: COLORS.text,
-              borderBottom: idx < Math.min(items.length, 4) - 1
-                ? `0.5px solid ${COLORS.border}`
-                : 'none',
-            }}>
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {it.qty > 1 ? `${it.qty}× ` : ''}{it.nom}
-              </span>
-              <span style={{ color: COLORS.muted, marginLeft: 12, flexShrink: 0 }}>
-                {((it.prix || 0) * (it.qty || 0) / 100).toFixed(2)} €
-              </span>
+            {t.stand ? (
+              <div style={{ textAlign: 'center', borderBottom: `1px dashed ${COLORS.border}`, paddingBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Stand</div>
+                <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1, color: COLORS.marine }}>N° {t.stand.numero}</div>
+              </div>
+            ) : null}
+            <div style={{ display: 'grid', gap: 4 }}>
+              {t.lignes.map((it, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 14, color: COLORS.text }}>
+                  <span style={{ minWidth: 0 }}>
+                    <b>{it.qty}×</b> {it.nom}
+                    <span style={{ display: 'block', fontSize: 11, color: COLORS.muted }}>{((it.prix || 0) / 100).toFixed(2)} € l'unité</span>
+                  </span>
+                  <span style={{ flexShrink: 0, fontWeight: 600 }}>{((it.prix || 0) * (it.qty || 0) / 100).toFixed(2)} €</span>
+                </div>
+              ))}
             </div>
-          ))}
-          {items.length > 4 && (
             <div style={{
-              padding: '4px 0', fontSize: 12,
-              color: COLORS.muted, fontStyle: 'italic',
-              borderBottom: `0.5px solid ${COLORS.border}`,
+              display: 'flex', justifyContent: 'space-between', paddingTop: 8,
+              borderTop: `0.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 700, color: COLORS.marine,
             }}>
-              + {items.length - 4} autre{items.length - 4 > 1 ? 's' : ''} article{items.length - 4 > 1 ? 's' : ''}
+              <span>{tickets.length > 1 ? 'Sous-total' : 'Total'}</span>
+              <span>{(t.sousTotal / 100).toFixed(2)} €</span>
             </div>
-          )}
-          {/* Total */}
-          <div style={{
-            display: 'flex', justifyContent: 'space-between',
-            padding: '8px 0 2px',
-            marginTop: 4, borderTop: `0.5px solid ${COLORS.border}`,
-            fontSize: 14, fontWeight: 700, color: COLORS.marine,
-          }}>
-            <span>Total</span>
-            <span>{(total / 100).toFixed(2)} €</span>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Commande</div>
+              <div style={{ fontSize: 30, fontWeight: 800, color: COLORS.coral, lineHeight: 1.1 }}>{t.numero}</div>
+            </div>
           </div>
+        ))}
+      </div>
+      {tickets.length > 1 && (
+        <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.marine, marginBottom: 6 }}>
+          Total payé : {(total / 100).toFixed(2)} €
+        </div>
+      )}
+      {resa?.code && (
+        <div style={{ fontSize: 10, color: COLORS.muted, fontFamily: 'monospace', letterSpacing: '0.05em', marginBottom: 14 }}>
+          {resa.code}
         </div>
       )}
 

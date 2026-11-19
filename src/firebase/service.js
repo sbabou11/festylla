@@ -17,6 +17,7 @@ import {
 import { db }        from './config'
 import { nowStr, uid, makeResaCode } from '../utils/helpers'
 import { toCents } from '../utils/money'
+import { lireNumeroTicket } from '../menu/organiser'
 
 const SEUIL_STOCK = 10
 
@@ -2241,6 +2242,8 @@ export const createCommande = async ({ specId, specNom, items, payNow, staff, co
       qty:      Number(it.qty) || 1,
       prixUnit: Number(it.prixUnit) || 0,
       total:    (Number(it.qty) || 1) * (Number(it.prixUnit) || 0),
+      // Borne : stand de retrait (un ticket par stand)
+      ...(it.standId ? { standId: String(it.standId), standNumero: Number(it.standNumero) || 0 } : {}),
     })),
     total,
     status: 'pending',
@@ -2324,6 +2327,343 @@ export const createCommande = async ({ specId, specNom, items, payNow, staff, co
   })
 
   return { id: commandeId, numero, code: code || null }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// COMMANDE SUR PLACE ET CODES À 6 CHIFFRES (parcours borne, lot 3)
+// ════════════════════════════════════════════════════════════════════
+// La billetterie encaisse (espèces ou carte SumUp) et saisit la commande d'un client
+// sans compte. L'argent est enregistré tout de suite comme une vente (type 'debit',
+// surPlace, sans spectateur) : il compte dans les ventes et dans la clôture de caisse.
+// Le client reçoit un code à usage unique, events/{ev}/codes/{code} ; il le tape à la
+// borne, qui crée la commande déjà payée et imprime un ticket par stand.
+
+const codeRef = (eventId, code) => doc(db, 'events', eventId, 'codes', code)
+export const CODE_RE = /^\d{6}$/
+const genererCode = () => String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
+
+/**
+ * items : [{ id, nom, qty, prixUnit, standId?, standNumero? }] ; moyen : 'especes' | 'cb'
+ * @returns {{ code, total, transactionId }}
+ */
+export const creerCommandeSurPlace = async ({ items, moyen, staff }, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) throw new Error('Aucun événement courant')
+  if (!Array.isArray(items) || items.length === 0) throw new Error('Aucun article dans la commande')
+  if (!['especes', 'cb'].includes(moyen)) throw new Error('Moyen de paiement à choisir')
+  const lignes = items.map(it => ({
+    id: it.id || '', nom: String(it.nom || ''),
+    qty: Math.max(1, Number(it.qty) || 1), prixUnit: Number(it.prixUnit) || 0,
+    ...(it.standId ? { standId: String(it.standId), standNumero: Number(it.standNumero) || 0 } : {}),
+  })).map(l => ({ ...l, total: l.qty * l.prixUnit }))
+  const total = lignes.reduce((s, l) => s + l.total, 0)
+  const now = new Date()
+  const txRef = doc(collection(db, 'events', eventId, 'transactions'))
+
+  for (let essai = 0; essai < 8; essai++) {
+    const code = genererCode()
+    const ok = await runTransaction(db, async (txn) => {
+      // Lectures : le code (jamais deux codes en attente identiques) et les stocks
+      const cSnap = await txn.get(codeRef(eventId, code))
+      if (cSnap.exists() && cSnap.data().statut === 'en_attente') return false
+      const stockRefs = lignes.map(l => doc(db, 'events', eventId, 'menu', l.id))
+      const stockDocs = await Promise.all(stockRefs.map(r => txn.get(r)))
+      lignes.forEach((l, i) => {
+        const data = stockDocs[i].data()
+        if (!data) throw new Error(`Article "${l.nom}" introuvable`)
+        if ((data.stock || 0) < l.qty) throw new Error(`Stock insuffisant pour "${l.nom}" (${data.stock || 0} dispo)`)
+      })
+      // Écritures : stock, vente encaissée, code
+      lignes.forEach((l, i) => txn.update(stockRefs[i], { stock: (stockDocs[i].data().stock || 0) - l.qty }))
+      txn.set(txRef, {
+        type: 'debit', surPlace: true, specId: null, specNom: 'Vente sur place',
+        label: `Commande sur place ${code} — ` + lignes.map(l => l.nom + (l.qty > 1 ? ` ×${l.qty}` : '')).join(', '),
+        items: lignes.map(({ nom, qty, prixUnit, total: t }) => ({ nom, qty, prixUnit, total: t })),
+        montant: total, moyen, staff: staff || '—', code,
+        date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'),
+        createdAt: serverTimestamp(),
+      })
+      txn.set(codeRef(eventId, code), {
+        code, origine: 'billetterie', items: lignes, total, moyen, staff: staff || '—',
+        transactionId: txRef.id, statut: 'en_attente', createdAt: serverTimestamp(), timestamp: now.toISOString(),
+        utiliseLe: null, commandeId: null, commandeNumero: null,
+      })
+      return true
+    })
+    if (ok) {
+      await audit('COMMANDE_SUR_PLACE', { montant: total, staff, moyen, label: `Commande sur place ${code} (${moyen === 'especes' ? 'espèces' : 'carte'})` })
+      return { code, total, transactionId: txRef.id }
+    }
+  }
+  throw new Error('Aucun code libre trouvé, réessayez.')
+}
+
+/**
+ * Espace spectateur (lot 4) : la commande en ligne donne un code ; rien n'est débité.
+ * Le solde sera débité à la borne, au prix de la carte du moment (utiliserCode).
+ * Un code déjà pris refuse l'écriture (règles) : on en tire un autre.
+ */
+export const creerCodeEnLigne = async ({ specId, specNom, specDocId, items }, evId) => {
+  if (!evId) throw new Error('Aucun événement courant')
+  if (!Array.isArray(items) || items.length === 0) throw new Error('Aucun article dans la commande')
+  const lignes = items.map(it => ({
+    id: it.id || '', nom: String(it.nom || ''),
+    qty: Math.max(1, Number(it.qty) || 1), prixUnit: Number(it.prixUnit) || 0,
+    ...(it.standId ? { standId: String(it.standId) } : {}),
+  })).map(l => ({ ...l, total: l.qty * l.prixUnit }))
+  const total = lignes.reduce((s, l) => s + l.total, 0)
+  let last = null
+  for (let essai = 0; essai < 8; essai++) {
+    const code = genererCode()
+    try {
+      await setDoc(codeRef(evId, code), {
+        code, origine: 'en-ligne', specId, specNom: specNom || '—', specDocId,
+        items: lignes, total, statut: 'en_attente',
+        createdAt: serverTimestamp(), timestamp: new Date().toISOString(),
+        utiliseLe: null, commandeId: null, commandeNumero: null,
+      })
+      return { code, total }
+    } catch (e) {
+      last = e
+      if (e?.code !== 'permission-denied') throw e
+    }
+  }
+  throw last || new Error('Aucun code libre trouvé, réessayez.')
+}
+
+/** Le spectateur annule un code pas encore utilisé (sans frais : rien n'a été débité) */
+export const annulerCodeEnLigne = (code, evId) =>
+  updateDoc(codeRef(evId, code), { statut: 'annule', annuleLe: serverTimestamp() })
+
+// ════════════════════════════════════════════════════════════════════
+// REMBOURSEMENTS PAR TICKET ET ANNULATION D'UN CODE (parcours borne, lot 5)
+// ════════════════════════════════════════════════════════════════════
+// Le remboursement suit le paiement d'origine :
+//  - payé avec le solde (borne, code en ligne, commande au stand) : le solde est recrédité
+//    (transaction 'annulation', comme l'annulation d'une commande) ;
+//  - payé à la billetterie (espèces ou carte SumUp) : l'argent sort de la caisse
+//    (transaction 'remboursement', surPlace, avec le moyen : la clôture le retire de l'attendu).
+//    Pour la carte, le bénévole rembourse aussi sur le terminal SumUp.
+// Un ticket (une commande, un stand) ne se rembourse qu'une fois ; c'est rattaché au bénévole.
+
+
+/**
+ * Retrouve un ticket : la commande du jour portant ce numéro (sinon la plus récente),
+ * et ses articles pour ce stand. ticketKey sert à ne rembourser qu'une fois.
+ */
+export const trouverTicket = async (saisie, evId = null) => {
+  const eventId = evId || getEventId()
+  const t = lireNumeroTicket(saisie)
+  if (!t) throw new Error('Numéro de ticket attendu, par exemple 47-4.')
+  const snap = await getDocs(query(collection(db, 'events', eventId, 'commandes'), where('numero', '==', t.numero)))
+  if (snap.empty) throw new Error(`Aucune commande n° ${t.numero}.`)
+  const docs = snap.docs.map(d => ({ ...d.data(), id: d.id }))
+  const jour = _dateKey()
+  const ms = (c) => c.createdAt?.toMillis?.() ?? (c.timestamp ? Date.parse(c.timestamp) : 0)
+  const cmd = docs.find(c => c.numeroDay === jour) || docs.sort((a, b) => ms(b) - ms(a))[0]
+  const lignes = (cmd.items || []).map((it, index) => ({ ...it, index }))
+    .filter(it => t.standNumero == null || Number(it.standNumero) === t.standNumero)
+  if (lignes.length === 0) throw new Error(`La commande n° ${t.numero} n'a pas d'article au stand ${t.standNumero}.`)
+  const ticketKey = t.standNumero == null ? 'tout' : `stand${t.standNumero}`
+  return {
+    commande: cmd, lignes, ticketKey,
+    numeroTicket: t.standNumero == null ? String(t.numero) : `${t.numero}-${t.standNumero}`,
+    dejaRembourse: cmd.remboursements?.[ticketKey] || null,
+    paiement: cmd.specId ? 'solde' : (cmd.moyen || 'inconnu'),
+  }
+}
+
+/**
+ * Rembourse les articles cochés d'un ticket. indexes : positions dans commande.items.
+ * @returns {{ montant, paiement, soldeAfter? }}
+ */
+export const rembourserTicket = async ({ commandeId, ticketKey, numeroTicket, indexes, staff, motif }, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!Array.isArray(indexes) || indexes.length === 0) throw new Error('Cochez au moins un article.')
+  const cmdRef = doc(db, 'events', eventId, 'commandes', commandeId)
+  const first = await getDoc(cmdRef)
+  if (!first.exists()) throw new Error('Commande introuvable')
+  const specId = first.data().specId || null
+  let specRef = null
+  if (specId) {
+    const s = await getDocs(query(collection(db, 'events', eventId, 'spectateurs'), where('id', '==', specId)))
+    if (s.empty) throw new Error('Compte du client introuvable.')
+    specRef = s.docs[0].ref
+  }
+  const now = new Date()
+  const res = await runTransaction(db, async (txn) => {
+    const cSnap = await txn.get(cmdRef)
+    const cmd = cSnap.data()
+    const specSnap = specRef ? await txn.get(specRef) : null
+    if (!cmd.paid) throw new Error("Cette commande n'a pas été payée : rien à rembourser.")
+    if (cmd.refunded || cmd.status === 'cancelled') throw new Error('Cette commande a déjà été annulée et remboursée.')
+    if (cmd.remboursements?.[ticketKey]) throw new Error('Ce ticket a déjà été remboursé.')
+    const items = cmd.items || []
+    const lignes = [...new Set(indexes)].map(i => items[i]).filter(Boolean)
+    if (lignes.length === 0) throw new Error('Articles introuvables sur ce ticket.')
+    const montant = lignes.reduce((s, l) => s + (Number(l.total) || (Number(l.prixUnit) || 0) * (Number(l.qty) || 1)), 0)
+    const resume = lignes.map(l => l.nom + (l.qty > 1 ? ` ×${l.qty}` : '')).join(', ')
+    const base = {
+      montant, staff: staff || '—', commandeNumero: cmd.numero, ticket: numeroTicket,
+      items: lignes.map(l => ({ nom: l.nom, qty: l.qty, prixUnit: l.prixUnit, total: l.total })),
+      date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'), createdAt: serverTimestamp(),
+    }
+    let paiement, soldeAfter
+    if (specSnap) {
+      paiement = 'solde'
+      const soldeBefore = specSnap.data().solde || 0
+      soldeAfter = soldeBefore + montant
+      txn.update(specRef, { solde: increment(montant) })
+      txn.set(doc(collection(db, 'events', eventId, 'transactions')), {
+        ...base, specId, specNom: specSnap.data().nom || cmd.specNom || '—', type: 'annulation',
+        label: `Remboursement ticket ${numeroTicket} — ${resume}${motif ? ` (${motif})` : ''}`,
+        soldeBefore, soldeAfter,
+      })
+    } else {
+      paiement = cmd.moyen === 'cb' ? 'cb' : 'especes'
+      txn.set(doc(collection(db, 'events', eventId, 'transactions')), {
+        ...base, specId: null, specNom: 'Vente sur place', type: 'remboursement', surPlace: true, moyen: paiement,
+        label: `Remboursement ticket ${numeroTicket} — ${resume}${motif ? ` (${motif})` : ''}`,
+      })
+    }
+    txn.update(cmdRef, {
+      [`remboursements.${ticketKey}`]: {
+        montant, paiement, ticket: numeroTicket, items: base.items, par: staff || '—',
+        motif: motif || '', le: now.toISOString(),
+      },
+    })
+    return { montant, paiement, soldeAfter }
+  })
+  await audit('REMBOURSEMENT_TICKET', { specId, montant: res.montant, staff,
+    label: `Remboursement ticket ${numeroTicket} (${res.paiement === 'solde' ? 'solde recrédité' : res.paiement === 'cb' ? 'carte SumUp' : 'espèces'})` })
+  return res
+}
+
+/**
+ * Billetterie : annule un code pas encore utilisé et rend l'argent (espèces du coffre ou
+ * carte SumUp, selon le paiement). Le stock retiré à la vente est remis.
+ */
+export const annulerCodeBilletterie = async ({ code, staff, motif }, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!CODE_RE.test(code || '')) throw new Error('Code à 6 chiffres attendu')
+  const now = new Date()
+  const res = await runTransaction(db, async (txn) => {
+    const snap = await txn.get(codeRef(eventId, code))
+    if (!snap.exists()) throw new Error('Code inconnu.')
+    const c = snap.data()
+    if (c.origine === 'en-ligne') throw new Error("Code commandé en ligne : rien n'a été payé, le client l'annule lui-même dans son espace.")
+    if (c.statut === 'annule') throw new Error('Ce code est déjà annulé.')
+    if (c.statut !== 'en_attente') throw new Error('Ce code a déjà été utilisé à la borne : remboursez plutôt le ticket.')
+    const items = c.items || []
+    const menuRefs = items.map(it => it.id ? doc(db, 'events', eventId, 'menu', String(it.id)) : null)
+    const menuSnaps = await Promise.all(menuRefs.map(r => (r ? txn.get(r) : null)))
+    const moyen = c.moyen === 'cb' ? 'cb' : 'especes'
+    items.forEach((it, i) => {
+      if (menuSnaps[i]?.exists()) txn.update(menuRefs[i], { stock: (menuSnaps[i].data().stock || 0) + (Number(it.qty) || 1) })
+    })
+    txn.set(doc(collection(db, 'events', eventId, 'transactions')), {
+      type: 'remboursement', surPlace: true, specId: null, specNom: 'Vente sur place', moyen,
+      label: `Annulation code ${code}${motif ? ` (${motif})` : ''}`,
+      montant: c.total || 0, staff: staff || '—', code,
+      items: items.map(l => ({ nom: l.nom, qty: l.qty, prixUnit: l.prixUnit, total: l.total })),
+      date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'), createdAt: serverTimestamp(),
+    })
+    txn.update(codeRef(eventId, code), { statut: 'annule', annuleLe: serverTimestamp(), annulePar: staff || '—', motifAnnulation: motif || '' })
+    return { montant: c.total || 0, paiement: moyen }
+  })
+  await audit('ANNULATION_CODE', { montant: res.montant, staff, label: `Code ${code} annulé (${res.paiement === 'cb' ? 'carte SumUp' : 'espèces'})` })
+  return res
+}
+
+/** Lecture d'un code par la borne (null s'il n'existe pas) */
+export const lireCode = async (code, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!CODE_RE.test(code || '')) return null
+  const snap = await getDoc(codeRef(eventId, code))
+  return snap.exists() ? snap.data() : null
+}
+
+/**
+ * La borne utilise un code : la commande part déjà payée et le code passe à « utilisé »,
+ * dans le même enregistrement. Un code déjà utilisé ou annulé est refusé.
+ *  - code de la billetterie : déjà payé (espèces ou carte), rien n'est débité ici ;
+ *  - code de l'espace spectateur (lot 4) : le solde est débité maintenant, au prix de la
+ *    carte du moment (jamais le montant écrit par le téléphone), avec le stock.
+ * stands : stands de la carte, pour le numéro imprimé sur chaque ticket
+ * @returns {{ id, numero, code, items, total, origine }}
+ */
+export const utiliserCode = async (code, evId = null, { stands = [] } = {}) => {
+  const eventId = evId || getEventId()
+  if (!CODE_RE.test(code || '')) throw new Error('Code à 6 chiffres attendu')
+  const numero = await getNextCommandeNumero(eventId)
+  const now = new Date()
+  const commandeRef = doc(collection(db, 'events', eventId, 'commandes'))
+  const standById = new Map(stands.map(st => [st.id, st]))
+  const r = await runTransaction(db, async (txn) => {
+    const snap = await txn.get(codeRef(eventId, code))
+    if (!snap.exists()) throw new Error('Code inconnu. Vérifiez les 6 chiffres.')
+    const data = snap.data()
+    if (data.statut === 'annule') throw new Error('Ce code a été annulé.')
+    if (data.statut !== 'en_attente') throw new Error('Ce code a déjà été utilisé.')
+    const enLigne = data.origine === 'en-ligne'
+    let items = data.items || []
+    let total = data.total || 0
+    let specId = null, specNom = 'Sur place', paidBy = data.staff || 'Billetterie'
+
+    if (enLigne) {
+      // Lectures : compte du spectateur et articles (prix, stand et stock du moment)
+      const specRef = doc(db, 'events', eventId, 'spectateurs', String(data.specDocId || data.specId))
+      const specSnap = await txn.get(specRef)
+      if (!specSnap.exists() || specSnap.data().id !== data.specId) throw new Error('Compte introuvable. Passez à la billetterie.')
+      const menuRefs = items.map(it => doc(db, 'events', eventId, 'menu', String(it.id)))
+      const menuSnaps = await Promise.all(menuRefs.map(ref => txn.get(ref)))
+      items = items.map((it, i) => {
+        const m = menuSnaps[i].data()
+        if (!m || m.actif === false) throw new Error(`« ${it.nom} » n'est plus à la carte.`)
+        const qty = Math.max(1, Number(it.qty) || 1)
+        if ((m.stock || 0) < qty) throw new Error(`Plus assez de « ${m.nom} » (${m.stock || 0} restant${(m.stock || 0) > 1 ? 's' : ''}).`)
+        const st = standById.get(m.standId)
+        return { id: it.id, nom: m.nom, qty, prixUnit: m.prix || 0, total: qty * (m.prix || 0),
+          ...(st ? { standId: st.id, standNumero: st.numero } : {}) }
+      })
+      total = items.reduce((s, l) => s + l.total, 0)
+      const soldeBefore = specSnap.data().solde || 0
+      if (soldeBefore < total) {
+        throw new Error(`Solde insuffisant (${(soldeBefore / 100).toFixed(2)} € disponibles, ${(total / 100).toFixed(2)} € requis). Rechargez à la billetterie.`)
+      }
+      specId = data.specId; specNom = specSnap.data().nom || data.specNom || '—'; paidBy = 'Borne (code en ligne)'
+      // Écritures : solde, stock, vente
+      txn.update(specRef, { solde: increment(-total) })
+      items.forEach((l, i) => txn.update(menuRefs[i], { stock: (menuSnaps[i].data().stock || 0) - l.qty }))
+      txn.set(doc(collection(db, 'events', eventId, 'transactions')), {
+        specId, specNom, type: 'debit',
+        label: `Commande #${numero} (code ${code}) — ` + items.map(l => l.nom + (l.qty > 1 ? ` ×${l.qty}` : '')).join(', '),
+        items: items.map(({ nom, qty, prixUnit, total: t }) => ({ nom, qty, prixUnit, total: t })),
+        montant: total, staff: 'Borne', soldeBefore, soldeAfter: soldeBefore - total,
+        code, commandeNumero: numero,
+        date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'),
+        createdAt: serverTimestamp(),
+      })
+    }
+
+    txn.set(commandeRef, {
+      numero, numeroDay: _dateKey(), specId, specNom,
+      items, total,
+      status: 'pending', paid: true, paidAt: serverTimestamp(), paidBy,
+      createdAt: serverTimestamp(), createdBy: 'Borne (code)',
+      readyAt: null, readyBy: null, collectedAt: null, collectedBy: null,
+      cancelledAt: null, cancelledBy: null, cancelReason: null, refunded: false,
+      date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'),
+      code, source: enLigne ? 'code-en-ligne' : 'code', moyen: enLigne ? 'solde' : (data.moyen || null),
+      transactionId: data.transactionId || null,
+    })
+    txn.update(codeRef(eventId, code), {
+      statut: 'utilise', utiliseLe: serverTimestamp(), commandeId: commandeRef.id, commandeNumero: numero,
+    })
+    return { items, total, origine: data.origine || 'billetterie', specId }
+  })
+  await audit('CODE_UTILISE', { specId: r.specId, montant: r.total, staff: 'Borne', label: `Code ${code} utilisé · commande #${numero}` })
+  return { id: commandeRef.id, numero, code, items: r.items, total: r.total, origine: r.origine }
 }
 
 /**

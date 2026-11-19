@@ -24,6 +24,7 @@ const RECENT_KEY = 'yllacash-palette-recents'
 const ACTIONS = [
   ['debit', 'Encaisser une vente'],
   ['credit', 'Recharger un spectateur'],
+  ['commande-sur-place', 'Encaisser une commande sur place (code borne)'],
   ['nouveau', 'Créer un compte spectateur'],
   ['remboursement', 'Rembourser un spectateur'],
   ['retrait', 'Remettre une réservation'],

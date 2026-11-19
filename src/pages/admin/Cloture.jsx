@@ -1,7 +1,7 @@
 /**
  * pages/admin/Cloture.jsx — clôture de caisse guidée
  * 1. Caisse et période  2. Comptage  3. Écart  4. Validation signée
- * L'attendu vient des recharges de la période, par mode de paiement (espèces, carte).
+ * L'attendu vient des recharges et des commandes sur place de la période, par mode de paiement (espèces, carte).
  * La clôture est enregistrée dans events/{id}/clotures et peut être imprimée en procès-verbal.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
@@ -136,7 +136,7 @@ export default function Cloture() {
       </ol>
 
       {step === 0 && (
-        <Card title="Quelle caisse clôturer ?" subtitle="Les recharges de la période déterminent ce que la caisse doit contenir.">
+        <Card title="Quelle caisse clôturer ?" subtitle="Les recharges et commandes sur place de la période déterminent ce que la caisse doit contenir.">
           <div className={s.stack}>
             <div className={s.field}>
               <span className={s.label}>Journée (de 6h à 6h)</span>
@@ -163,7 +163,7 @@ export default function Cloture() {
                   ))}
                 </div>
               )}
-              {!loading && caisses.length === 0 && <p className={s.muted}>Aucune recharge enregistrée sur cette journée.</p>}
+              {!loading && caisses.length === 0 && <p className={s.muted}>Aucun encaissement enregistré sur cette journée.</p>}
             </div>
 
             <label className={s.field}>
@@ -201,7 +201,7 @@ export default function Cloture() {
               <span className={s.label}>Total TPE (€)</span>
               <input className={`${s.input} ${s.inputBig}`} inputMode="decimal" value={tpe} onChange={e => setTpe(e.target.value)} placeholder="0,00" />
             </label>
-            <p className={s.muted}>Attendu : {fmt(attendu.cb.total)} sur {attendu.cb.n} recharge{attendu.cb.n > 1 ? 's' : ''}.</p>
+            <p className={s.muted}>Attendu : {fmt(attendu.cb.total)} sur {attendu.cb.n} encaissement{attendu.cb.n > 1 ? 's' : ''}.</p>
           </Card>
         </div>
       )}
@@ -288,8 +288,8 @@ function Expected({ attendu, fond, loading }) {
   if (loading) return <p className={s.muted}>Calcul de l'attendu…</p>
   return (
     <div className={s.expected}>
-      <div><Banknote size={18} /><span>Espèces attendues</span><b>{fmt(fond + attendu.especes.total)}</b><small>{attendu.especes.n} recharge{attendu.especes.n > 1 ? 's' : ''}{fond ? ` + fond ${fmt(fond)}` : ''}</small></div>
-      <div><CreditCard size={18} /><span>Carte attendue</span><b>{fmt(attendu.cb.total)}</b><small>{attendu.cb.n} recharge{attendu.cb.n > 1 ? 's' : ''}</small></div>
+      <div><Banknote size={18} /><span>Espèces attendues</span><b>{fmt(fond + attendu.especes.total)}</b><small>{attendu.especes.n} encaissement{attendu.especes.n > 1 ? 's' : ''}{fond ? ` + fond ${fmt(fond)}` : ''}</small></div>
+      <div><CreditCard size={18} /><span>Carte attendue</span><b>{fmt(attendu.cb.total)}</b><small>{attendu.cb.n} encaissement{attendu.cb.n > 1 ? 's' : ''}</small></div>
       {attendu.inconnu.n > 0 && <div><HelpCircle size={18} /><span>{MOYENS.inconnu.label}</span><b>{fmt(attendu.inconnu.total)}</b><small>{attendu.inconnu.n} recharge{attendu.inconnu.n > 1 ? 's' : ''}</small></div>}
     </div>
   )

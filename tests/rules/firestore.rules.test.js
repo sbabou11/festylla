@@ -54,6 +54,8 @@ beforeEach(async () => {
     await p(`events/${EV}/liens/borne`, { cle: 'a'.repeat(32) })
     await p(`events/${EV}/finances/f1`, { montant: 100 })
     await p(`events/${EV}/settings/global`, { theme: {} })
+    await p(`events/${EV}/codes/482913`, { code: '482913', statut: 'en_attente', total: 1200, items: [] })
+    await p(`events/${EV}/codes/111111`, { code: '111111', statut: 'utilise', total: 300, items: [] })
     await p(`securite-connexions/c1`, { echecs: 1 })
     await p(`liaisons/k1`, { ev: EV, nom: 'festylla.com', empreinte: 'a'.repeat(64) })
     await p(`liaisons-em/${EV}`, { cle: 'secret-event-manager' })
@@ -159,6 +161,33 @@ describe('artiste, borne et écran', () => {
     await assertSucceeds(updateDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`), { solde: 200 }))
     await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`), { nom: 'X' }))
     await assertFails(getDoc(doc(db, `events/${EV}/finances/f1`)))
+  })
+  it('la borne lit un code connu et le passe à « utilisé », rien d\'autre', async () => {
+    const db = as(BORNE)
+    await assertSucceeds(getDoc(doc(db, `events/${EV}/codes/482913`)))
+    await assertFails(getDocs(collection(db, `events/${EV}/codes`)))
+    await assertFails(updateDoc(doc(db, `events/${EV}/codes/482913`), { total: 0 }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/codes/111111`), { statut: 'utilise', commandeId: 'c2' }))
+    await assertFails(setDoc(doc(db, `events/${EV}/codes/999999`), { statut: 'en_attente', total: 0 }))
+    await assertSucceeds(updateDoc(doc(db, `events/${EV}/codes/482913`), { statut: 'utilise', commandeId: 'c1', commandeNumero: 47 }))
+    await assertFails(getDoc(doc(as(SPEC), `events/${EV}/codes/111111`)))
+  })
+  it('le spectateur crée, lit et annule ses codes en ligne, jamais ceux des autres', async () => {
+    const db = as(SPEC)
+    const mien = { code: '333333', origine: 'en-ligne', specId: 'FY-K7Q3NP', statut: 'en_attente', total: 900, items: [], commandeId: null }
+    await assertSucceeds(setDoc(doc(db, `events/${EV}/codes/333333`), mien))
+    await assertFails(setDoc(doc(db, `events/${EV}/codes/444444`), { ...mien, specId: 'FY-AB2C3D' }))
+    await assertFails(setDoc(doc(db, `events/${EV}/codes/555555`), { ...mien, statut: 'utilise' }))
+    await assertFails(setDoc(doc(db, `events/${EV}/codes/482913`), mien))   // code déjà pris
+    await assertSucceeds(getDocs(query(collection(db, `events/${EV}/codes`), where('specId', '==', 'FY-K7Q3NP'))))
+    await assertFails(getDoc(doc(db, `events/${EV}/codes/482913`)))
+    await assertFails(updateDoc(doc(db, `events/${EV}/codes/333333`), { statut: 'utilise' }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/codes/333333`), { total: 1 }))
+    await assertSucceeds(updateDoc(doc(db, `events/${EV}/codes/333333`), { statut: 'annule' }))
+  })
+  it("l'équipe crée et lit les codes", async () => {
+    await assertSucceeds(setDoc(doc(as(STAND), `events/${EV}/codes/222222`), { statut: 'en_attente', total: 500 }))
+    await assertSucceeds(getDocs(collection(as(STAND), `events/${EV}/codes`)))
   })
   it('l\'écran ne lit que les commandes prêtes', async () => {
     const db = as(ECRAN)

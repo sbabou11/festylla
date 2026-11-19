@@ -9,12 +9,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
   Search, Wallet, Clock, Bookmark, LayoutList, BarChart2, CalendarDays, UtensilsCrossed,
-  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket,
+  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import { watchProgramme } from '../../programme/watchProgramme'
-import { getSettings } from '../../firebase/service'
+import { getSettings, creerCodeEnLigne, annulerCodeEnLigne } from '../../firebase/service'
+import { watchCarte } from '../../menu/carte'
+import { organiserCarte } from '../../menu/organiser'
+import { getIcon } from '../../menu/icons'
 import {
   collection, query, where, getDocs, addDoc, onSnapshot,
   updateDoc, doc, getDoc, serverTimestamp, runTransaction, orderBy, increment
@@ -70,6 +73,13 @@ function playNotifSound() {
 
 // demo : données d'exemple injectées par l'aperçu de développement (/ui/spectateur).
 // En mode démo, aucun compte n'est lu et rien n'est écrit dans Firestore.
+// Codes de commande en ligne (lot 4)
+const CODE_STATUS = {
+  en_attente: { label: 'À taper sur la borne', tone: 'warning' },
+  utilise:    { label: 'Tickets imprimés',     tone: 'success' },
+  annule:     { label: 'Annulé',               tone: 'neutral' },
+}
+
 export default function SoldePage({ demo = null }) {
   useTheme()
   const params  = new URLSearchParams(window.location.search)
@@ -118,6 +128,13 @@ export default function SoldePage({ demo = null }) {
   const [resaPage, setResaPage]       = useState(1)       // pagination mes résa
   const [eventMeta, setEventMeta]     = useState(demo?.eventMeta || null)
   const [themeColor, setThemeColor]   = useState('#1a6b7a')
+  // Lot 4 : menu en rayons et catégories, commande en ligne = code à taper sur la borne
+  const [carte, setCarte]             = useState(demo?.carte || { rayons: [], stands: [] })
+  const [categories, setCategories]   = useState(demo?.categories || [])
+  const [codes, setCodes]             = useState(demo?.codes || [])
+  const [rayonId, setRayonId]         = useState(null)
+  const [catKey, setCatKey]           = useState(null)
+  const [cancelCode, setCancelCode]   = useState(null)
   const unsubsRef                     = useRef([])
 
   const { notifications, nonLuCount, marquerToutLu } = useNotifications({
@@ -128,6 +145,15 @@ export default function SoldePage({ demo = null }) {
     if (demo) return
     getDocs(menuCol(db)).then(s => setMenu(s.docs.map(d => ({ ...d.data(), id: d.id })))).catch(() => {})
   }, [])
+
+  // Rayons, stands et catégories de l'organisateur (lot 4)
+  useEffect(() => {
+    if (demo || !eventId) return
+    const off = watchCarte(eventId, setCarte, () => {})
+    getDocs(collection(db, 'events', eventId, 'categories'))
+      .then(s => setCategories(s.docs.map(d => ({ ...d.data(), id: d.id })))).catch(() => {})
+    return off
+  }, [eventId])
 
   // Compteur de notifs planning non-lues (pour badge sur onglet Programme)
   const nonLuPlanning = notifications.filter(n => n.type === 'PLANNING_MODIF' && !n.lu).length
@@ -204,7 +230,12 @@ export default function SoldePage({ demo = null }) {
       const unsubResa = onSnapshot(query(resaCol(db), where('specId','==',id)),
         snap => setResas(snap.docs.map(x => ({ ...x.data(), id: x.id }))))
 
-      unsubsRef.current = [unsubSpec, unsubTx, unsubResa]
+      const unsubCodes = eventId
+        ? onSnapshot(query(collection(db, 'events', eventId, 'codes'), where('specId', '==', id)),
+            snap => setCodes(snap.docs.map(x => x.data())), () => {})
+        : () => {}
+
+      unsubsRef.current = [unsubSpec, unsubTx, unsubResa, unsubCodes]
     } catch { setErr('Erreur de connexion.'); setLoading(false) }
   }
 
@@ -224,41 +255,35 @@ export default function SoldePage({ demo = null }) {
   const cartItems = Object.entries(qtys).filter(([,q])=>q>0).map(([id,qty])=>({ ...menu.find(x=>x.id===id), qty }))
   const cartTotal = cartItems.reduce((a,i) => a+(i.prix||0)*i.qty, 0)
 
+  const org = organiserCarte({ menu, categories, rayons: carte.rayons, stands: carte.stands })
+  const rayon = org.rayons.find(r => r.id === rayonId) || org.rayons[0] || null
+  const cat = rayon ? (rayon.cats.find(c => c.key === catKey) || rayon.cats[0]) : null
+  const showRayons = org.rayons.length > 1 || !!org.rayons[0]?.nom
+
+  // Commande en ligne (lot 4) : donne un code à taper sur la borne. Rien n'est débité ici :
+  // le solde l'est à la borne, au prix de la carte, quand les tickets sortent.
   const doResa = async () => {
     if (!spec || !cartItems.length) return
+    if ((spec.solde || 0) < cartTotal) { setResaErr('Solde insuffisant pour cette commande. Rechargez à la billetterie.'); return }
     if (demo) {
-      const code = resaCode(spec.id)
-      setResas(r => [...r, { id: code, code, status: 'pending', items: cartItems, total: cartTotal, date: nowStr() }])
-      setResaDone({ code, items: cartItems, total: cartTotal }); setQtys({}); return
+      const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0')
+      setCodes(c => [...c, { code, origine: 'en-ligne', statut: 'en_attente', items: cartItems.map(i => ({ nom: i.nom, qty: i.qty, prixUnit: i.prix })), total: cartTotal, timestamp: new Date().toISOString() }])
+      setResaDone({ code, total: cartTotal }); setQtys({}); return
     }
     setResaLoading(true); setResaErr('')
     try {
-      const specRef = eventId ? doc(db,'events',eventId,'spectateurs',specDocId) : doc(db,'spectateurs',specDocId)
-      const code    = resaCode(spec.id)
-      await runTransaction(db, async txn => {
-        const sd = await txn.get(specRef)
-        if (sd.data().solde < cartTotal) throw new Error('Solde insuffisant')
-        txn.set(doc(resaCol(db)), {
-          specId:spec.id, specNom:spec.nom,
-          items:cartItems.map(i=>({ id:i.id, nom:i.nom, prix:i.prix, qty:i.qty })),
-          total:cartTotal, status:'pending', code, date:nowStr(), createdAt:serverTimestamp()
-        })
-        txn.set(doc(txCol(db)), {
-          specId:spec.id, type:'reservation',
-          label:'Résa: '+cartItems.map(i=>i.nom+(i.qty>1?` ×${i.qty}`:'')).join(', '),
-          montant:cartTotal, staff:'—', date:nowStr(), createdAt:serverTimestamp()
-        })
-      })
-      setResaDone({ code, items:cartItems, total:cartTotal }); setQtys({})
-      const notifCol = eventId ? collection(db,'events',eventId,'notifications') : collection(db,'notifications')
-      await addDoc(notifCol, {
-        type:'RESA_CREEE', titre:'🛒 Nouvelle réservation',
-        message:`${spec.nom} a réservé : ${cartItems.map(i=>i.nom+(i.qty>1?` x${i.qty}`:'')).join(', ')}`,
-        specId:spec.id, resaCode:code, lu:false,
-        timestamp:new Date().toISOString(), createdAt:serverTimestamp(),
-      })
-    } catch(e) { setResaErr(friendlyError(e, "La commande n'a pas été envoyée.")) }
+      const r = await creerCodeEnLigne({
+        specId: spec.id, specNom: spec.nom, specDocId,
+        items: cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, prixUnit: i.prix || 0, standId: i.standId })),
+      }, eventId)
+      setResaDone(r); setQtys({})
+    } catch (e) { setResaErr(friendlyError(e, "La commande n'a pas été enregistrée.")) }
     finally { setResaLoading(false) }
+  }
+
+  const annulerCode = async (code) => {
+    if (demo) { setCodes(cs => cs.map(c => c.code === code ? { ...c, statut: 'annule' } : c)); return }
+    await annulerCodeEnLigne(code, eventId)
   }
 
   const annuler = async (resaId) => {
@@ -307,6 +332,9 @@ export default function SoldePage({ demo = null }) {
   const totalDepense   = txs.filter(t=>['debit','reservation'].includes(t.type)).reduce((a,t)=>a+(t.montant||0),0)
   const nbResas        = resas.length
   const activeResas    = resas.filter(r=>r.status!=='collected'&&r.status!=='cancelled')
+  const codesEnLigne   = codes.filter(c => c.origine === 'en-ligne')
+    .sort((x, y) => (y.timestamp || '').localeCompare(x.timestamp || ''))
+  const codesAttente   = codesEnLigne.filter(c => c.statut === 'en_attente')
   // Tri explicite du plus récent au plus ancien (createdAt.seconds ou date string)
   const txTriees = [...txs].sort((a, b) => {
     const ta = a.createdAt?.seconds ?? a.createdAt?.toMillis?.() ?? (a.date ? new Date(a.date.split('/').reverse().join('-')).getTime()/1000 : 0)
@@ -395,7 +423,7 @@ export default function SoldePage({ demo = null }) {
   const NAV = [
     { id: 'accueil',      label: 'Solde',     icon: Wallet,          match: ['accueil', 'historique'] },
     { id: 'reserver',     label: 'Commander', icon: UtensilsCrossed, match: ['reserver'] },
-    { id: 'reservations', label: 'Mes résas', icon: Bookmark,        match: ['reservations'], badge: activeResas.length },
+    { id: 'reservations', label: 'Mes résas', icon: Bookmark,        match: ['reservations'], badge: activeResas.length + codesAttente.length },
     { id: 'programme',    label: 'Programme', icon: CalendarDays,    match: ['programme'], badge: nonLuPlanning },
   ]
 
@@ -553,48 +581,85 @@ export default function SoldePage({ demo = null }) {
           {/* ── COMMANDER ── */}
           {tab === 'reserver' && (
             <div className={sp.stack}>
-              <p className={sp.info}>Commandez à l'avance : le stand prépare, vous êtes prévenu quand c'est prêt. Paiement au retrait.</p>
               {resaDone ? (
                 <section className={clsx(sp.card, sp.done)}>
-                  <span className={sp.doneIcon}><ShoppingBag size={28} /></span>
-                  <h2>Commande envoyée</h2>
-                  <p>Code <b>#{resaDone.code}</b> · {fmt(resaDone.total)}</p>
-                  <p className={sp.muted}>Vous recevrez une notification quand elle sera prête.</p>
+                  <span className={sp.doneIcon}><KeyRound size={28} /></span>
+                  <h2>Votre code</h2>
+                  <b className={sp.codeBig} aria-label={`Code ${String(resaDone.code).split('').join(' ')}`}>
+                    {String(resaDone.code).slice(0, 3)} {String(resaDone.code).slice(3)}
+                  </b>
+                  <p>Tapez ce code sur la borne, touche « J'ai un code ». Elle imprime vos tickets.</p>
+                  <p className={sp.muted}>
+                    {fmt(resaDone.total)} seront débités de votre solde à la borne, au prix affiché ce jour-là.
+                    Annulable sans frais avant, depuis « Mes résas ».
+                  </p>
                   <div className={sp.doneActions}>
-                    <Button variant="secondary" block onClick={() => { setResaDone(null); go('reservations') }}>Voir mes résas</Button>
+                    <Button variant="secondary" block onClick={() => { setResaDone(null); go('reservations') }}>Voir mes codes</Button>
                     <Button block onClick={() => setResaDone(null)}>Commander autre chose</Button>
                   </div>
                 </section>
               ) : (
                 <>
-                  {[...new Set(menu.map(m => m.cat))].map(cat => (
-                    <section key={cat} className={sp.card}>
-                      <h2 className={sp.catTitle}>{cat}</h2>
-                      <ul className={sp.menu}>
-                        {menu.filter(m => m.cat === cat).map(m => {
+                  <p className={sp.info}>Commandez ici, puis tapez votre code sur la borne : elle imprime vos tickets et débite votre solde.</p>
+                  {showRayons && (
+                    <div className={sp.rayons} role="tablist" aria-label="Rayons">
+                      {org.rayons.map(r => {
+                        const Icon = getIcon(r.icon)
+                        const on = r.id === rayon?.id
+                        return (
+                          <button key={r.id || 'autres'} type="button" role="tab" aria-selected={on}
+                            className={clsx(sp.rayon, on && sp.rayonOn)} onClick={() => { setRayonId(r.id); setCatKey(null) }}>
+                            <Icon size={18} aria-hidden="true" /> {r.nom}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {rayon && rayon.cats.length > 1 && (
+                    <div className={sp.cats}>
+                      {rayon.cats.map(c => {
+                        const Icon = getIcon(c.icon)
+                        const on = c.key === cat?.key
+                        return (
+                          <button key={c.key} type="button" aria-pressed={on} className={clsx(sp.catTile, on && sp.catTileOn)}
+                            style={{ '--c': c.couleur || 'var(--brand)' }} onClick={() => setCatKey(c.key)}>
+                            <span className={sp.catTileIcon}><Icon size={20} aria-hidden="true" /></span>
+                            <span className={sp.catTileName}>{c.nom}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {cat ? (
+                    <section className={sp.card}>
+                      <h2 className={sp.catTitle}>{cat.nom}</h2>
+                      <div className={sp.items}>
+                        {cat.items.map(m => {
                           const stock = m.stock || 0
                           const q = qtys[m.id] || 0
                           return (
-                            <li key={m.id} className={clsx(sp.menuItem, stock === 0 && sp.menuOut)}>
-                              <span className={sp.menuText}>
-                                <b>{m.nom}</b>
-                                <span>
-                                  <span className={sp.price}>{fmt(m.prix || 0)}</span>
-                                  {stock === 0 ? <Badge tone="danger">Rupture</Badge> : stock <= 10 ? <Badge tone="warning">{stock} restant{stock > 1 ? 's' : ''}</Badge> : null}
-                                </span>
+                            <div key={m.id} className={clsx(sp.item, q > 0 && sp.itemOn, stock === 0 && sp.menuOut)}>
+                              <div className={sp.itemPhoto}>
+                                {m.photoUrl ? <img src={m.photoUrl} alt="" /> : <span>{(m.nom || '?').charAt(0)}</span>}
+                              </div>
+                              <b className={sp.itemName}>{m.nom}</b>
+                              <span className={sp.itemPrice}>
+                                <span className={sp.price}>{fmt(m.prix || 0)}</span>
+                                {stock === 0 ? <Badge tone="danger">Rupture</Badge> : stock <= 10 ? <Badge tone="warning">{stock} restant{stock > 1 ? 's' : ''}</Badge> : null}
                               </span>
                               <span className={sp.stepper}>
                                 <button type="button" onClick={() => changeQty(m.id, -1)} disabled={q === 0} aria-label={`Retirer un ${m.nom}`}><Minus size={16} /></button>
                                 <b aria-live="polite">{q}</b>
                                 <button type="button" className={sp.plus} onClick={() => changeQty(m.id, 1)} disabled={stock === 0 || q >= stock} aria-label={`Ajouter un ${m.nom}`}><Plus size={16} /></button>
                               </span>
-                            </li>
+                            </div>
                           )
                         })}
-                      </ul>
+                      </div>
                     </section>
-                  ))}
-                  {menu.length === 0 && <Empty icon={UtensilsCrossed} title="La carte n'est pas encore disponible">Les plats et boissons apparaîtront ici dès leur mise en ligne.</Empty>}
+                  ) : (
+                    <Empty icon={UtensilsCrossed} title="La carte n'est pas encore disponible">Les plats et boissons apparaîtront ici dès leur mise en ligne.</Empty>
+                  )}
                 </>
               )}
             </div>
@@ -604,10 +669,35 @@ export default function SoldePage({ demo = null }) {
           {tab === 'reservations' && (
             <section className={sp.card}>
               <header className={sp.cardHead}>
-                <h2>Mes réservations</h2>
-                <span className={sp.muted}>{resaTotal} au total</span>
+                <h2>Mes commandes</h2>
+                <span className={sp.muted}>{codesEnLigne.length + resaTotal} au total</span>
               </header>
-              {resaTotal === 0 ? (
+              {codesEnLigne.length > 0 && (
+                <ul className={sp.resas}>
+                  {codesEnLigne.map(c => {
+                    const st = CODE_STATUS[c.statut] || CODE_STATUS.en_attente
+                    return (
+                      <li key={c.code} className={clsx(sp.resa, c.statut === 'en_attente' && sp.resaReady)}>
+                        <div className={sp.resaTop}>
+                          <b className={sp.codeSmall}>{String(c.code).slice(0, 3)} {String(c.code).slice(3)}</b>
+                          <Badge tone={st.tone}>{st.label}</Badge>
+                        </div>
+                        <p className={sp.resaItems}>{(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(' · ')}</p>
+                        <div className={sp.resaBottom}>
+                          <span className={sp.muted}>{c.timestamp ? new Date(c.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                          <b>{fmt(c.total || 0)}</b>
+                        </div>
+                        {c.statut === 'en_attente' && <>
+                          <p className={sp.resaHint}>Tapez ce code sur la borne « J'ai un code ». Votre solde sera débité à ce moment-là.</p>
+                          <Button size="sm" variant="danger" onClick={() => setCancelCode(c.code)}>Annuler (sans frais)</Button>
+                        </>}
+                        {c.statut === 'utilise' && c.commandeNumero && <p className={sp.muted}>Tickets imprimés · commande n° {c.commandeNumero}</p>}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {resaTotal === 0 && codesEnLigne.length > 0 ? null : resaTotal === 0 ? (
                 <Empty icon={Bookmark} title="Aucune réservation" action={<Button size="sm" onClick={() => go('reserver')}>Commander</Button>}>
                   Vos commandes apparaîtront ici : commandez depuis la carte, récupérez quand c'est prêt.
                 </Empty>
@@ -662,7 +752,7 @@ export default function SoldePage({ demo = null }) {
             <b>{fmt(cartTotal)}</b>
           </div>
           {resaErr && <p className={sp.cartErr} role="alert">{resaErr}</p>}
-          <Button variant="coral" size="lg" loading={resaLoading} onClick={doResa}>Commander</Button>
+          <Button variant="coral" size="lg" loading={resaLoading} onClick={doResa}>Obtenir mon code</Button>
         </div>
       )}
 
@@ -696,6 +786,18 @@ export default function SoldePage({ demo = null }) {
           <Button variant="secondary" onClick={closeQr}>Fermer</Button>
         </div>
       )}
+
+      <Dialog open={!!cancelCode} onClose={() => setCancelCode(null)} title="Annuler ce code ?"
+        footer={<>
+          <Button variant="secondary" onClick={() => setCancelCode(null)}>Garder</Button>
+          <Button variant="danger" loading={cancelling} onClick={async () => {
+            setCancelling(true)
+            try { await annulerCode(cancelCode) } catch (e) { setResaErr(friendlyError(e, "L'annulation n'est pas passée.")) }
+            finally { setCancelling(false); setCancelCode(null) }
+          }}>Annuler le code</Button>
+        </>}>
+        Rien n'a été débité : le code ne pourra plus servir à la borne.
+      </Dialog>
 
       <Dialog open={!!cancelId} onClose={() => setCancelId(null)} title="Annuler cette commande ?"
         footer={<>

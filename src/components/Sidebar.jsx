@@ -7,7 +7,7 @@
 import React, { useState } from 'react'
 import {
   LayoutDashboard, Home, Bookmark, Users, List, UtensilsCrossed, BadgeCheck, Calendar, CalendarDays,
-  Settings, PlusCircle, QrCode, Ticket, Package, ShoppingCart, Wallet, User,
+  Settings, PlusCircle, QrCode, Ticket, Package, ShoppingCart, ShoppingBag, Wallet, User,
   BarChart3, AlertTriangle, PanelLeftClose, PanelLeftOpen, X, LogOut,
   Sun, Moon, Palette, ClipboardList, Calculator,
   Music2, ChevronDown, ArrowLeftRight, Banknote, Briefcase, ChefHat, Building2,
@@ -50,6 +50,7 @@ export const ALL_PAGES = {
   staff:                { icon: BadgeCheck,      label: 'Équipe' },
   settings:             { icon: Settings,        label: 'Paramètres' },
   credit:               { icon: PlusCircle,      label: 'Créditer' },
+  'commande-sur-place': { icon: ShoppingBag,     label: 'Commande sur place' },
   nouveau:              { icon: QrCode,          label: 'Nouveau QR' },
   remboursement:        { icon: Banknote,        label: 'Remboursement' },
   retrait:              { icon: Package,         label: 'Retrait réservation',   badge: true },
@@ -75,7 +76,7 @@ const LS_OPEN = 'yllacash-sidebar-rubriques' // rubriques dépliées
 
 // Pages rangées sous chaque rubrique : elles se déplient sur place dans le menu
 const HUB_CHILDREN = {
-  operations:         ['debit', 'credit', 'nouveau', 'retrait', 'prendre-commande', 'retrait-commande', 'cuisine', 'remboursement', 'transactions', 'reservations-admin', 'alertes'],
+  operations:         ['debit', 'credit', 'commande-sur-place', 'nouveau', 'retrait', 'prendre-commande', 'retrait-commande', 'cuisine', 'remboursement', 'transactions', 'reservations-admin', 'alertes'],
   'equipe-hub':       ['staff', 'benevoles'],
   'spectateurs-hub':  ['entree', 'spectateurs', 'qr-entree'],
   finances:           ['exposants', 'cachets'],
@@ -123,7 +124,7 @@ export default function Sidebar({
   // (Elles restent accessibles via les pancartes des hubs.)
   const HUB_HIDDEN_FROM_SIDEBAR = [
     // Hub Opérations
-    'credit', 'debit', 'retrait', 'prendre-commande', 'retrait-commande', 'cuisine', 'remboursement', 'transactions', 'reservations-admin', 'nouveau', 'alertes',
+    'credit', 'commande-sur-place', 'debit', 'retrait', 'prendre-commande', 'retrait-commande', 'cuisine', 'remboursement', 'transactions', 'reservations-admin', 'nouveau', 'alertes',
     // Hub Équipe & Bénévoles
     'benevoles', 'staff',
     // Hub Spectateurs & Accès

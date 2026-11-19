@@ -24,6 +24,7 @@ import { cleanEmail, emailOk } from '../../utils/msAccount'
 // ── Pages assignables ──────────────────────────────────────────────
 const ALL_PAGES = [
   { id:'credit',             label:'Créditer',             group:'Billetterie' },
+  { id:'commande-sur-place', label:'Commande sur place',    group:'Billetterie' },
   { id:'nouveau',            label:'Nouveau QR',            group:'Billetterie' },
   { id:'retrait',            label:'Retrait réservation',   group:'Stand' },
   { id:'debit',              label:'Encaisser',             group:'Stand' },

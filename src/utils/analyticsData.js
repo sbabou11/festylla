@@ -124,11 +124,16 @@ export const moyenOf = (t) => {
   return 'inconnu'
 }
 
-/** Caissiers ayant encaissé des recharges sur la période, le plus actif d'abord */
+/** Argent reçu à la caisse : recharges, et commandes sur place payées à la billetterie (lot 3) */
+export const isEncaissementCaisse = (t) => t.type === 'credit' || (t.type === 'debit' && t.surPlace === true)
+/** Argent rendu par la caisse : remboursement d'un ticket ou d'un code payé à la billetterie (lot 5) */
+export const isSortieCaisse = (t) => t.type === 'remboursement' && t.surPlace === true
+
+/** Caissiers ayant encaissé de l'argent sur la période, le plus actif d'abord */
 export function cashiers(logs = [], from, to) {
   const by = {}
   logs.forEach(t => {
-    if (t.type !== 'credit') return
+    if (!isEncaissementCaisse(t)) return
     const ms = txTime(t)
     if (ms == null || ms < from || ms >= to) return
     const k = t.staff || '—'
@@ -138,19 +143,20 @@ export function cashiers(logs = [], from, to) {
 }
 
 /**
- * Ce que la caisse doit contenir : recharges de la période, par mode de paiement.
+ * Ce que la caisse doit contenir : recharges et commandes sur place de la période, par mode de paiement.
  * staff : nom du caissier, ou null pour toutes les caisses
  */
 export function expectedTill(logs = [], { from, to, staff = null }) {
   const out = { especes: { n: 0, total: 0 }, cb: { n: 0, total: 0 }, inconnu: { n: 0, total: 0 } }
   logs.forEach(t => {
-    if (t.type !== 'credit') return
+    const entree = isEncaissementCaisse(t)
+    if (!entree && !isSortieCaisse(t)) return
     if (staff && (t.staff || '—') !== staff) return
     const ms = txTime(t)
     if (ms == null || ms < from || ms >= to) return
     const k = moyenOf(t)
-    out[k].n++
-    out[k].total += t.montant || 0
+    if (entree) { out[k].n++; out[k].total += t.montant || 0 }
+    else out[k].total -= t.montant || 0   // rendu au client : en moins dans la caisse
   })
   return out
 }

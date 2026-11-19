@@ -12,13 +12,17 @@ describe('clôture : montant attendu par mode de paiement', () => {
     tx(1, 2000, 'especes'), tx(2, 3000, 'cb'), tx(3, 1000, 'especes', 'Caisse Karim'),
     tx(4, 500, undefined),                    // recharge ancienne, sans mode enregistré
     tx(5, 900, 'especes', 'Caisse Awa', 'debit'), // un encaissement n'entre pas dans la caisse billetterie
+    { ...tx(6, 1200, 'especes'), type: 'debit', surPlace: true }, // commande sur place payée à la billetterie
+    { ...tx(7, 800, 'cb'), type: 'debit', surPlace: true },
+    { ...tx(8, 300, 'especes'), type: 'remboursement', surPlace: true }, // ticket remboursé en espèces
+    { ...tx(9, 5000, 'especes'), type: 'remboursement' },                 // remboursement de solde : hors de ce calcul
     tx(30, 7000, 'especes'),                  // hors de la période
   ]
 
   it('additionne les recharges de la période, par mode', () => {
     const r = expectedTill(logs, { from: day, to: day + 24 * H })
-    expect(r.especes).toEqual({ n: 2, total: 3000 })
-    expect(r.cb).toEqual({ n: 1, total: 3000 })
+    expect(r.especes).toEqual({ n: 3, total: 3900 })
+    expect(r.cb).toEqual({ n: 2, total: 3800 })
     expect(r.inconnu).toEqual({ n: 1, total: 500 })
   })
   it('ne compte que la caisse choisie', () => {

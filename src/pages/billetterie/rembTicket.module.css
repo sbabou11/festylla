@@ -1,0 +1,39 @@
+/* Remboursement par ticket et annulation d'un code (lot 5) */
+.stack { display: grid; gap: var(--space-3); }
+.muted { margin: 0; font-size: var(--fs-12); color: var(--muted); }
+.hint { margin: 0; font-size: var(--fs-13); font-weight: 600; color: var(--text); }
+.label { font-size: var(--fs-12); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.field { display: grid; gap: 6px; }
+.input {
+  width: 100%; min-height: 48px; padding: 0 12px;
+  border: 1.5px solid var(--border2); border-radius: var(--radius-md);
+  background: var(--bg); color: var(--text); font: 600 var(--fs-15) var(--font); outline: none;
+}
+.input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
+.search { display: grid; gap: 6px; }
+.searchRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); }
+.err, .warn { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-radius: var(--radius); font-size: var(--fs-13); font-weight: 600; line-height: 1.45; }
+.err { background: var(--red-light); color: var(--red-dark); }
+.warn { background: var(--gold-light); color: var(--gold-dark); }
+.err svg, .warn svg { flex-shrink: 0; margin-top: 2px; }
+
+.card { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); }
+.cardHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.ticketNum { display: inline-flex; align-items: center; gap: 8px; font: 800 var(--fs-18) var(--font-display); color: var(--text); }
+.lines { display: grid; }
+.line {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-2);
+  padding: 10px 6px; border-top: 1px solid var(--border); cursor: pointer;
+}
+.line input { width: 20px; height: 20px; accent-color: var(--red); }
+.lineOn { background: var(--red-light); border-radius: var(--radius); }
+.lineName { display: grid; font-size: var(--fs-13); color: var(--text); overflow-wrap: anywhere; }
+.lineName small { font-size: var(--fs-11); color: var(--muted); }
+.lineTotal { font-weight: 700; font-variant-numeric: tabular-nums; }
+.total { display: flex; justify-content: space-between; align-items: baseline; padding-top: var(--space-2); border-top: 1.5px solid var(--border2); }
+.total b { font: 800 26px var(--font-display); color: var(--red-dark); font-variant-numeric: tabular-nums; }
+
+.done { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-6) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); text-align: center; }
+.done h2 { margin: 0; font: 800 var(--fs-18) var(--font-display); }
+.doneIcon { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 50%; background: var(--green, #0E8D7A); color: #fff; }
+.doneAmount { font: 800 34px var(--font-display); color: var(--text); font-variant-numeric: tabular-nums; }

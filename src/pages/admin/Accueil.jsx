@@ -15,7 +15,7 @@ import {
   PlusCircle, ShoppingCart, Package, Bookmark, QrCode, Users, Wallet, Target, Receipt,
   Calculator, UtensilsCrossed, Settings as SettingsIcon, BarChart3, ChevronRight, ChevronUp, ChevronDown,
   Music2, ClipboardList, ChefHat, Banknote, SlidersHorizontal, RotateCcw, LayoutGrid, Zap, Activity,
-  AlertTriangle, List, TrendingUp, Mic, CalendarDays, HandHeart, UserPlus, Eye, Briefcase,
+  AlertTriangle, List, TrendingUp, Mic, CalendarDays, HandHeart, UserPlus, Eye, Briefcase, ShoppingBag,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
@@ -67,11 +67,12 @@ const DEFAULTS = { order: BLOCKS.map(b => b.id), hidden: ['stocks', 'depenses', 
 const ACTIONS = [
   { key: 'credit',           icon: PlusCircle,    tone: 'success', label: 'Créditer un compte',  desc: 'Recharger un spectateur' },
   { key: 'debit',            icon: ShoppingCart,  tone: 'coral',   label: 'Encaisser',           desc: 'Vente au stand' },
+  { key: 'commande-sur-place', icon: ShoppingBag, tone: 'coral',   label: 'Commande sur place',  desc: 'Client sans compte, code pour la borne' },
   { key: 'prendre-commande', icon: ClipboardList, tone: 'brand',   label: 'Prendre commande',    desc: 'Avec numéro et suivi cuisine' },
   { key: 'retrait-commande', icon: Package,       tone: 'gold',    label: 'Retrait commande',    desc: 'Remettre au client' },
   { key: 'cuisine',          icon: ChefHat,       tone: 'success', label: 'Cuisine',             desc: 'Suivi temps réel' },
   { key: 'retrait',          icon: Package,       tone: 'gold',    label: 'Retrait réservation', desc: 'Remettre une commande' },
-  { key: 'remboursement',    icon: Banknote,      tone: 'gold',    label: 'Remboursement',       desc: 'Solde restant ou correction' },
+  { key: 'remboursement',    icon: Banknote,      tone: 'gold',    label: 'Remboursement',       desc: 'Ticket, code ou solde' },
   { key: 'nouveau',          icon: QrCode,        tone: 'gold',    label: 'Nouveau QR code',     desc: 'Inscrire un spectateur' },
 ]
 const ACTION_KEYS = ACTIONS.map(a => a.key)

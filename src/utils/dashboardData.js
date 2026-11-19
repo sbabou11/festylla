@@ -169,7 +169,8 @@ export function dashboardAlerts({ spectateurs = [], logs = [], menu = [] }) {
   }
 
   const credits = sum(logs.filter(isCredit))
-  const debits  = sum(logs.filter(t => t.type === 'debit'))
+  // Les commandes sur place (lot 3) sont payées directement, sans recharge en face : hors de ce contrôle
+  const debits  = sum(logs.filter(t => t.type === 'debit' && !t.surPlace))
   const soldes  = spectateurs.reduce((a, s) => a + (s.solde || 0), 0)
   const ecart   = Math.abs(credits - debits - soldes)
   if (ecart > 200 && credits > 0 && !ack.has('ecart-global')) {

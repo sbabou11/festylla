@@ -15,37 +15,15 @@ import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
-import { Plus, Trash2, Pencil, X, Save, PackagePlus, FileSpreadsheet } from 'lucide-react'
+import { Plus, Trash2, Pencil, X, Save, PackagePlus, FileSpreadsheet, GripVertical, ChevronUp, ChevronDown, Store, Layers, AlertTriangle, Tag } from 'lucide-react'
+import { watchCarte, saveRayons, saveStands, newId, standLabel } from '../../menu/carte'
 import { Button, Card, Badge, Tabs, Empty, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './menu/menu.module.css'
 import MenuItemPhoto from '../../components/MenuItemPhoto'
 import MenuImportDialog from './menu/MenuImportDialog'
 import { ALLERGENES_UE } from '../../utils/allergenes'
 
-// ── Icônes ──────────────────────────────────────────────────────────
-import {
-  Coffee, UtensilsCrossed, ShoppingBag, Music, Star,
-  Beer, Pizza, IceCream, Wine, Sandwich, Cookie,
-  Package, Gift, Shirt, Tag,
-} from 'lucide-react'
-
-const ICONS = [
-  { id:'utensils',  label:'Couverts',  Icon:UtensilsCrossed },
-  { id:'coffee',    label:'Café',      Icon:Coffee },
-  { id:'beer',      label:'Bière',     Icon:Beer },
-  { id:'wine',      label:'Vin',       Icon:Wine },
-  { id:'pizza',     label:'Pizza',     Icon:Pizza },
-  { id:'sandwich',  label:'Sandwich',  Icon:Sandwich },
-  { id:'icecream',  label:'Glace',     Icon:IceCream },
-  { id:'cookie',    label:'Dessert',   Icon:Cookie },
-  { id:'music',     label:'Musique',   Icon:Music },
-  { id:'shirt',     label:'Vêtement',  Icon:Shirt },
-  { id:'gift',      label:'Cadeau',    Icon:Gift },
-  { id:'bag',       label:'Sac',       Icon:ShoppingBag },
-  { id:'package',   label:'Colis',     Icon:Package },
-  { id:'tag',       label:'Étiquette', Icon:Tag },
-  { id:'star',      label:'Spécial',   Icon:Star },
-]
+import { ICONS, getIcon } from '../../menu/icons'
 
 // Couleurs de catégorie : ce sont des données (enregistrées en base)
 const COLORS = [
@@ -54,7 +32,6 @@ const COLORS = [
   '#0891B2','#7C2D12','#166534','#1e40af','#6b21a8',
 ]
 
-const getIcon = (iconId) => ICONS.find(i => i.id === iconId)?.Icon || Tag
 const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`
 
 // Même lecture du stock que la caisse (POS)
@@ -75,7 +52,19 @@ export default function Menu() {
   const [catsRetry,     setCatsRetry]     = useState(0)
   const [section,    setSection]    = useState('articles')
   const [editingCat, setEditingCat] = useState(null)
-  const [catForm,    setCatForm]    = useState({ nom:'', couleur:COLORS[0], icon:'utensils', ordre:99 })
+  const [catForm,    setCatForm]    = useState({ nom:'', couleur:COLORS[0], icon:'utensils', ordre:99, rayonId:'' })
+
+  // ── Rayons et stands (events/{ev}/settings/carte) ────────────────
+  const [carte,        setCarte]        = useState({ rayons: [], stands: [] })
+  const [rayonForm,    setRayonForm]    = useState(null)   // { id|'new', nom, icon }
+  const [rayonTried,   setRayonTried]   = useState(false)
+  const [standForm,    setStandForm]    = useState(null)   // { id|'new', numero, nom }
+  const [standTried,   setStandTried]   = useState(false)
+  const [pendingRayon, setPendingRayon] = useState(null)
+  const [pendingStand, setPendingStand] = useState(null)
+  const [dragCat,      setDragCat]      = useState(null)   // id de la catégorie déplacée
+  const rayonFormRef = useRef(null)
+  const standFormRef = useRef(null)
   const [savingCat,  setSavingCat]  = useState(false)
   const [catTried,   setCatTried]   = useState(false)
   const catFormRef = useRef(null)
@@ -121,15 +110,126 @@ export default function Menu() {
     return () => { unsub(); if (retryTimer) clearTimeout(retryTimer) }
   }, [catsRetry])
 
+  useEffect(() => watchCarte(currentEventId, setCarte, err => console.warn('carte listener error:', err)), [currentEventId])
+
+  const { rayons, stands } = carte
+  const rayonIds = new Set(rayons.map(r => r.id))
+  const standById = new Map(stands.map(st => [st.id, st]))
+  const catDocRef = (id) => currentEventId ? doc(db, 'events', currentEventId, 'categories', id) : doc(db, 'categories', id)
+
+  // Catégories d'un rayon ('' = sans rayon), dans l'ordre d'affichage
+  const catsOf = (rayonId) => categories.filter(c => (rayonIds.has(c.rayonId) ? c.rayonId : '') === rayonId)
+
+  // Ordre global : rayon par rayon, puis catégories dans le rayon. Seules les valeurs changées sont écrites.
+  const persistOrder = async (groups) => {
+    let i = 0
+    const writes = []
+    for (const list of groups) for (const c of list) {
+      i += 1
+      if (c.ordre !== i) writes.push(updateDoc(catDocRef(c.id), { ordre: i }))
+    }
+    try { await Promise.all(writes) }
+    catch (e) { toast.error(friendlyError(e, "Le nouvel ordre n'a pas été enregistré.")) }
+  }
+  const groupsWith = (rayonId, list) => [...rayons.map(r => r.id), ''].map(id => id === rayonId ? list : catsOf(id))
+
+  const moveCat = (cat, delta) => {
+    const rid = rayonIds.has(cat.rayonId) ? cat.rayonId : ''
+    const list = [...catsOf(rid)]
+    const from = list.findIndex(c => c.id === cat.id)
+    const to = from + delta
+    if (to < 0 || to >= list.length) return
+    list.splice(to, 0, list.splice(from, 1)[0])
+    persistOrder(groupsWith(rid, list))
+  }
+
+  // Glisser-déposer : sur une catégorie (place avant elle) ou sur l'en-tête d'un rayon (à la fin)
+  const dropCat = async (targetRayonId, beforeCatId = null) => {
+    const cat = categories.find(c => c.id === dragCat)
+    setDragCat(null)
+    if (!cat || cat.id === beforeCatId) return
+    const list = catsOf(targetRayonId).filter(c => c.id !== cat.id)
+    const at = beforeCatId ? list.findIndex(c => c.id === beforeCatId) : -1
+    list.splice(at < 0 ? list.length : at, 0, cat)
+    const curRayon = rayonIds.has(cat.rayonId) ? cat.rayonId : ''
+    if (curRayon !== targetRayonId) {
+      try { await updateDoc(catDocRef(cat.id), { rayonId: targetRayonId }) }
+      catch (e) { toast.error(friendlyError(e, "La catégorie n'a pas été déplacée.")); return }
+    }
+    const groups = [...rayons.map(r => r.id), ''].map(id =>
+      id === targetRayonId ? list : catsOf(id).filter(c => c.id !== cat.id))
+    persistOrder(groups)
+  }
+
+  // ── Rayons ────────────────────────────────────────────────────────
+  const startNewRayon  = () => { setRayonTried(false); setRayonForm({ id:'new', nom:'', icon:'utensils' }) }
+  const startEditRayon = (r) => { setRayonTried(false); setRayonForm({ id:r.id, nom:r.nom, icon:r.icon || 'utensils' }) }
+  const saveRayon = async () => {
+    const nom = rayonForm.nom.trim()
+    if (!nom) { setRayonTried(true); focusFirstInvalid(rayonFormRef.current); return }
+    const next = rayonForm.id === 'new'
+      ? [...rayons, { id: newId(), nom, icon: rayonForm.icon }]
+      : rayons.map(r => r.id === rayonForm.id ? { ...r, nom, icon: rayonForm.icon } : r)
+    try { await saveRayons(currentEventId, next); setRayonForm(null) }
+    catch (e) { toast.error(friendlyError(e, "Le rayon n'a pas été enregistré.")) }
+  }
+  const moveRayon = (r, delta) => {
+    const list = [...rayons]
+    const from = list.findIndex(x => x.id === r.id)
+    const to = from + delta
+    if (to < 0 || to >= list.length) return
+    list.splice(to, 0, list.splice(from, 1)[0])
+    saveRayons(currentEventId, list).catch(e => toast.error(friendlyError(e, "Le nouvel ordre n'a pas été enregistré.")))
+  }
+  const confirmDeleteRayon = async () => {
+    const r = pendingRayon
+    setPendingRayon(null)
+    if (!r) return
+    try {
+      await saveRayons(currentEventId, rayons.filter(x => x.id !== r.id))
+      await Promise.all(categories.filter(c => c.rayonId === r.id).map(c => updateDoc(catDocRef(c.id), { rayonId: '' })))
+    } catch (e) { toast.error(friendlyError(e, "Le rayon n'a pas été supprimé.")) }
+  }
+
+  // ── Stands ────────────────────────────────────────────────────────
+  const nextNumero = () => stands.reduce((m, st) => Math.max(m, st.numero || 0), 0) + 1
+  const startNewStand  = () => { setStandTried(false); setStandForm({ id:'new', numero: nextNumero(), nom:'' }) }
+  const startEditStand = (st) => { setStandTried(false); setStandForm({ id:st.id, numero:st.numero, nom:st.nom }) }
+  const standNumeroErr = (f) => {
+    const n = parseInt(f?.numero)
+    if (!(n > 0)) return 'Indique un numéro supérieur à 0'
+    if (stands.some(st => st.numero === n && st.id !== f.id)) return `Le numéro ${n} est déjà pris`
+    return null
+  }
+  const saveStand = async () => {
+    const nom = standForm.nom.trim()
+    if (!nom || standNumeroErr(standForm)) { setStandTried(true); focusFirstInvalid(standFormRef.current); return }
+    const numero = parseInt(standForm.numero)
+    const next = standForm.id === 'new'
+      ? [...stands, { id: newId(), numero, nom }]
+      : stands.map(st => st.id === standForm.id ? { ...st, numero, nom } : st)
+    try { await saveStands(currentEventId, next); setStandForm(null) }
+    catch (e) { toast.error(friendlyError(e, "Le stand n'a pas été enregistré.")) }
+  }
+  const confirmDeleteStand = async () => {
+    const st = pendingStand
+    setPendingStand(null)
+    if (!st) return
+    try {
+      await saveStands(currentEventId, stands.filter(x => x.id !== st.id))
+      await Promise.all(menu.filter(m => m.standId === st.id).map(m => updateMenuItem(m.id, { standId: '' })))
+    } catch (e) { toast.error(friendlyError(e, "Le stand n'a pas été supprimé.")) }
+  }
+
   // ── CRUD Catégories — directement Firebase ────────────────────────
-  const startNewCat = () => {
-    setCatForm({ nom:'', couleur:COLORS[0], icon:'utensils', ordre: categories.length + 1 })
+  const startNewCat = (rayonId = '') => {
+    setCatForm({ nom:'', couleur:COLORS[0], icon:'utensils', ordre: categories.length + 1, rayonId: rayonId || rayons[0]?.id || '' })
     setCatTried(false)
     setEditingCat('new')
   }
 
   const startEditCat = (cat) => {
-    setCatForm({ nom:cat.nom, couleur:cat.couleur, icon:cat.icon, ordre:cat.ordre||99 })
+    setCatForm({ nom:cat.nom, couleur:cat.couleur, icon:cat.icon, ordre:cat.ordre||99, rayonId: rayonIds.has(cat.rayonId) ? cat.rayonId : '' })
     setCatTried(false)
     setEditingCat(cat.id)
   }
@@ -166,7 +266,7 @@ export default function Menu() {
   const startNewItem = () => {
     setItemForm({
       nom:'', prix:0, stock:100, cat: categories[0]?.nom || '', typeConsommation:'',
-      description: '', allergenes: [], allergenesCustom: [],
+      description: '', allergenes: [], allergenesCustom: [], standId: stands.length === 1 ? stands[0].id : '',
     })
     setItemTried(false)
     setEditingItem('new')
@@ -180,6 +280,7 @@ export default function Menu() {
       description: m.description || '',
       allergenes: Array.isArray(m.allergenes) ? m.allergenes : [],
       allergenesCustom: Array.isArray(m.allergenesCustom) ? m.allergenesCustom : [],
+      standId: standById.has(m.standId) ? m.standId : '',
     })
     setItemTried(false)
     setEditingItem(m.id)
@@ -203,6 +304,7 @@ export default function Menu() {
         allergenesCustom: Array.isArray(itemForm.allergenesCustom)
           ? itemForm.allergenesCustom.filter(v => v && v.trim()).map(v => v.trim())
           : [],
+        standId: itemForm.standId || '',
       }
       if (editingItem === 'new') await addMenuItem(data)
       else await updateMenuItem(editingItem, data)
@@ -231,6 +333,43 @@ export default function Menu() {
   const catNames = new Set(categories.map(c => c.nom))
   const orphans = catsLoading ? [] : menu.filter(m => !catNames.has(m.cat))
 
+  const sansStand = menu.filter(m => !standById.has(m.standId))
+
+  // Ligne de catégorie ; rid = rayon (null : pas de rayons, ancien mode sans événement)
+  const catRow = (cat, rid, i, n) => {
+    const Icon  = getIcon(cat.icon)
+    const count = menu.filter(m => m.cat === cat.nom).length
+    const draggable = rid !== null
+    return (
+      <div key={cat.id}
+        className={clsx(s.catRow, s.catLine, dragCat === cat.id && s.dragging)}
+        style={{ '--c': cat.couleur }}
+        draggable={draggable}
+        onDragStart={draggable ? (e => { setDragCat(cat.id); e.dataTransfer.effectAllowed = 'move' }) : undefined}
+        onDragEnd={() => setDragCat(null)}
+        onDragOver={draggable ? (e => { if (dragCat) e.preventDefault() }) : undefined}
+        onDrop={draggable ? (e => { e.preventDefault(); e.stopPropagation(); dropCat(rid, cat.id) }) : undefined}>
+        {draggable && <span className={s.grip} aria-hidden="true"><GripVertical size={16}/></span>}
+        <span className={s.catIcon}><Icon size={18}/></span>
+        <div className={s.catInfo}>
+          <div className={s.catName}>{cat.nom}</div>
+          <div className={s.catMeta}>{plural(count, 'article')}</div>
+        </div>
+        <div className={s.rowActions}>
+          {draggable && <>
+            <Button variant="ghost" size="sm" icon={ChevronUp} iconOnly aria-label={`Monter ${cat.nom}`}
+              disabled={i === 0} onClick={() => moveCat(cat, -1)}/>
+            <Button variant="ghost" size="sm" icon={ChevronDown} iconOnly aria-label={`Descendre ${cat.nom}`}
+              disabled={i === n - 1} onClick={() => moveCat(cat, 1)}/>
+          </>}
+          <Button variant="secondary" size="sm" icon={Pencil} onClick={() => startEditCat(cat)}>Modifier</Button>
+          <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer ${cat.nom}`}
+            onClick={() => handleDeleteCat(cat)}/>
+        </div>
+      </div>
+    )
+  }
+
   // Ligne d'article (catégories et articles sans catégorie)
   const itemRow = (m) => (
     <div key={m.id} className={s.item}>
@@ -250,6 +389,9 @@ export default function Menu() {
         <div className={s.itemMeta}>
           <span>{m.stock} en stock</span>
           {stockBadge(m)}
+          {standById.has(m.standId)
+            ? <Badge tone="neutral" icon={Store}>{standLabel(standById.get(m.standId))}</Badge>
+            : <Badge tone="danger" icon={Store}>Sans stand</Badge>}
         </div>
       </div>
       <div className={s.itemSide}>
@@ -274,10 +416,20 @@ export default function Menu() {
           items={[
             { value:'articles',   label:'Articles',   count: menu.length },
             { value:'categories', label:'Catégories', count: categories.length },
+            { value:'stands',     label:'Stands',     count: stands.length },
           ]}
         />
-        {section === 'categories' && editingCat === null && (
-          <Button icon={Plus} onClick={startNewCat}>Nouvelle catégorie</Button>
+        {section === 'categories' && editingCat === null && currentEventId && (
+          <div className={s.toolbarActions}>
+            <Button variant="secondary" icon={Layers} onClick={startNewRayon}>Nouveau rayon</Button>
+            <Button icon={Plus} onClick={() => startNewCat()}>Nouvelle catégorie</Button>
+          </div>
+        )}
+        {section === 'categories' && editingCat === null && !currentEventId && (
+          <Button icon={Plus} onClick={() => startNewCat()}>Nouvelle catégorie</Button>
+        )}
+        {section === 'stands' && currentEventId && (
+          <Button icon={Plus} onClick={startNewStand}>Nouveau stand</Button>
         )}
         {section === 'articles' && editingItem === null && (
           <div className={s.toolbarActions}>
@@ -299,6 +451,17 @@ export default function Menu() {
                   <input value={catForm.nom} onChange={e => setCatForm(f => ({...f,nom:e.target.value}))}
                     placeholder="ex : Boissons chaudes"/>
                 </Field>
+
+                {currentEventId && (
+                  <label className={s.field}>
+                    <span className={s.label}>Rayon</span>
+                    <select className={s.input} value={catForm.rayonId}
+                      onChange={e => setCatForm(f => ({...f, rayonId:e.target.value}))}>
+                      {rayons.map(r => <option key={r.id} value={r.id}>{r.nom}</option>)}
+                      <option value="">Sans rayon</option>
+                    </select>
+                  </label>
+                )}
 
                 <div className={s.field}>
                   <span className={s.label}>Couleur</span>
@@ -328,18 +491,16 @@ export default function Menu() {
                   </div>
                 </div>
 
-                <label className={s.field}>
-                  <span className={s.label}>Ordre d'affichage</span>
-                  <input type="number" className={clsx(s.input, s.inputShort)} value={catForm.ordre}
-                    onChange={e => setCatForm(f => ({...f,ordre:parseInt(e.target.value)||1}))}/>
-                </label>
-
-                {/* Aperçu */}
+                {/* Aperçu : pastille (caisse) et tuile (borne, espace spectateur) */}
                 <div className={s.preview}>
                   <span className={s.muted}>Aperçu</span>
                   <span className={s.pill} style={{ '--c': catForm.couleur }}>
                     <PreviewIcon size={14}/>
                     <span>{catForm.nom || 'Nom'}</span>
+                  </span>
+                  <span className={s.tile} style={{ '--c': catForm.couleur }}>
+                    <span className={s.tileIcon}><PreviewIcon size={20}/></span>
+                    <span className={s.tileName}>{catForm.nom || 'Nom'}</span>
                   </span>
                 </div>
 
@@ -355,33 +516,105 @@ export default function Menu() {
 
           {/* Liste catégories */}
           {catsLoading && <div className={s.loading}>Chargement des catégories…</div>}
-          {!catsLoading && categories.length === 0 && editingCat === null && (
+          {!catsLoading && categories.length === 0 && rayons.length === 0 && editingCat === null && (
             <Empty icon={Tag} title="Aucune catégorie pour l'instant"
-              action={<Button icon={Plus} onClick={startNewCat}>Créer une catégorie</Button>}>
+              action={<Button icon={Plus} onClick={() => startNewCat()}>Créer une catégorie</Button>}>
               Les catégories rangent les articles de ta carte, à la caisse comme côté spectateurs.
             </Empty>
           )}
-          {categories.map(cat => {
-            const Icon  = getIcon(cat.icon)
-            const count = menu.filter(m => m.cat === cat.nom).length
+          {!catsLoading && !currentEventId && categories.map(cat => catRow(cat, null, 0))}
+
+          {!catsLoading && currentEventId && rayons.length === 0 && categories.length > 0 && (
+            <div className={s.hint}>
+              <Layers size={16}/>
+              <span>Crée des rayons (Plats, Boissons…) pour ranger tes catégories : ils s'affichent en haut de la borne.</span>
+            </div>
+          )}
+
+          {!catsLoading && currentEventId && [...rayons, null].map((r, ri) => {
+            const rid = r ? r.id : ''
+            const list = catsOf(rid)
+            if (!r && list.length === 0) return null
+            const RIcon = getIcon(r?.icon)
             return (
-              <Card key={cat.id}>
-                <div className={s.catRow} style={{ '--c': cat.couleur }}>
-                  <span className={s.catIcon}><Icon size={18}/></span>
+              <Card key={rid || 'sans'} className={s.rayon}>
+                <div className={s.rayonHead}
+                  onDragOver={e => { if (dragCat) e.preventDefault() }}
+                  onDrop={e => { e.preventDefault(); dropCat(rid) }}>
+                  <span className={s.rayonIcon}><RIcon size={18}/></span>
                   <div className={s.catInfo}>
-                    <div className={s.catName}>{cat.nom}</div>
-                    <div className={s.catMeta}>{plural(count, 'article')} · ordre {cat.ordre||'—'}</div>
+                    <div className={s.rayonLabel}>{r ? 'Rayon' : 'À ranger'}</div>
+                    <div className={s.rayonName}>{r ? r.nom : 'Sans rayon'}</div>
                   </div>
-                  <span className={s.hex}>{cat.couleur}</span>
+                  <span className={s.muted}>{plural(list.length, 'catégorie')}</span>
                   <div className={s.rowActions}>
-                    <Button variant="secondary" size="sm" icon={Pencil} onClick={() => startEditCat(cat)}>Modifier</Button>
-                    <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer ${cat.nom}`}
-                      onClick={() => handleDeleteCat(cat)}/>
+                    {r && <>
+                      <Button variant="ghost" size="sm" icon={ChevronUp} iconOnly aria-label={`Monter le rayon ${r.nom}`}
+                        disabled={ri === 0} onClick={() => moveRayon(r, -1)}/>
+                      <Button variant="ghost" size="sm" icon={ChevronDown} iconOnly aria-label={`Descendre le rayon ${r.nom}`}
+                        disabled={ri === rayons.length - 1} onClick={() => moveRayon(r, 1)}/>
+                      <Button variant="ghost" size="sm" icon={Pencil} iconOnly aria-label={`Modifier le rayon ${r.nom}`}
+                        onClick={() => startEditRayon(r)}/>
+                      <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer le rayon ${r.nom}`}
+                        onClick={() => setPendingRayon(r)}/>
+                    </>}
+                  </div>
+                </div>
+                <div className={s.rayonCats}>
+                  {list.length === 0 && <div className={s.none}>Aucune catégorie : fais-en glisser une ici ou crée-la.</div>}
+                  {list.map((cat, i) => catRow(cat, rid, i, list.length))}
+                </div>
+                {r && (
+                  <button type="button" className={s.addCat} onClick={() => startNewCat(r.id)}>
+                    <Plus size={14}/> Catégorie
+                  </button>
+                )}
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── STANDS ── */}
+      {section === 'stands' && (
+        <div className={s.list}>
+          {!currentEventId && <div className={s.loading}>Choisis un événement pour gérer ses stands.</div>}
+          {currentEventId && stands.length === 0 && (
+            <Empty icon={Store} title="Aucun stand pour l'instant"
+              action={<Button icon={Plus} onClick={startNewStand}>Créer un stand</Button>}>
+              Chaque article indique le stand où le client le récupère. La borne imprime un ticket par stand,
+              avec son numéro en grand. Les clients ne voient pas le stand.
+            </Empty>
+          )}
+          {stands.map(st => {
+            const count = menu.filter(m => m.standId === st.id).length
+            return (
+              <Card key={st.id}>
+                <div className={s.catRow}>
+                  <span className={s.standNum}>{st.numero}</span>
+                  <div className={s.catInfo}>
+                    <div className={s.catName}>{st.nom}</div>
+                    <div className={s.catMeta}>{plural(count, 'article')}</div>
+                  </div>
+                  <div className={s.rowActions}>
+                    <Button variant="secondary" size="sm" icon={Pencil} onClick={() => startEditStand(st)}>Modifier</Button>
+                    <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer le stand ${st.nom}`}
+                      onClick={() => setPendingStand(st)}/>
                   </div>
                 </div>
               </Card>
             )
           })}
+          {currentEventId && sansStand.length > 0 && (
+            <div className={s.warn}>
+              <AlertTriangle size={16}/>
+              <span>
+                {sansStand.length === 1 ? '1 article n’a' : `${sansStand.length} articles n’ont`} pas de stand
+                ({sansStand.slice(0, 4).map(m => m.nom).join(', ')}{sansStand.length > 4 ? '…' : ''}).
+                Sans stand, un article ne pourra pas être commandé à la borne.
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -409,9 +642,27 @@ export default function Menu() {
                   <label className={s.field}>
                     <span className={s.label}>Catégorie</span>
                     <select className={s.input} value={itemForm.cat} onChange={e => setItemForm(f=>({...f,cat:e.target.value}))}>
-                      {categories.map(c => <option key={c.id} value={c.nom}>{c.nom}</option>)}
+                      {categories.map(c => {
+                        const r = rayons.find(x => x.id === c.rayonId)
+                        return <option key={c.id} value={c.nom}>{r ? `${c.nom} · ${r.nom}` : c.nom}</option>
+                      })}
                     </select>
                   </label>
+                  {currentEventId && (
+                    <label className={s.field}>
+                      <span className={s.label}>Stand de retrait</span>
+                      <select className={clsx(s.input, !itemForm.standId && s.inputWarn)} value={itemForm.standId || ''}
+                        onChange={e => setItemForm(f => ({...f, standId:e.target.value}))}>
+                        <option value="">Aucun stand</option>
+                        {stands.map(st => <option key={st.id} value={st.id}>{standLabel(st)}</option>)}
+                      </select>
+                      <span className={s.fieldHint}>
+                        {stands.length === 0
+                          ? 'Crée d’abord tes stands dans l’onglet Stands.'
+                          : 'Imprimé sur le ticket. Les clients ne le voient pas.'}
+                      </span>
+                    </label>
+                  )}
                   <label className={s.field}>
                     <span className={s.label}>Prix (€)</span>
                     <input type="number" step="0.01" min="0" inputMode="decimal" placeholder="0.00" className={s.input} value={itemForm.prix === 0 ? '' : itemForm.prix} onChange={e => setItemForm(f=>({...f,prix:parseFloat(e.target.value)||0}))}/>
@@ -584,6 +835,98 @@ export default function Menu() {
               value={restock?.qty ?? ''} onChange={e => setRestock(r => ({ ...r, qty: e.target.value }))}/>
           </Field>
         </form>
+      </Dialog>
+
+      {/* Rayon : créer / modifier */}
+      <Dialog
+        open={!!rayonForm}
+        onClose={() => setRayonForm(null)}
+        title={rayonForm?.id === 'new' ? 'Nouveau rayon' : 'Modifier le rayon'}
+        footer={<>
+          <Button variant="secondary" onClick={() => setRayonForm(null)}>Annuler</Button>
+          <Button icon={Save} onClick={saveRayon}>{rayonForm?.id === 'new' ? 'Créer' : 'Enregistrer'}</Button>
+        </>}
+      >
+        <form ref={rayonFormRef} className={s.dialogStack} onSubmit={e => { e.preventDefault(); saveRayon() }}>
+          <p className={s.dialogText}>Les rayons s'affichent en haut de la borne et de l'espace spectateur (ex : Plats, Boissons).</p>
+          <Field label={<span className={s.label}>Nom</span>}
+            error={rayonForm?.nom.trim() ? null : 'Indique un nom pour ce rayon'} valid={!!rayonForm?.nom.trim()} showError={rayonTried}>
+            <input autoFocus value={rayonForm?.nom ?? ''} placeholder="ex : Boissons"
+              onChange={e => setRayonForm(f => ({ ...f, nom: e.target.value }))}/>
+          </Field>
+          <div className={s.field}>
+            <span className={s.label}>Icône</span>
+            <div className={s.icons} style={{ '--c': 'var(--brand)' }}>
+              {ICONS.map(({ id, label, Icon }) => (
+                <button key={id} type="button" aria-pressed={rayonForm?.icon === id}
+                  onClick={() => setRayonForm(f => ({ ...f, icon: id }))}
+                  className={clsx(s.iconBtn, rayonForm?.icon === id && s.iconOn)}>
+                  <Icon size={16}/>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Stand : créer / modifier */}
+      <Dialog
+        open={!!standForm}
+        onClose={() => setStandForm(null)}
+        title={standForm?.id === 'new' ? 'Nouveau stand' : 'Modifier le stand'}
+        footer={<>
+          <Button variant="secondary" onClick={() => setStandForm(null)}>Annuler</Button>
+          <Button icon={Save} onClick={saveStand}>{standForm?.id === 'new' ? 'Créer' : 'Enregistrer'}</Button>
+        </>}
+      >
+        <form ref={standFormRef} className={s.dialogStack} onSubmit={e => { e.preventDefault(); saveStand() }}>
+          <p className={s.dialogText}>Le numéro est imprimé en grand sur les tickets de ce stand.</p>
+          <Field label={<span className={s.label}>Numéro</span>}
+            error={standNumeroErr(standForm)} valid={!standNumeroErr(standForm)} showError={standTried}>
+            <input type="number" min="1" inputMode="numeric" value={standForm?.numero ?? ''}
+              onChange={e => setStandForm(f => ({ ...f, numero: e.target.value }))}/>
+          </Field>
+          <Field label={<span className={s.label}>Nom</span>}
+            error={standForm?.nom.trim() ? null : 'Indique un nom pour ce stand'} valid={!!standForm?.nom.trim()} showError={standTried}>
+            <input autoFocus value={standForm?.nom ?? ''} placeholder="ex : Cuisine"
+              onChange={e => setStandForm(f => ({ ...f, nom: e.target.value }))}/>
+          </Field>
+        </form>
+      </Dialog>
+
+      {/* Suppression d'un rayon : ses catégories restent, sans rayon */}
+      <Dialog
+        open={!!pendingRayon}
+        onClose={() => setPendingRayon(null)}
+        title="Supprimer le rayon"
+        footer={<>
+          <Button variant="secondary" onClick={() => setPendingRayon(null)}>Annuler</Button>
+          <Button variant="danger" icon={Trash2} onClick={confirmDeleteRayon}>Supprimer</Button>
+        </>}
+      >
+        <p className={s.dialogText}>
+          Supprimer le rayon « {pendingRayon?.nom} » ?
+          {pendingRayon && catsOf(pendingRayon.id).length > 0 &&
+            ` Ses ${plural(catsOf(pendingRayon.id).length, 'catégorie')} sont gardées et passent dans « Sans rayon ».`}
+        </p>
+      </Dialog>
+
+      {/* Suppression d'un stand : ses articles restent, sans stand */}
+      <Dialog
+        open={!!pendingStand}
+        onClose={() => setPendingStand(null)}
+        title="Supprimer le stand"
+        footer={<>
+          <Button variant="secondary" onClick={() => setPendingStand(null)}>Annuler</Button>
+          <Button variant="danger" icon={Trash2} onClick={confirmDeleteStand}>Supprimer</Button>
+        </>}
+      >
+        <p className={s.dialogText}>
+          Supprimer le stand « {pendingStand && standLabel(pendingStand)} » ?
+          {pendingStand && menu.some(m => m.standId === pendingStand.id) &&
+            ` Ses ${plural(menu.filter(m => m.standId === pendingStand.id).length, 'article')} n'auront plus de stand.`}
+        </p>
       </Dialog>
 
       <MenuImportDialog open={importing} onClose={() => setImporting(false)}

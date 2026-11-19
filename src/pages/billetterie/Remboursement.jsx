@@ -19,8 +19,28 @@ import { db } from '../../firebase/config'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { rembourserSolde, crediterCorrection } from '../../firebase/service'
 import QrScanner from '../../components/QrScanner'
+import { Tabs } from '../../ui'
+import { RemboursementTicketForm, AnnulationCodeForm } from './RemboursementTicket'
 
+// Lot 5 : remboursement par ticket (défaut), annulation d'un code pas encore utilisé,
+// et l'ancien écran (solde restant, correction) dans le troisième onglet.
 export default function Remboursement() {
+  const [vue, setVue] = useState('ticket')
+  return (
+    <div style={{ maxWidth: 520, margin: '0 auto', display: 'grid', gap: 16 }}>
+      <Tabs label="Type de remboursement" value={vue} onChange={setVue} items={[
+        { value: 'ticket', label: 'Ticket' },
+        { value: 'code',   label: 'Code non utilisé' },
+        { value: 'compte', label: 'Solde du compte' },
+      ]}/>
+      {vue === 'ticket' && <RemboursementTicketForm/>}
+      {vue === 'code' && <AnnulationCodeForm/>}
+      {vue === 'compte' && <RemboursementCompte/>}
+    </div>
+  )
+}
+
+function RemboursementCompte() {
   const { user } = useAuthStore()
   const { currentEventId, events } = useEventStore()
 
