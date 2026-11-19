@@ -233,6 +233,16 @@ export default function Borne() {
     }
   }, [])
 
+  // Relit le compte déjà autorisé (10 minutes après le QR) : sert après une recharge faite sur le téléphone
+  const rafraichirSolde = useCallback(async () => {
+    const ev = new URLSearchParams(window.location.search).get('ev')
+    const id = spec?._docId
+    if (!id) throw new Error('Compte inconnu')
+    const snap = await getDoc(doc(db, 'events', ev, 'spectateurs', id))
+    if (!snap.exists()) throw new Error('Compte introuvable')
+    setSpec({ ...snap.data(), _docId: snap.id })
+  }, [spec?._docId])
+
   // ─── Bénévoles (19/11/2026) : QR de l'espace bénévole ou code à 6 chiffres ──
   // La borne n'a aucun accès direct aux fiches : le serveur vérifie la clé, décompte les droits
   // du jour et crée la commande (api/borne.js). Un seul ticket, pour le stand des bénévoles.
@@ -387,6 +397,7 @@ export default function Borne() {
       ) : step === STEP.PANIER ? (
         <Panier
           spec={spec}
+          onRefreshSolde={rafraichirSolde}
           cart={cart}
           setCart={setCart}
           onTimeout={resetSession}
@@ -1583,7 +1594,17 @@ function IdleWarning({ onContinue, secondsLeft }) {
 // La résa n'est PAS débitée du solde du spectateur ici — c'est fait par
 // validerRetrait quand la cuisine remet la commande. Comportement cohérent
 // avec l'espace spectateur existant.
-function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirmed, stands = [] }) {
+function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirmed, stands = [], onRefreshSolde }) {
+  // « J'ai rechargé » : relit le solde du compte, sans recommencer la commande (20/11/2026)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMsg, setRefreshMsg] = useState('')
+  const refreshSolde = async () => {
+    if (!onRefreshSolde || refreshing) return
+    setRefreshing(true); setRefreshMsg('')
+    try { await onRefreshSolde(); setRefreshMsg('Solde mis à jour.') }
+    catch { setRefreshMsg('Solde non relu. Présentez de nouveau votre QR pour continuer.') }
+    finally { setRefreshing(false) }
+  }
   // Items du menu pour récupérer prix/nom (le panier ne stocke que les qty)
   const [menu, setMenu] = useState([])
   // Modale "Vous êtes toujours là ?" (warning d'inactivité)
@@ -1661,7 +1682,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
   const handleConfirm = async () => {
     if (cartItems.length === 0) return
     if (isInsufficient) {
-      setError('Solde insuffisant. Veuillez recharger à la caisse.')
+      setError('Solde insuffisant. Retirez un article, ou rechargez sur votre téléphone ou à la billetterie.')
       return
     }
     setSubmitting(true)
@@ -1946,9 +1967,22 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
               background: '#FCEBEB', color: '#791F1F',
               borderRadius: 6, fontSize: 12,
             }}>
-              Solde insuffisant. Réduisez la commande ou rechargez à la caisse.
+              <b>Solde insuffisant : il manque {(-soldeAfter / 100).toFixed(2)} €.</b> Retirez un article, ou rechargez sur votre
+              téléphone (« Recharger mon solde » dans votre espace) ou à la billetterie.
             </div>
           )}
+          {isInsufficient && onRefreshSolde && (
+            <button onClick={refreshSolde} disabled={refreshing}
+              style={{
+                width: '100%', marginTop: 8, background: 'transparent', color: COLORS.marine,
+                border: `0.5px solid ${COLORS.marine}`, borderRadius: 10, padding: '12px',
+                fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+                cursor: refreshing ? 'wait' : 'pointer', opacity: refreshing ? .6 : 1,
+              }}>
+              {refreshing ? 'Lecture du solde…' : 'J\'ai rechargé : actualiser mon solde'}
+            </button>
+          )}
+          {refreshMsg && <div style={{ marginTop: 6, fontSize: 12, color: COLORS.muted, textAlign: 'center' }}>{refreshMsg}</div>}
         </div>
 
         {/* Erreur de validation */}

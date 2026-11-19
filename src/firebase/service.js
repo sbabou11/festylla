@@ -2708,7 +2708,7 @@ export const utiliserCode = async (code, evId = null, { stands = [] } = {}) => {
       total = items.reduce((s, l) => s + l.total, 0)
       const soldeBefore = specSnap.data().solde || 0
       if (soldeBefore < total) {
-        throw new Error(`Solde insuffisant (${(soldeBefore / 100).toFixed(2)} € disponibles, ${(total / 100).toFixed(2)} € requis). Rechargez à la billetterie.`)
+        throw new Error(`Solde insuffisant (${(soldeBefore / 100).toFixed(2)} € disponibles, ${(total / 100).toFixed(2)} € requis). Rechargez dans votre espace ou à la billetterie, puis retapez votre code.`)
       }
       specId = data.specId; specNom = specSnap.data().nom || data.specNom || '—'; paidBy = 'Borne (code en ligne)'
       // Écritures : solde, stock, vente

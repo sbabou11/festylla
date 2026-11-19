@@ -137,6 +137,12 @@ async function creer(req, res, lu) {
   const db = getDb()
   const event = await db.collection('events').doc(ev).get()
   if (!event.exists || event.data().deleted) { res.status(404).json({ error: 'Événement inconnu.' }); return }
+  // Billet annulé (20/11/2026) : le compte ne paie plus, on ne le recharge plus ; son solde reste remboursable
+  const compte = await db.collection('events').doc(ev).collection('spectateurs').doc(String(caller.specDoc)).get()
+  if (!compte.exists) { res.status(404).json({ error: 'Compte introuvable.' }); return }
+  if (compte.data().billet && compte.data().billet.annule) {
+    res.status(403).json({ error: 'Votre billet a été annulé : ce compte ne peut plus être rechargé. Vous pouvez demander le remboursement de votre solde.' }); return
+  }
 
   const params = paramsSession({ montant, ev, specId: caller.specId, specDoc: caller.specDoc, nomEvenement: event.data().nom || '', retour })
   try {

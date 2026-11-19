@@ -350,7 +350,7 @@ export default function SoldePage({ demo = null }) {
   // le solde l'est à la borne, au prix de la carte, quand les tickets sortent.
   const doResa = async () => {
     if (!spec || !cartItems.length) return
-    if ((spec.solde || 0) < cartTotal) { setResaErr('Solde insuffisant pour cette commande. Rechargez à la billetterie.'); return }
+    if ((spec.solde || 0) < cartTotal) { setResaErr(`Solde insuffisant : il vous manque ${fmt(cartTotal - (spec.solde || 0))} (solde ${fmt(spec.solde || 0)}).`); return }
     if (demo) {
       const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0')
       setCodes(c => [...c, { code, origine: 'en-ligne', statut: 'en_attente', items: cartItems.map(i => ({ nom: i.nom, qty: i.qty, prixUnit: i.prix })), total: cartTotal, timestamp: new Date().toISOString() }])
@@ -417,6 +417,15 @@ export default function SoldePage({ demo = null }) {
       await apiFetch('/api/paiement', { body: { action: 'annulerDemande', ev: eventId, id: demandeEnCours.id } })
     } catch (e) { setRembErr(friendlyError(e, 'L\'annulation n\'a pas pu être faite.')) }
   }
+
+  // Solde insuffisant pour le panier : ce qui manque, et recharge préremplie (au moins 5 €)
+  const manque = spec ? Math.max(0, cartTotal - (spec.solde || 0)) : 0
+  const rechargerLeManque = () => {
+    const euros = Math.max(5, Math.ceil(manque / 100))
+    setAutreMontant(String(euros)); setRechargeErr(''); go('recharger')
+  }
+  // Billet annulé (20/11/2026) : le compte ne paie plus et ne se recharge plus ; le solde reste remboursable
+  const billetAnnule = !!spec?.billet?.annule
 
   const annulerCode = async (code) => {
     if (demo) { setCodes(cs => cs.map(c => c.code === code ? { ...c, statut: 'annule' } : c)); return }
@@ -633,7 +642,7 @@ export default function SoldePage({ demo = null }) {
                 <span className={sp.walletLabel}>Mon solde</span>
                 <div className={sp.walletRow}>
                   <b className={sp.walletValue}><AnimatedNumber value={spec.solde || 0} format={fmt} /></b>
-                  {qrDataUrl && (
+                  {qrDataUrl && !billetAnnule && (
                     <button type="button" className={sp.walletQr} onClick={openQr} aria-label="Agrandir mon QR code de paiement">
                       <img src={qrDataUrl} alt="" />
                       <Maximize2 size={12} className={sp.walletQrIcon} aria-hidden="true" />
@@ -641,11 +650,13 @@ export default function SoldePage({ demo = null }) {
                   )}
                 </div>
                 <span className={sp.walletId}>
-                  {qrDataUrl
-                    ? `QR de paiement · change dans ${qrReste} s · touchez-le pour l'agrandir à la borne`
-                    : 'Pour afficher votre QR de paiement, rouvrez votre espace avec le lien reçu par e-mail.'}
+                  {billetAnnule
+                    ? 'Billet annulé : ce compte ne permet plus de payer.'
+                    : qrDataUrl
+                      ? `QR de paiement · change dans ${qrReste} s · touchez-le pour l'agrandir à la borne`
+                      : 'Pour afficher votre QR de paiement, rouvrez votre espace avec le lien reçu par e-mail.'}
                 </span>
-                {secours && (
+                {secours && !billetAnnule && (
                   <span className={sp.secours}>Scanner en panne ? Tapez ce code à la borne : <b>{secours.code}</b></span>
                 )}
               </section>
@@ -672,10 +683,20 @@ export default function SoldePage({ demo = null }) {
                   <span className={clsx(sp.actionIcon, sp.brand)}><CalendarDays size={18} /></span>Programme
                 </button>
               </div>
+              {billetAnnule ? (<>
+                <p className={sp.info}>Votre billet a été annulé. Ce compte ne peut plus être rechargé ni servir à payer.{(spec.solde || 0) > 0 ? ' Votre solde vous reste dû : demandez-en le remboursement.' : ''}</p>
+                {(demandeEnCours || (spec.solde || 0) > 0) && (
+                  <Button variant="coral" size="lg" block onClick={() => { setRembErr(''); go('rembourser') }}>
+                    {demandeEnCours ? 'Suivre ma demande de remboursement' : 'Me faire rembourser mon solde'}
+                  </Button>
+                )}
+                <Button size="lg" block icon={CreditCard} disabled>Recharger mon solde</Button>
+              </>) : (<>
               {/* Recharge en ligne par Stripe (19/11/2026) */}
               <Button variant="coral" size="lg" block icon={CreditCard} onClick={() => { setRechargeErr(''); go('recharger') }}>Recharger mon solde</Button>
               <p className={sp.topup}><Ticket size={14} aria-hidden="true" /> Carte, Apple Pay ou Google Pay · ou à la billetterie</p>
-              {(demandeEnCours || (spec.solde || 0) > 0) && (
+              </>)}
+              {!billetAnnule && (demandeEnCours || (spec.solde || 0) > 0) && (
                 <button type="button" className={sp.rembLink} onClick={() => { setRembErr(''); go('rembourser') }}>
                   {demandeEnCours ? 'Suivre ma demande de remboursement' : 'Demander le remboursement de mon solde'}
                 </button>
@@ -1016,8 +1037,15 @@ export default function SoldePage({ demo = null }) {
             <span>{cartItems.reduce((a, i) => a + i.qty, 0)} article(s)</span>
             <b>{fmt(cartTotal)}</b>
           </div>
-          {resaErr && <p className={sp.cartErr} role="alert">{resaErr}</p>}
           <Button variant="coral" size="lg" loading={resaLoading} onClick={doResa}>Obtenir mon code</Button>
+          {resaErr && <p className={sp.cartErr} role="alert">{resaErr}</p>}
+          {/* Solde insuffisant (20/11/2026) : recharge en un geste, le panier est conservé */}
+          {resaErr && manque > 0 && !billetAnnule && (
+            <div className={sp.cartRecharge}>
+              <Button block icon={CreditCard} onClick={rechargerLeManque}>Recharger mon solde</Button>
+              <span className={sp.muted}>Votre panier est conservé. Vous pouvez aussi recharger à la billetterie.</span>
+            </div>
+          )}
         </div>
       )}
 
