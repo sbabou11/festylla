@@ -15,7 +15,7 @@
  *     totals: { perArticle:{[art]:montant}, units:{[art]:qty}, txCount:{[art]:n}, global, nbLignes }
  *   }
  */
-const { requireCaller } = require('./_auth/server')
+const { requireCaller } = require('../_auth/server')
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*')

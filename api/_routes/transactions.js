@@ -3,7 +3,7 @@
  * Génère un XLSX stylisé de l'export Transactions (équivalent du bouton "Export CSV")
  * POST /api/transactions — body JSON { event, spectateurs, transactions, staff }
  */
-const { requireCaller } = require('./_auth/server')
+const { requireCaller } = require('../_auth/server')
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*')

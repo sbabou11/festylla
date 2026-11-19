@@ -10,9 +10,9 @@
  * Limite : 30 comptes par heure depuis une même adresse réseau.
  */
 const crypto = require('crypto')
-const { counterKey, blockedMinutes, afterFailure, newKey, spectatorSession } = require('./_auth/core')
-const { admin, getDb, clientIp, writeAudit } = require('./_auth/server')
-const { readBody } = require('./_billets/admin')
+const { counterKey, blockedMinutes, afterFailure, newKey, spectatorSession } = require('../_auth/core')
+const { admin, getDb, clientIp, writeAudit } = require('../_auth/server')
+const { readBody } = require('../_billets/admin')
 
 const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
 const LIMIT = { fails: 30, windowMs: 60 * 60 * 1000, blockMs: 60 * 60 * 1000 }

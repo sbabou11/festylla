@@ -11,7 +11,7 @@
  *     parCategorie: [{ sens, categorie, total, count }],
  *   }
  */
-const { requireCaller } = require('./_auth/server')
+const { requireCaller } = require('../_auth/server')
 
 module.exports = async (req, res) => {
   // CORS

@@ -8,9 +8,9 @@
  *   { mode: 'fermer', ev }             active les règles strictes sur l'événement (securite: 'fermee')
  *   { mode: 'ouvrir', ev }             revient au mode ancien (en cas de problème le jour J)
  */
-const { passwordFields } = require('./_auth/core')
-const { admin, getDb, requireCaller, writeAudit } = require('./_auth/server')
-const { readBody } = require('./_billets/admin')
+const { passwordFields } = require('../_auth/core')
+const { admin, getDb, requireCaller, writeAudit } = require('../_auth/server')
+const { readBody } = require('../_billets/admin')
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'POST attendu.' }); return }

@@ -20,9 +20,9 @@
 const {
   blockedMinutes, afterFailure, counterKey, PUBLIC_LIMIT, LIMIT, isKey, sameKey, accountKey,
   spectatorSession, LINK_KINDS, linkDocId, deviceSession, sessionFor, publicAccount,
-} = require('./_auth/core')
-const { admin, getDb, clientIp, verifyCaller, loadAccount } = require('./_auth/server')
-const { readBody } = require('./_billets/admin')
+} = require('../_auth/core')
+const { admin, getDb, clientIp, verifyCaller, loadAccount } = require('../_auth/server')
+const { readBody } = require('../_billets/admin')
 
 const ID = /^[\w-]{1,128}$/
 const SPEC = /^FY-[A-Z0-9]{4,12}$/

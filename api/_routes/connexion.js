@@ -14,9 +14,9 @@
  * REQUIS : FIREBASE_SERVICE_ACCOUNT (déjà en place), et l'authentification Firebase activée
  * (elle l'est déjà pour Microsoft).
  */
-const { checkPassword, hasPassword, passwordFields, blockedMinutes, afterFailure, counterKey, sessionFor, publicAccount } = require('./_auth/core')
-const { admin, getDb, findAccountByIdentifiant, findAccountByEmail, linkedBenevole, clientIp, writeAudit } = require('./_auth/server')
-const { readBody } = require('./_billets/admin')
+const { checkPassword, hasPassword, passwordFields, blockedMinutes, afterFailure, counterKey, sessionFor, publicAccount } = require('../_auth/core')
+const { admin, getDb, findAccountByIdentifiant, findAccountByEmail, linkedBenevole, clientIp, writeAudit } = require('../_auth/server')
+const { readBody } = require('../_billets/admin')
 
 const BAD = 'Identifiant ou mot de passe incorrect.'
 

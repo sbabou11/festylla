@@ -17,10 +17,10 @@
  * qui a une clé (règle d'échange Event Manager ↔ YllaCash v1.0, §2 ; voir _em/lecture.js),
  * et lui renvoie les consommations et le bilan (§7, v1.1 ; voir _em/envoiRetour.js).
  */
-const { prepareEntrees, nextAttempt, isSettingError, newMessageId } = require('./_billets/core')
-const { getDb } = require('./_billets/admin')
-const { refreshEvent } = require('./_em/lecture')
-const { executerRetour, firestoreIo } = require('./_em/envoiRetour')
+const { prepareEntrees, nextAttempt, isSettingError, newMessageId } = require('../_billets/core')
+const { getDb } = require('../_billets/admin')
+const { refreshEvent } = require('../_em/lecture')
+const { executerRetour, firestoreIo } = require('../_em/envoiRetour')
 
 const TIMEOUT_MS = 10_000
 

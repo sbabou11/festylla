@@ -10,9 +10,9 @@
  *   { mode: 'definir', cible, nouveau }       un administrateur fixe le mot de passe d'une fiche
  *                                             cible = 'staff/<id>' | 'events/<ev>/staff/<id>' | 'events/<ev>/benevoles/<id>'
  */
-const { checkPassword, passwordFields, validateNewPassword, blockedMinutes, afterFailure, counterKey } = require('./_auth/core')
-const { admin, getDb, requireCaller, loadAccount, canManage, writeAudit, ADMIN_ROLES } = require('./_auth/server')
-const { readBody } = require('./_billets/admin')
+const { checkPassword, passwordFields, validateNewPassword, blockedMinutes, afterFailure, counterKey } = require('../_auth/core')
+const { admin, getDb, requireCaller, loadAccount, canManage, writeAudit, ADMIN_ROLES } = require('../_auth/server')
+const { readBody } = require('../_billets/admin')
 
 const nomDe = (d) => (d.prenom ? `${d.prenom} ${d.nom || ''}`.trim() : (d.nom || ''))
 

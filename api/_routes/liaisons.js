@@ -19,10 +19,10 @@
  *   { mode: 'em-actualiser', ev }          → relit l'instantané d'Event Manager tout de suite
  * La même clé Event Manager sert à envoyer les entrées et à lire l'instantané (_em/lecture.js).
  */
-const { newKey, cleanName, EV } = require('./_billets/cles')
-const { admin, getDb, requireCaller, writeAudit } = require('./_auth/server')
-const { readBody } = require('./_billets/admin')
-const { refreshEvent } = require('./_em/lecture')
+const { newKey, cleanName, EV } = require('../_billets/cles')
+const { admin, getDb, requireCaller, writeAudit } = require('../_auth/server')
+const { readBody } = require('../_billets/admin')
+const { refreshEvent } = require('../_em/lecture')
 
 const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null)
 const isoMs = (ms) => (typeof ms === 'number' ? new Date(ms).toISOString() : null)

@@ -14,11 +14,11 @@
  * et code passé à « utilisé ». Un seul ticket, pour le stand coché « Stand des bénévoles ».
  * Limite d'essais sur les clés : la même que pour l'ouverture des pages publiques.
  */
-const { blockedMinutes, afterFailure, counterKey, PUBLIC_LIMIT, sameKey } = require('./_auth/core')
-const { admin, getDb, clientIp, verifyCaller } = require('./_auth/server')
-const { readBody } = require('./_billets/admin')
-const { festDay } = require('./_em/retour')
-const { restants, preparerCommande, standBenevoles } = require('./_borne/benevole')
+const { blockedMinutes, afterFailure, counterKey, PUBLIC_LIMIT, sameKey } = require('../_auth/core')
+const { admin, getDb, clientIp, verifyCaller } = require('../_auth/server')
+const { readBody } = require('../_billets/admin')
+const { festDay } = require('../_em/retour')
+const { restants, preparerCommande, standBenevoles } = require('../_borne/benevole')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/

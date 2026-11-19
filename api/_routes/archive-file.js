@@ -12,7 +12,7 @@
  * Seuls les fichiers rangés sous events/ sont accessibles, et seulement aux administrateurs connectés.
  */
 const admin = require('firebase-admin')
-const { requireCaller } = require('./_auth/server')
+const { requireCaller } = require('../_auth/server')
 
 let app = null
 function getBucket() {

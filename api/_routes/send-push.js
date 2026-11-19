@@ -27,7 +27,7 @@
  * suppression réelle dans Firestore se fait côté client, on évite d'avoir
  * besoin des permissions admin Firestore pour rester sur des règles simples).
  */
-const { requireCaller } = require('./_auth/server')
+const { requireCaller } = require('../_auth/server')
 
 const admin = require('firebase-admin')
 

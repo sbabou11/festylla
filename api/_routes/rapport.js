@@ -3,7 +3,7 @@
  * ExcelJS côté serveur : styles + graphiques natifs Excel garantis
  * POST /api/rapport — body JSON
  */
-const { requireCaller } = require('./_auth/server')
+const { requireCaller } = require('../_auth/server')
 
 module.exports = async (req, res) => {
   // CORS

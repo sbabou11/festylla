@@ -26,7 +26,7 @@
  */
 
 const admin = require('firebase-admin')
-const { requireCaller, canManage } = require('./_auth/server')
+const { requireCaller, canManage } = require('../_auth/server')
 const crypto = require('crypto')
 
 const HF_BASE = 'https://api.higgsfield.ai'

@@ -3,7 +3,7 @@
  * Génère un XLSX stylisé du Journal d'audit
  * POST /api/audit — body JSON { event, audit }
  */
-const { requireCaller } = require('./_auth/server')
+const { requireCaller } = require('../_auth/server')
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*')

@@ -10,7 +10,7 @@
  *     kpis: { totalPrevu, totalPaye, totalAPayer, nbCachets, nbSignes },
  *   }
  */
-const { requireCaller } = require('./_auth/server')
+const { requireCaller } = require('../_auth/server')
 
 module.exports = async (req, res) => {
   // CORS

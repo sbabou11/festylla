@@ -20,9 +20,9 @@
  *
  * REQUIS : FIREBASE_SERVICE_ACCOUNT (déjà utilisée par send-push).
  */
-const { validateMessage, handleMessage } = require('./_billets/core')
-const { keyFromHeader, keyMatches } = require('./_billets/cles')
-const { admin, getDb, adminStore, readBody } = require('./_billets/admin')
+const { validateMessage, handleMessage } = require('../_billets/core')
+const { keyFromHeader, keyMatches } = require('../_billets/cles')
+const { admin, getDb, adminStore, readBody } = require('../_billets/admin')
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'Méthode non autorisée : POST attendu.' }); return }
