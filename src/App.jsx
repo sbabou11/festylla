@@ -68,15 +68,7 @@ const PAGES = {
   'commande-sur-place': lazy(() => import('./pages/billetterie/CommandeSurPlace')),
   nouveau:              lazy(() => import('./pages/billetterie/Nouveau')),
   remboursement:        lazy(() => import('./pages/billetterie/Remboursement')),
-  retrait:              lazy(() => import('./pages/stand/Retrait')),
   debit:                lazy(() => import('./pages/stand/Debit')),
-  'prendre-commande':   lazy(() => import('./pages/stand/PrendreCommande')),
-  'retrait-commande':   lazy(() => import('./pages/stand/RetraitCommande')),
-  cuisine:              lazy(() => import('./pages/stand/Cuisine')),
-  'mon-qr':             lazy(() => import('./pages/spectateur/MonQr')),
-  'mes-reservations':   lazy(() => import('./pages/spectateur/MesReservations')),
-  solde:                lazy(() => import('./pages/spectateur/Solde')),
-  carte:                lazy(() => import('./pages/spectateur/Carte')),
   'mon-profil':         lazy(() => import('./pages/shared/MonProfil')),
 }
 
@@ -93,14 +85,10 @@ const PAGE_TITLES = {
   finances: 'Finances',
   'editeur-template': 'Éditeur template facture',
   menu: 'Carte & menu', staff: 'Équipe', settings: 'Paramètres', credit: 'Créditer',
-  nouveau: 'Nouveau QR', retrait: 'Retrait réservation', debit: 'Encaisser',
+  nouveau: 'Nouveau QR', debit: 'Encaisser',
   remboursement: 'Remboursement',
   'commande-sur-place': 'Commande sur place',
-  'prendre-commande': 'Prendre commande',
-  'retrait-commande': 'Retrait commande',
-  cuisine: 'Cuisine',
-  'mon-qr': 'Mon QR code', 'mes-reservations': 'Mes réservations', solde: 'Mon solde',
-  carte: 'La carte', 'mon-profil': 'Mon profil',
+  'mon-profil': 'Mon profil',
 }
 
 const ROLE_COLOR = {
@@ -215,7 +203,6 @@ const DevEspace     = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevAu
 
 const page = (el) => <Suspense fallback={<Loader />}>{el}</Suspense>
 const Borne        = lazy(() => import('./pages/public/Borne'))
-const EcranPublic  = lazy(() => import('./pages/public/EcranPublic'))
 
 export default function App() {
   return (
@@ -229,8 +216,6 @@ export default function App() {
       <Route path="/benevole"    element={page(<LinkGate kind="benevole" idParam="id"><BenevoleApp /></LinkGate>)} />
       {/* Borne self-service au stand : /borne?ev=<eventId>&stand=<numéro> */}
       <Route path="/borne"       element={page(<LinkGate kind="borne"><Borne /></LinkGate>)} />
-      {/* Écran TV des commandes prêtes : /ecran?ev=<eventId> */}
-      <Route path="/ecran"       element={page(<LinkGate kind="ecran"><EcranPublic /></LinkGate>)} />
       <Route path="/inscription" element={page(<Inscription />)} />
       <Route path="/register"    element={page(<Inscription />)} />
       <Route path="/solde"       element={page(<SoldePage />)} />

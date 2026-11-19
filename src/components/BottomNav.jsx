@@ -15,7 +15,7 @@ const FAVORITES = {
   super_admin:          ['accueil', 'debit', 'transactions', 'alertes'],
   admin:                ['accueil', 'debit', 'transactions', 'alertes'],
   billetterie:          ['credit', 'commande-sur-place', 'nouveau', 'cloture'],
-  stand:                ['debit', 'retrait', 'reservations-admin', 'transactions'],
+  stand:                ['debit', 'reservations-admin', 'transactions', 'mon-profil'],
   consultation:         ['transactions', 'reservations-admin', 'analytics'],
   directeur_artistique: ['planning', 'gestion-artistes', 'mon-profil'],   // planning masqué si relié à Event Manager
 }

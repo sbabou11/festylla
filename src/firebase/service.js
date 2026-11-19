@@ -2199,7 +2199,7 @@ export const getNextCommandeNumero = async (evId = null) => {
  * @param {string|null} evId           - ID de l'événement
  * @returns {Promise<{id, numero}>}    - L'ID Firestore et le numéro attribué
  */
-export const createCommande = async ({ specId, specNom, items, payNow, staff, code, source }, evId = null) => {
+export const createCommande = async ({ specId, specNom, items, payNow, staff, code, source, remise = false }, evId = null) => {
   const eventId = evId || getEventId()
   if (!eventId) throw new Error('Aucun événement courant')
   if (!specId) throw new Error('Spectateur requis')
@@ -2246,7 +2246,8 @@ export const createCommande = async ({ specId, specNom, items, payNow, staff, co
       ...(it.standId ? { standId: String(it.standId), standNumero: Number(it.standNumero) || 0 } : {}),
     })),
     total,
-    status: 'pending',
+    // remise : borne, le ticket imprimé vaut remise (aucun écran au stand)
+    status: remise ? 'collected' : 'pending',
     paid: !!payNow,
     paidAt: payNow ? serverTimestamp() : null,
     paidBy: payNow ? staff : null,
@@ -2254,8 +2255,8 @@ export const createCommande = async ({ specId, specNom, items, payNow, staff, co
     createdBy: staff || '—',
     readyAt: null,
     readyBy: null,
-    collectedAt: null,
-    collectedBy: null,
+    collectedAt: remise ? serverTimestamp() : null,
+    collectedBy: remise ? 'Ticket imprimé' : null,
     cancelledAt: null,
     cancelledBy: null,
     cancelReason: null,
@@ -2649,9 +2650,10 @@ export const utiliserCode = async (code, evId = null, { stands = [] } = {}) => {
     txn.set(commandeRef, {
       numero, numeroDay: _dateKey(), specId, specNom,
       items, total,
-      status: 'pending', paid: true, paidAt: serverTimestamp(), paidBy,
+      // Ticket imprimé à la borne : vaut remise (aucun écran au stand)
+      status: 'collected', paid: true, paidAt: serverTimestamp(), paidBy,
       createdAt: serverTimestamp(), createdBy: 'Borne (code)',
-      readyAt: null, readyBy: null, collectedAt: null, collectedBy: null,
+      readyAt: null, readyBy: null, collectedAt: serverTimestamp(), collectedBy: 'Ticket imprimé',
       cancelledAt: null, cancelledBy: null, cancelReason: null, refunded: false,
       date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'),
       code, source: enLigne ? 'code-en-ligne' : 'code', moyen: enLigne ? 'solde' : (data.moyen || null),

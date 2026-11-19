@@ -12,10 +12,10 @@
 import { linkFor } from '../../firebase/publicSession'
 import React, { useMemo, useEffect, useState } from 'react'
 import {
-  PlusCircle, ShoppingCart, Package, List, Bookmark,
+  PlusCircle, ShoppingCart, List, Bookmark,
   TrendingUp, Receipt, Clock, CheckCircle, AlertTriangle,
-  ChevronRight, ArrowLeftRight, QrCode, Users, ClipboardList, ChefHat, Banknote,
-  Monitor, ShoppingBag,
+  ChevronRight, ArrowLeftRight, QrCode, Users, Banknote,
+  ShoppingBag,
 } from 'lucide-react'
 import useAppStore  from '../../store/useAppStore'
 import PancartePrincipale from '../../components/PancartePrincipale'
@@ -415,69 +415,6 @@ export default function Operations({ onNavigate }) {
                 desc="Vente au stand"
                 color="#C5481A"
                 bg="var(--coral-light)"
-                isMobile={isMobile}
-              />
-            )}
-            {canDebit && (
-              <ActionCompacte
-                onClick={() => onNavigate && onNavigate('prendre-commande', 'operations')}
-                icon={<ClipboardList size={20}/>}
-                label="Prendre commande"
-                desc="Avec numéro et suivi cuisine"
-                color="#185FA5"
-                bg="var(--blue-light)"
-                isMobile={isMobile}
-              />
-            )}
-            {canDebit && (
-              <ActionCompacte
-                onClick={() => onNavigate && onNavigate('cuisine', 'operations')}
-                icon={<ChefHat size={20}/>}
-                label="Cuisine"
-                desc="Suivi des commandes en cours"
-                color="#0F6E56"
-                bg="var(--green-light)"
-                isMobile={isMobile}
-              />
-            )}
-            {canDebit && (
-              <ActionCompacte
-                onClick={() => onNavigate && onNavigate('retrait-commande', 'operations')}
-                icon={<Package size={20}/>}
-                label="Retrait commande"
-                desc="Remettre au client"
-                color="#A87020"
-                bg="var(--gold-light)"
-                isMobile={isMobile}
-              />
-            )}
-            {canRetrait && (
-              <ActionCompacte
-                onClick={() => onNavigate && onNavigate('retrait', 'operations')}
-                icon={<Package size={20}/>}
-                label="Retrait réservation"
-                desc="Remettre une commande"
-                color="#A87020"
-                bg="var(--gold-light)"
-                isMobile={isMobile}
-              />
-            )}
-            {/* Raccourcis vers les pages publiques (écran d'affichage + borne)
-                Ces 2 boutons ouvrent dans un nouvel onglet pour ne pas perdre
-                la session admin courante. Visibles pour qui a `canDebit` (= staff stand). */}
-            {canDebit && (
-              <ActionCompacte
-                onClick={() => {
-                  if (!currentEventId) return
-                  // Lien d'appareil avec clé (sécurité, lot 2) : c'est ce lien qu'on ouvre sur la tablette
-                  const w = window.open('about:blank', '_blank')
-                  linkFor(currentEventId, 'ecran').then(u => { if (w) w.location.href = u }).catch(() => w?.close())
-                }}
-                icon={<Monitor size={20}/>}
-                label="Écran public"
-                desc="Affichage des numéros prêts"
-                color="#185FA5"
-                bg="var(--blue-light)"
                 isMobile={isMobile}
               />
             )}

@@ -27,8 +27,6 @@ const ACTIONS = [
   ['commande-sur-place', 'Encaisser une commande sur place (code borne)'],
   ['nouveau', 'Créer un compte spectateur'],
   ['remboursement', 'Rembourser un spectateur'],
-  ['retrait', 'Remettre une réservation'],
-  ['prendre-commande', 'Prendre une commande'],
   ['cloture', 'Clôturer une caisse'],
   ['exposants', 'Ajouter un exposant'],
   ['menu', 'Ajouter un article à la carte'],

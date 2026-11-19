@@ -32,7 +32,6 @@ import Spectateurs from '../admin/Spectateurs'
 import MonProfil from '../shared/MonProfil'
 import Nouveau from '../billetterie/Nouveau'
 import Credit from '../billetterie/Credit'
-import Retrait from '../stand/Retrait'
 import Debit from '../stand/Debit'
 import Accueil from '../admin/Accueil'
 import Comptabilite from '../admin/Comptabilite'
@@ -47,10 +46,6 @@ import Evenements from '../admin/Evenements'
 import Entree from '../billetterie/Entree'
 import ArchiveBanner from '../../components/ArchiveBanner'
 import Remboursement from '../billetterie/Remboursement'
-import PrendreCommande from '../stand/PrendreCommande'
-import RetraitCommande from '../stand/RetraitCommande'
-import Cuisine from '../stand/Cuisine'
-import { cuisineDemo } from '../stand/cuisine/demoData'
 import shell from '../../App.module.css'
 
 const H = 3600 * 1000
@@ -60,16 +55,16 @@ const STAFF = ['Bar Scène A', 'Stand Crêpes', 'Bar Scène B']
 const CAISSES = ['Caisse Awa', 'Caisse Karim']
 const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, staff: Staff, menu: Menu, settings: Settings, transactions: Transactions, alertes: Alertes,
   'qr-entree': QrEntree, benevoles: Benevoles, 'reservations-admin': Reservations, spectateurs: Spectateurs, 'mon-profil': MonProfil,
-  nouveau: Nouveau, credit: Credit, retrait: Retrait, debit: Debit,
+  nouveau: Nouveau, credit: Credit, debit: Debit,
   accueil: Accueil, comptabilite: Comptabilite, operations: Operations, 'equipe-hub': EquipeHub, 'spectateurs-hub': SpectateursHub,
   cachets: Cachets, 'gestion-artistes': GestionArtistes, exposants: Exposants, finances: Finances, remboursement: Remboursement,
-  'prendre-commande': PrendreCommande, 'retrait-commande': RetraitCommande, cuisine: Cuisine, evenements: Evenements, entree: Entree }
+  evenements: Evenements, entree: Entree }
 const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres', transactions: 'Transactions', alertes: 'Alertes financières',
   'qr-entree': 'QR code entrée', benevoles: 'Bénévoles', 'reservations-admin': 'Réservations', spectateurs: 'Spectateurs', 'mon-profil': 'Mon profil',
-  nouveau: 'Nouveau QR', credit: 'Créditer', retrait: 'Retrait réservation', debit: 'Encaisser',
+  nouveau: 'Nouveau QR', credit: 'Créditer', debit: 'Encaisser',
   accueil: 'Accueil', comptabilite: 'Comptabilité', operations: 'Opérations', 'equipe-hub': 'Équipe & Bénévoles', 'spectateurs-hub': 'Spectateurs & Accès',
   cachets: 'Cachets artistes', 'gestion-artistes': 'Gestion des artistes', exposants: 'Exposants', finances: 'Finances', remboursement: 'Remboursement',
-  'prendre-commande': 'Prendre commande', 'retrait-commande': 'Retrait commande', cuisine: 'Cuisine', evenements: 'Événements', entree: 'Entrée' }
+  evenements: 'Événements', entree: 'Entrée' }
 
 function sampleData(now) {
   const spectateurs = NAMES.map((nom, i) => ({ id: `YT-${(4100 + i * 37).toString(16).toUpperCase()}`, nom, solde: i === 6 ? -150 : 500 + i * 650 }))
@@ -116,7 +111,7 @@ function sampleData(now) {
     { id: 'c5', artiste: 'Courts métrages', scene: 'Chapiteau', type: 'cinematographique', debut: ts(45), fin: ts(135), statut: 'annule' },
   ]
   const roles = [
-    { id: 'role-bar', nom: 'Chef de bar', couleur: '#F07848', pages: ['debit', 'retrait', 'transactions', 'mon-profil'] },
+    { id: 'role-bar', nom: 'Chef de bar', couleur: '#F07848', pages: ['debit', 'transactions', 'mon-profil'] },
   ]
   const staff = [
     { id: 'st1', _docId: 'st1', nom: 'Samba Babou', username: 'sbabou', role: 'super_admin', eventIds: ['demo'] },
@@ -218,7 +213,7 @@ export default function DevDashboard() {
           </header>
           <ArchiveBanner />
           <main className={shell.content}>
-            {(() => { const P = PAGES[page]; return P === Cuisine ? <Cuisine demo={cuisineDemo()} /> : P ? <P onNavigate={setPage} view="admin" /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
+            {(() => { const P = PAGES[page]; return P ? <P onNavigate={setPage} view="admin" /> : <Dashboard onNavigate={setPage} view="admin" /> })()}
           </main>
         </div>
         {isMobile && <BottomNav role="admin" currentPage={page} onNavigate={setPage} onMore={() => setDrawer(true)} canAccess={() => true} badges={{ alertes: 2 }} />}

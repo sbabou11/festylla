@@ -111,10 +111,10 @@ export async function setPasswordFor(cible, nouveau) {
 }
 
 export const ROLE_PAGES = {
-  super_admin:  ['evenements','accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','retrait','debit','prendre-commande','retrait-commande','cuisine','remboursement','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
-  admin:        ['accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','retrait','debit','prendre-commande','retrait-commande','cuisine','remboursement','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
+  super_admin:  ['evenements','accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','debit','remboursement','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
+  admin:        ['accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','debit','remboursement','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
   billetterie:  ['accueil','operations','credit','commande-sur-place','nouveau','cloture','remboursement','transactions','spectateurs','qr-entree','entree','mon-profil'],
-  stand:        ['accueil','operations','retrait','debit','prendre-commande','retrait-commande','cuisine','reservations-admin','transactions','mon-profil'],
+  stand:        ['accueil','operations','debit','reservations-admin','transactions','mon-profil'],
   consultation: ['accueil','transactions','reservations-admin','analytics','comptabilite','mon-profil'],
   directeur_artistique: ['accueil','gestion-artistes','planning','cachets','mon-profil'],
   benevole:     ['mon-profil'],

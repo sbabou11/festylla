@@ -5,7 +5,7 @@
  * en mode kiosque devant l'entrée d'un stand. Le spectateur scanne
  * son QR ou saisit son ID pour passer commande de manière autonome.
  *
- * Accès : /borne?ev=<eventId>&stand=<numéro-stand-optionnel>
+ * Accès : /borne?ev=<eventId> (une borne pour tous les stands : un ticket par stand)
  *
  * Lot 1 (cette livraison) :
  *   - Écran 1 : accueil "Toucher pour commencer"
@@ -149,8 +149,6 @@ export default function Borne() {
   const [error, setError] = useState('')
   // Indique qu'on est en train de chercher le spectateur dans Firestore
   const [loading, setLoading] = useState(false)
-  // Nom du stand (passé en URL ?stand=N) pour affichage discret
-  const [standName, setStandName] = useState('')
   // Indique si l'eventId est valide pour cet appareil
   const [eventReady, setEventReady] = useState(false)
   // ─── Branding dynamique (logo + palette) chargés depuis settings ─────
@@ -169,8 +167,6 @@ export default function Borne() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const ev = params.get('ev')
-    const stand = params.get('stand')
-    if (stand) setStandName(stand)
     if (!ev) {
       setError('Cette borne n\'est pas configurée. Paramètre ?ev=<eventId> manquant dans l\'URL.')
       return
@@ -288,7 +284,7 @@ export default function Borne() {
       {!eventReady ? (
         <ConfigError error={error}/>
       ) : step === STEP.ACCUEIL ? (
-        <Accueil onStart={() => setStep(STEP.IDENTIFICATION)} onCode={() => setStep(STEP.CODE)} standName={standName} logoUrl={logoUrl}/>
+        <Accueil onStart={() => setStep(STEP.IDENTIFICATION)} onCode={() => setStep(STEP.CODE)} logoUrl={logoUrl}/>
       ) : step === STEP.CODE ? (
         <CodeScreen stands={carte.stands}
           onCancel={resetSession}
@@ -300,7 +296,7 @@ export default function Borne() {
           onCancel={resetSession}
           loading={loading}
           error={error}
-          standName={standName}/>
+         />
       ) : step === STEP.MENU ? (
         <Menu
           spec={spec}
@@ -309,7 +305,7 @@ export default function Borne() {
           onTimeout={resetSession}
           onGoToCart={() => setStep(STEP.PANIER)}
           onTerminate={resetSession}
-          standName={standName}
+         
           carte={carte}
           categories={categories}/>
       ) : step === STEP.PANIER ? (
@@ -350,7 +346,7 @@ function ConfigError({ error }) {
         {error || 'Veuillez contacter l\'administrateur.'}
       </div>
       <div style={{ fontSize: 13, opacity: 0.5, marginTop: 40, fontFamily: 'monospace' }}>
-        URL attendue : /borne?ev=&lt;eventId&gt;&amp;stand=&lt;numéro&gt;
+        URL attendue : /borne?ev=&lt;eventId&gt;
       </div>
     </div>
   )
@@ -363,7 +359,7 @@ function ConfigError({ error }) {
 // Le fond utilise la couleur de marque du festival (settings.brandColor),
 // avec un gradient vers une variante plus sombre pour la profondeur.
 // Le logo (settings.logoDataUrl) est affiché en haut s'il est défini.
-function Accueil({ onStart, onCode, standName, logoUrl }) {
+function Accueil({ onStart, onCode, logoUrl }) {
   // Texte sur le fond brand — soit blanc soit noir selon luminance
   const onBrand = COLORS.textOnBrand || '#fff'
   // Couleur des labels secondaires : variante avec opacité réduite
@@ -431,16 +427,7 @@ function Accueil({ onStart, onCode, standName, logoUrl }) {
           fontSize: 20, color: onBrandMuted, marginBottom: 12,
           letterSpacing: '0.04em', textTransform: 'uppercase',
         }}>
-          Maison Ylla{standName ? ` — Stand ${standName}` : ''}
-        </div>
-      )}
-      {/* Nom du stand affiché en plus si on a un logo (sinon déjà dans le label ci-dessus) */}
-      {logoUrl && standName && (
-        <div style={{
-          fontSize: 16, color: onBrandMuted, marginBottom: 12,
-          letterSpacing: '0.04em', textTransform: 'uppercase',
-        }}>
-          Stand {standName}
+          Maison Ylla
         </div>
       )}
       <div style={{
@@ -503,7 +490,7 @@ function Accueil({ onStart, onCode, standName, logoUrl }) {
 // ════════════════════════════════════════════════════════════════════
 // Écran 2 — Identification (QR + saisie manuelle)
 // ════════════════════════════════════════════════════════════════════
-function Identification({ onValidated, onCancel, loading, error, standName }) {
+function Identification({ onValidated, onCancel, loading, error }) {
   // Saisie manuelle du code (préfixe FY- ajouté automatiquement à la validation)
   const [manualInput, setManualInput] = useState('')
 
@@ -555,7 +542,7 @@ function Identification({ onValidated, onCancel, loading, error, standName }) {
           <ArrowLeft size={16}/> Annuler
         </button>
         <div style={{ fontSize: 13, color: COLORS.muted }}>
-          {standName ? `Stand ${standName} · ` : ''}{timeStr}
+          {timeStr}
         </div>
       </div>
 
@@ -964,7 +951,7 @@ function useIdleWatcher({ warnSec, timeoutSec, onWarn, onTimeout, enabled = true
 // Affiche le solde + les articles du menu, avec ajout/retrait au panier.
 // Filtres catégories. Compteur d'inactivité visible. Bouton Terminer
 // permanent en haut à droite.
-function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, standName, carte, categories }) {
+function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, categories }) {
   // Items du menu (chargés en live depuis Firestore)
   const [menu, setMenu] = useState([])
   // Rayon et catégorie affichés (null = le premier)
@@ -1569,6 +1556,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
         staff: 'Borne self-service',  // ← traçabilité dans les audits
         code: borneCode,
         source: 'borne',
+        remise: true,                 // ← ticket imprimé : le stand ne suit pas la commande à l'écran
       })
       // createCommande retourne { id, numero, code }. Pour le ticket, on
       // construit un objet enrichi avec les items et le total déjà calculés
@@ -1954,7 +1942,7 @@ function Ticket({ resa, onDone, logoUrl, stands = [] }) {
           ? `Prenez vos ${tickets.length} tickets et présentez chacun au stand indiqué.`
           : tickets[0]?.stand
             ? 'Prenez votre ticket et présentez-le au stand indiqué.'
-            : "Votre numéro sera affiché sur l'écran du stand lorsque votre commande sera prête."}
+            : 'Prenez votre ticket et présentez-le au stand.'}
       </div>
 
       {/* Tickets : un par stand */}
