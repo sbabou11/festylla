@@ -27,7 +27,7 @@ export function BoutonImprimante({ colors, festival, right = 16 }) {
       <button onClick={basculer} onTouchEnd={basculer} aria-expanded={ouvert}
         style={{
           position: 'absolute', top: 16, right, zIndex: 10,
-          padding: '8px 14px', borderRadius: 8, background: 'rgba(0,0,0,0.25)', color: '#fff',
+          padding: '8px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.72)', color: colors.text,
           border: '0.5px solid rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 500,
           cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 6,
           WebkitTapHighlightColor: 'transparent',

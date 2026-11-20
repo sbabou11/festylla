@@ -230,6 +230,8 @@ export default function App() {
       {DevSolde && <Route path="/ui/spectateur" element={page(<DevSolde />)} />}
       {DevBenevole && <Route path="/ui/benevole" element={page(<DevBenevole />)} />}
       {DevLive && <Route path="/ui/live" element={page(<DevLive />)} />}
+      {/* Aperçu de la borne sans lien signé : développement uniquement */}
+      {import.meta.env.DEV && <Route path="/ui/borne" element={page(<Borne />)} />}
       {DevLogin && <Route path="/ui/connexion" element={page(<DevLogin />)} />}
       {DevEspace && <Route path="/ui/espace" element={page(<DevEspace />)} />}
       {/* Toutes les autres URLs → app staff (affiche Login si non connecté).

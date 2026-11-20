@@ -100,7 +100,7 @@ const textOnBg = (hex) => {
 // Construit une palette à partir d'une brandColor unique.
 // brandColor peut être null/undefined → on tombe sur les défauts Maison Ylla.
 const buildPalette = (brandColor) => {
-  const brand = brandColor || '#003048'
+  const brand = brandColor || '#06222F'   // bleu nuit du nouveau style ; la couleur de l'événement reste prioritaire
   return {
     brand,                             // couleur principale (ex: bouton)
     brandDark:   darken(brand, 0.4),   // fond très sombre (accueil)
@@ -113,15 +113,15 @@ const buildPalette = (brandColor) => {
     // - tealDark : variante sombre (= brandDark)
     // - teal : couleur secondaire (= brand pour simplifier, sinon variante plus claire)
     marine:      brand,
-    teal:        brand,
+    teal:        brandColor ? brand : '#008A8A',   // vert d'eau par défaut
     tealDark:    darken(brand, 0.2),
-    coral:       '#F07848',            // accent CTA (gardé fixe, complémentaire)
-    bg:          '#F8F8F5',
-    text:        '#1E1E1E',
-    muted:       '#888888',
-    border:      '#E5E5E0',
-    green:       '#1D9E75',
-    red:         '#D85A30',
+    coral:       '#008A8A',            // bouton principal : vert d'eau du nouveau style (20/11/2026)            // accent CTA (gardé fixe, complémentaire)
+    bg:          '#F6F1EA',            // fond crème
+    text:        '#03263A',
+    muted:       '#4F687C',
+    border:      'rgba(0,48,72,0.14)',
+    green:       '#0E8D6E',
+    red:         '#C8322B',
   }
 }
 
@@ -129,7 +129,7 @@ const buildPalette = (brandColor) => {
 // Sera MUTÉE dynamiquement à l'init avec la palette du festival
 // chargée depuis settings.brandColor (cf. useEffect du composant Borne).
 // Tous les composants enfants référencent COLORS.x sans prop drilling.
-const COLORS = buildPalette('#003048')
+const COLORS = buildPalette(null)
 
 // ─── Sécurité : timers d'inactivité (Lot 2) ─────────────────────────────
 // Sur les écrans MENU et PANIER, on surveille l'inactivité tactile pour
@@ -360,7 +360,7 @@ export default function Borne() {
     <div style={{
       position: 'fixed', inset: 0,
       background: COLORS.bg,
-      fontFamily: 'system-ui, -apple-system, sans-serif',
+      fontFamily: "Inter, system-ui, -apple-system, sans-serif",
       color: COLORS.text,
       overflow: 'hidden',
       userSelect: 'none',
@@ -455,11 +455,12 @@ function ConfigError({ error }) {
 // Le logo (settings.logoDataUrl) est affiché en haut s'il est défini.
 function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
   // Texte sur le fond brand — soit blanc soit noir selon luminance
-  const onBrand = COLORS.textOnBrand || '#fff'
+  // Nouveau style (20/11/2026) : accueil clair, sur fond crème à halos
+  const onBrand = COLORS.text
   // Couleur des labels secondaires : variante avec opacité réduite
-  const onBrandMuted = onBrand === '#fff' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)'
-  const onBrandSubtle = onBrand === '#fff' ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)'
-  const onBrandFaint = onBrand === '#fff' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'
+  const onBrandMuted = COLORS.muted
+  const onBrandSubtle = COLORS.muted
+  const onBrandFaint = 'rgba(0,48,72,0.20)'
 
   // Mode borne : Fullscreen + paysage forcé + wake lock (cf. hook).
   // Réservé au staff qui configure la tablette en début de service.
@@ -474,7 +475,7 @@ function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
         flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         padding: 40, textAlign: 'center',
         // Dégradé vertical de la version sombre vers la couleur de marque
-        background: `linear-gradient(180deg, ${COLORS.brandDarker} 0%, ${COLORS.brandDark} 100%)`,
+        background: `radial-gradient(60% 60% at 0% 0%, rgba(233,101,47,.22), transparent 70%), radial-gradient(70% 70% at 100% 100%, rgba(0,138,138,.22), transparent 72%), ${COLORS.bg}`,
         color: onBrand, cursor: 'pointer',
         position: 'relative',
       }}>
@@ -495,8 +496,8 @@ function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
           onTouchEnd={kiosk.activate}
           style={{
             position: 'absolute', top: 16, right: 16,
-            padding: '8px 14px', borderRadius: 8,
-            background: 'rgba(0,0,0,0.25)', color: onBrand,
+            padding: '8px 14px', borderRadius: 12,
+            background: 'rgba(255,255,255,0.72)', color: onBrand,
             border: `0.5px solid ${onBrandFaint}`,
             fontSize: 12, fontWeight: 500,
             cursor: 'pointer', fontFamily: 'inherit',
@@ -528,7 +529,8 @@ function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
       )}
       <div style={{
         fontSize: 'clamp(36px, 6vw, 56px)',
-        fontWeight: 600, marginBottom: 16, lineHeight: 1.1,
+        fontWeight: 700, marginBottom: 16, lineHeight: 1.1, letterSpacing: '-.01em',
+        fontFamily: "'Bricolage Grotesque', Inter, system-ui, sans-serif",
         color: onBrand,
       }}>
         Commandez vous-même
@@ -545,9 +547,9 @@ function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
       </div>
       <div style={{
         background: COLORS.coral, color: '#fff',
-        padding: '24px 56px', borderRadius: 14,
+        padding: '24px 56px', borderRadius: 99,
         fontSize: 'clamp(18px, 2.5vw, 24px)', fontWeight: 600,
-        boxShadow: '0 4px 20px rgba(240,120,72,0.3)',
+        boxShadow: '0 12px 32px rgba(0,40,60,0.14)',
         animation: 'borne-pulse 2s ease-in-out infinite',
       }}>
         Toucher pour commencer
@@ -557,8 +559,8 @@ function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
         onClick={(e) => { e.stopPropagation(); onCode() }}
         onTouchEnd={(e) => { e.stopPropagation(); e.preventDefault(); onCode() }}
         style={{
-          marginTop: 28, padding: '16px 34px', borderRadius: 14,
-          background: 'rgba(255,255,255,0.12)', color: onBrand,
+          marginTop: 28, padding: '16px 34px', borderRadius: 99,
+          background: 'rgba(255,255,255,0.72)', color: onBrand,
           border: `1.5px solid ${onBrandFaint}`,
           fontSize: 'clamp(16px, 2.2vw, 20px)', fontWeight: 700,
           cursor: 'pointer', fontFamily: 'inherit',
@@ -569,9 +571,9 @@ function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
       </button>
       <div style={{
         position: 'absolute', bottom: 20, left: 0, right: 0,
-        textAlign: 'center', fontSize: 12, color: onBrandFaint,
+        textAlign: 'center', fontSize: 12, color: onBrandMuted,
       }}>
-        Tap n'importe où sur l'écran
+        Touchez n'importe où sur l'écran
       </div>
       <style>{`
         @keyframes borne-pulse {
@@ -677,12 +679,12 @@ function Identification({ onValidated, onCancel, loading, error, secours = false
             loading={loading}/>
         ) : (
           <div style={{
-            background: '#fff', borderRadius: 14, border: `0.5px solid ${COLORS.border}`,
+            background: '#fff', borderRadius: 20, border: `0.5px solid ${COLORS.border}`,
             padding: 'clamp(20px, 5vh, 48px)', textAlign: 'center', maxWidth: 520, width: '100%',
           }}>
             <div style={{
               width: 'clamp(120px, 22vh, 200px)', height: 'clamp(120px, 22vh, 200px)', margin: '0 auto 16px',
-              border: `4px dashed ${COLORS.teal}`, borderRadius: 18, display: 'grid', placeItems: 'center',
+              border: `4px dashed ${COLORS.teal}`, borderRadius: 28, display: 'grid', placeItems: 'center',
               color: COLORS.teal, fontSize: 15, fontWeight: 700,
             }}>QR de votre espace</div>
             <div style={{ fontSize: 15, color: COLORS.text, lineHeight: 1.5 }}>
@@ -699,8 +701,8 @@ function Identification({ onValidated, onCancel, loading, error, secours = false
       {error && (
         <div style={{
           position: 'absolute', bottom: 24, left: 24, right: 24,
-          background: '#FCEBEB', color: '#791F1F',
-          border: '0.5px solid #F09595', borderRadius: 10,
+          background: '#FBE1DF', color: '#8E211C',
+          border: '0.5px solid #E9A19C', borderRadius: 14,
           padding: '14px 18px', fontSize: 14, lineHeight: 1.4,
           textAlign: 'center', maxWidth: 600, margin: '0 auto',
         }}>
@@ -795,7 +797,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
   const codeArtiste = found?.origine === 'artiste'
   const codeBenev = found?.origine === 'benevole' || codeArtiste
   const keyStyle = {
-    background: '#2C2C2A', color: '#fff', border: 'none', borderRadius: 12,
+    background: '#06222F', color: '#fff', border: 'none', borderRadius: 20,
     fontSize: 'clamp(22px, 4vh, 30px)', fontWeight: 700, fontFamily: 'inherit',
     padding: 'clamp(12px, 2.6vh, 22px) 0', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
     display: 'grid', placeItems: 'center',
@@ -826,7 +828,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
         <div style={{ display: 'flex', gap: 'clamp(6px, 1.2vw, 12px)', marginBottom: 18 }} aria-label={`Code saisi : ${digits.split('').join(' ')}`}>
           {Array.from({ length: 6 }, (_, i) => (
             <div key={i} style={{
-              width: 'clamp(44px, 7vw, 64px)', height: 'clamp(56px, 9vh, 76px)', borderRadius: 12,
+              width: 'clamp(44px, 7vw, 64px)', height: 'clamp(56px, 9vh, 76px)', borderRadius: 20,
               display: 'grid', placeItems: 'center', background: '#fff',
               border: `2px solid ${i === digits.length && !found ? COLORS.coral : COLORS.border}`,
               fontSize: 'clamp(26px, 4.5vh, 38px)', fontWeight: 800, color: COLORS.marine,
@@ -836,7 +838,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
         </div>
 
         {error && (
-          <div role="alert" style={{ background: '#FCEBEB', color: '#791F1F', border: '0.5px solid #F09595', borderRadius: 10,
+          <div role="alert" style={{ background: '#FBE1DF', color: '#8E211C', border: '0.5px solid #E9A19C', borderRadius: 14,
             padding: '12px 16px', fontSize: 15, marginBottom: 14, textAlign: 'center', maxWidth: 480 }}>
             {error}
           </div>
@@ -844,7 +846,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
 
         {found ? (
           <div style={{ width: '100%', maxWidth: 520, display: 'grid', gap: 14 }}>
-            <div style={{ background: '#fff', borderRadius: 12, border: `0.5px solid ${COLORS.border}`, padding: '12px 16px' }}>
+            <div style={{ background: '#fff', borderRadius: 20, border: `0.5px solid ${COLORS.border}`, padding: '12px 16px' }}>
               {items.map((it, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', fontSize: 16,
                   borderBottom: i < items.length - 1 ? `0.5px solid ${COLORS.border}` : 'none' }}>
@@ -859,7 +861,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
               </div>
             </div>
             <button onClick={valider} disabled={busy}
-              style={{ background: busy ? COLORS.border : COLORS.coral, color: '#fff', border: 'none', borderRadius: 12,
+              style={{ background: busy ? COLORS.border : COLORS.coral, color: '#fff', border: 'none', borderRadius: 20,
                 padding: '20px', fontSize: 20, fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               {busy ? <><RefreshCw size={18} style={{ animation: 'borne-spin 1s linear infinite' }}/> Validation…</> : (codeBenev ? 'Imprimer mon ticket →' : enLigne ? 'Payer et imprimer mes tickets →' : 'Mes tickets →')}
@@ -874,7 +876,7 @@ function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleC
             {['1','2','3','4','5','6','7','8','9'].map(d => (
               <button key={d} style={keyStyle} disabled={busy} onClick={() => add(d)}>{d}</button>
             ))}
-            <button style={{ ...keyStyle, background: '#D3D1C7', color: '#2C2C2A' }} disabled={busy || !digits} onClick={del} aria-label="Effacer">
+            <button style={{ ...keyStyle, background: '#E4DDD2', color: '#06222F' }} disabled={busy || !digits} onClick={del} aria-label="Effacer">
               <Delete size={24}/>
             </button>
             <button style={keyStyle} disabled={busy} onClick={() => add('0')}>0</button>
@@ -904,7 +906,7 @@ function ManualKeypad({ value, onAdd, onRemove, onSubmit, loading }) {
                 'U','V','W','X','Y','Z']
   return (
     <div style={{
-      background: '#fff', borderRadius: 14,
+      background: '#fff', borderRadius: 20,
       padding: 'clamp(12px, 2vh, 24px)',
       border: `0.5px solid ${COLORS.border}`,
       width: '100%', maxWidth: 720,
@@ -933,13 +935,13 @@ function ManualKeypad({ value, onAdd, onRemove, onSubmit, loading }) {
           Les tailles s'adaptent à la hauteur disponible via clamp() pour
           rester utilisables sur tablette en paysage (~600-800px de haut). */}
       <div style={{
-        background: '#F1EFE8', borderRadius: 12,
+        background: '#F0E8DC', borderRadius: 20,
         padding: 'clamp(12px, 2.5vh, 24px) 16px',
         marginBottom: 'clamp(8px, 1.5vh, 20px)',
         textAlign: 'center',
         fontSize: 'clamp(22px, 4vh, 36px)',
         fontWeight: 600,
-        color: '#2C2C2A', letterSpacing: '0.12em',
+        color: '#06222F', letterSpacing: '0.12em',
         fontFamily: 'monospace',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         border: `0.5px solid ${COLORS.border}`,
@@ -949,7 +951,7 @@ function ManualKeypad({ value, onAdd, onRemove, onSubmit, loading }) {
         <span style={{
           display: 'inline-block', width: 3,
           height: 'clamp(22px, 4vh, 36px)',
-          background: '#2C2C2A', marginLeft: 4,
+          background: '#06222F', marginLeft: 4,
           animation: 'borne-blink 1s steps(2) infinite',
         }}/>
       </div>
@@ -968,9 +970,9 @@ function ManualKeypad({ value, onAdd, onRemove, onSubmit, loading }) {
             onClick={() => onAdd(k)}
             disabled={loading}
             style={{
-              background: '#2C2C2A', color: '#fff',
+              background: '#06222F', color: '#fff',
               border: 'none',
-              borderRadius: 10,
+              borderRadius: 14,
               padding: 'clamp(10px, 2.4vh, 22px) 0',
               fontSize: 'clamp(16px, 2.8vh, 22px)',
               fontWeight: 600,
@@ -994,9 +996,9 @@ function ManualKeypad({ value, onAdd, onRemove, onSubmit, loading }) {
         <button onClick={onRemove} disabled={loading || value.length === 0}
           className="borne-action"
           style={{
-            background: '#D3D1C7', color: '#2C2C2A',
+            background: '#E4DDD2', color: '#06222F',
             border: 'none',
-            borderRadius: 10,
+            borderRadius: 14,
             padding: 'clamp(12px, 2.5vh, 20px)',
             fontSize: 'clamp(14px, 2.4vh, 18px)',
             fontWeight: 600,
@@ -1010,9 +1012,9 @@ function ManualKeypad({ value, onAdd, onRemove, onSubmit, loading }) {
         <button onClick={onSubmit} disabled={loading || value.length < 3}
           className="borne-action"
           style={{
-            background: (loading || value.length < 3) ? '#D3D1C7' : COLORS.teal,
-            color: (loading || value.length < 3) ? '#888780' : '#fff',
-            border: 'none', borderRadius: 10,
+            background: (loading || value.length < 3) ? '#E4DDD2' : COLORS.teal,
+            color: (loading || value.length < 3) ? '#4F687C' : '#fff',
+            border: 'none', borderRadius: 14,
             padding: 'clamp(12px, 2.5vh, 20px)',
             fontSize: 'clamp(15px, 2.6vh, 20px)',
             fontWeight: 700,
@@ -1183,13 +1185,13 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
           </div>
           <div style={{ fontSize: 16, fontWeight: 600, color: COLORS.marine }}>
             {benev ? benev.nom : (spec?.nom || '—')}
-            {benev && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: '#FDE4D4', color: '#B8470F', borderRadius: 6, padding: '2px 8px' }}>{benev.kind === 'artiste' ? 'Artiste' : 'Bénévole'}</span>}
+            {benev && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: '#FDE4D4', color: '#B8470F', borderRadius: 10, padding: '2px 8px' }}>{benev.kind === 'artiste' ? 'Artiste' : 'Bénévole'}</span>}
           </div>
         </div>
         {benev ? (
           <div style={{ display: 'flex', gap: 8, paddingLeft: 20, flexWrap: 'wrap' }}>
             {[['repas', 'Repas', '#E0F4F4', '#006666'], ['boisson', 'Boissons', '#FAEED4', '#6B4500'], ['eau', 'Eau', '#D7EFE9', '#04504A']].map(([t, l, bg, fg]) => (
-              <span key={t} style={{ background: bg, color: fg, borderRadius: 8, padding: '6px 10px', fontSize: 13, fontWeight: 700 }}>
+              <span key={t} style={{ background: bg, color: fg, borderRadius: 12, padding: '6px 10px', fontSize: 13, fontWeight: 700 }}>
                 {l} {Math.max(0, libres(t))}
               </span>
             ))}
@@ -1207,7 +1209,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
         {/* Compteur d'inactivité */}
         <div style={{
           background: COLORS.bg,
-          padding: '8px 12px', borderRadius: 8,
+          padding: '8px 12px', borderRadius: 12,
           border: `0.5px solid ${COLORS.border}`,
           display: 'flex', alignItems: 'center', gap: 6,
           fontSize: 12, color: COLORS.muted,
@@ -1224,7 +1226,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
           style={{
             background: 'transparent', color: COLORS.muted,
             border: `0.5px solid ${COLORS.border}`,
-            borderRadius: 8, padding: '8px 14px',
+            borderRadius: 12, padding: '8px 14px',
             fontSize: 13, fontWeight: 600, cursor: 'pointer',
             fontFamily: 'inherit',
             display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -1247,7 +1249,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
               <button key={r.id || 'autres'} onClick={() => chooseRayon(r.id)}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 10,
-                  minHeight: 56, padding: '0 26px', borderRadius: 14,
+                  minHeight: 56, padding: '0 26px', borderRadius: 20,
                   border: on ? 'none' : `1px solid ${COLORS.border}`,
                   background: on ? COLORS.marine : COLORS.bg,
                   color: on ? '#fff' : COLORS.marine,
@@ -1277,13 +1279,13 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
                   aria-current={on ? 'true' : undefined}
                   style={{
                     position: 'relative', display: 'grid', justifyItems: 'center', gap: 6,
-                    padding: '12px 6px', borderRadius: 12,
+                    padding: '12px 6px', borderRadius: 20,
                     border: on ? `1.5px solid ${COLORS.coral}` : '1.5px solid transparent',
                     background: on ? '#FDE4D4' : 'transparent',
                     color: COLORS.marine, cursor: 'pointer', fontFamily: 'inherit',
                   }}>
                   <span style={{
-                    width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center',
+                    width: 44, height: 44, borderRadius: 20, display: 'grid', placeItems: 'center',
                     background: `color-mix(in srgb, ${col} 16%, transparent)`, color: col,
                   }}><Icon size={22}/></span>
                   <span style={{
@@ -1352,7 +1354,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
             disabled={benevBusy}
             style={{
               background: COLORS.coral, color: '#fff',
-              border: 'none', borderRadius: 10,
+              border: 'none', borderRadius: 14,
               padding: '14px 28px', fontSize: 16, fontWeight: 700,
               cursor: benevBusy ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: benevBusy ? .7 : 1,
             }}>
@@ -1396,7 +1398,7 @@ function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false }) 
       onClick={onShowInfo}
       style={{
       position: 'relative',
-      borderRadius: 14,
+      borderRadius: 20,
       overflow: 'hidden',
       aspectRatio: '1/1',
       border: `0.5px solid ${inCart ? COLORS.teal : 'transparent'}`,
@@ -1447,7 +1449,7 @@ function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false }) 
         <span style={{
           position: 'absolute', top: 8, right: 8,
           background: COLORS.red, color: '#fff',
-          padding: '3px 8px', borderRadius: 4,
+          padding: '3px 8px', borderRadius: 8,
           fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
           letterSpacing: '0.05em',
         }}>Rupture</span>
@@ -1458,7 +1460,7 @@ function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false }) 
         <span style={{
           position: 'absolute', top: 8, right: 8,
           background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.9)',
-          padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 500,
+          padding: '2px 6px', borderRadius: 8, fontSize: 9, fontWeight: 500,
         }}>Photo non contractuelle</span>
       )}
 
@@ -1467,7 +1469,7 @@ function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false }) 
         <span style={{
           position: 'absolute', top: 8, left: 8,
           background: COLORS.teal, color: '#fff',
-          minWidth: 24, height: 24, borderRadius: 12,
+          minWidth: 24, height: 24, borderRadius: 20,
           padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 13, fontWeight: 700,
         }}>{qty}</span>
@@ -1560,7 +1562,7 @@ function IdleWarning({ onContinue, secondsLeft }) {
       padding: 24, zIndex: 999,
     }} onClick={onContinue}>
       <div style={{
-        background: '#fff', borderRadius: 16,
+        background: '#fff', borderRadius: 28,
         padding: '40px 40px 32px',
         maxWidth: 500, width: '100%', textAlign: 'center',
       }} onClick={e => e.stopPropagation()}>
@@ -1579,7 +1581,7 @@ function IdleWarning({ onContinue, secondsLeft }) {
         <button onClick={onContinue}
           style={{
             background: COLORS.teal, color: '#fff',
-            border: 'none', borderRadius: 12,
+            border: 'none', borderRadius: 20,
             padding: '16px 36px', fontSize: 16, fontWeight: 700,
             cursor: 'pointer', fontFamily: 'inherit', width: '100%',
           }}>
@@ -1774,7 +1776,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
         <button onClick={onBack}
           style={{
             background: COLORS.teal, color: '#fff',
-            border: 'none', borderRadius: 10, padding: '14px 32px',
+            border: 'none', borderRadius: 14, padding: '14px 32px',
             fontSize: 15, fontWeight: 600, cursor: 'pointer',
             fontFamily: 'inherit',
           }}>
@@ -1811,7 +1813,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
         </div>
         <div style={{
           background: COLORS.bg,
-          padding: '8px 12px', borderRadius: 8,
+          padding: '8px 12px', borderRadius: 12,
           border: `0.5px solid ${COLORS.border}`,
           display: 'flex', alignItems: 'center', gap: 6,
           fontSize: 12, color: COLORS.muted,
@@ -1828,7 +1830,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
           style={{
             background: 'transparent', color: COLORS.muted,
             border: `0.5px solid ${COLORS.border}`,
-            borderRadius: 8, padding: '8px 14px',
+            borderRadius: 12, padding: '8px 14px',
             fontSize: 13, fontWeight: 600,
             cursor: submitting ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit',
@@ -1864,7 +1866,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
 
         {/* Liste articles avec stepper */}
         <div style={{
-          background: '#fff', borderRadius: 12,
+          background: '#fff', borderRadius: 20,
           border: `0.5px solid ${COLORS.border}`,
           marginBottom: 16, overflow: 'hidden',
         }}>
@@ -1887,7 +1889,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
               {/* Stepper */}
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: 10,
-                background: COLORS.bg, borderRadius: 8, padding: '4px 8px',
+                background: COLORS.bg, borderRadius: 12, padding: '4px 8px',
               }}>
                 <button onClick={() => updateQty(item.id, -1)}
                   disabled={submitting}
@@ -1942,7 +1944,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
 
         {/* Récap solde */}
         <div style={{
-          background: '#fff', borderRadius: 12,
+          background: '#fff', borderRadius: 20,
           border: `0.5px solid ${COLORS.border}`,
           padding: '16px 18px', marginBottom: 16,
         }}>
@@ -1971,8 +1973,8 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
           {isInsufficient && (
             <div style={{
               marginTop: 10, padding: '8px 10px',
-              background: '#FCEBEB', color: '#791F1F',
-              borderRadius: 6, fontSize: 12,
+              background: '#FBE1DF', color: '#8E211C',
+              borderRadius: 10, fontSize: 12,
             }}>
               <b>Solde insuffisant : il manque {(-soldeAfter / 100).toFixed(2)} €.</b> Retirez un article, ou rechargez sur votre
               téléphone (« Recharger mon solde » dans votre espace) ou à la billetterie.
@@ -1982,7 +1984,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
             <button onClick={refreshSolde} disabled={refreshing}
               style={{
                 width: '100%', marginTop: 8, background: 'transparent', color: COLORS.marine,
-                border: `0.5px solid ${COLORS.marine}`, borderRadius: 10, padding: '12px',
+                border: `0.5px solid ${COLORS.marine}`, borderRadius: 14, padding: '12px',
                 fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
                 cursor: refreshing ? 'wait' : 'pointer', opacity: refreshing ? .6 : 1,
               }}>
@@ -1996,8 +1998,8 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
         {error && (
           <div style={{
             padding: '12px 16px', marginBottom: 16,
-            background: '#FCEBEB', color: '#791F1F',
-            border: '0.5px solid #F09595', borderRadius: 8,
+            background: '#FBE1DF', color: '#8E211C',
+            border: '0.5px solid #E9A19C', borderRadius: 12,
             fontSize: 13, lineHeight: 1.4,
           }}>
             {error}
@@ -2016,7 +2018,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
           style={{
             background: 'transparent', color: COLORS.marine,
             border: `0.5px solid ${COLORS.border}`,
-            borderRadius: 10, padding: '16px',
+            borderRadius: 14, padding: '16px',
             fontSize: 15, fontWeight: 600,
             cursor: submitting ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit',
@@ -2029,7 +2031,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
           style={{
             background: (submitting || isInsufficient) ? COLORS.border : COLORS.teal,
             color: '#fff', border: 'none',
-            borderRadius: 10, padding: '16px',
+            borderRadius: 14, padding: '16px',
             fontSize: 16, fontWeight: 700,
             cursor: (submitting || isInsufficient || cartItems.length === 0) ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit',
@@ -2089,8 +2091,8 @@ function useRetourAuto(phase, onDone) {
 function PanneImpression({ phase, onRetry, pluriel }) {
   return (
     <div style={{
-      width: '100%', maxWidth: 520, margin: '0 auto 14px', padding: '12px 16px', borderRadius: 10,
-      background: '#FCEBEB', color: '#791F1F', border: '0.5px solid #F09595', fontSize: 14, lineHeight: 1.45, textAlign: 'center',
+      width: '100%', maxWidth: 520, margin: '0 auto 14px', padding: '12px 16px', borderRadius: 14,
+      background: '#FBE1DF', color: '#8E211C', border: '0.5px solid #E9A19C', fontSize: 14, lineHeight: 1.45, textAlign: 'center',
     }} role="alert">
       <b>{phase === 'absente' ? 'L\'imprimante n\'est pas connectée.' : 'L\'imprimante ne répond pas.'}</b>{' '}
       Photographiez cet écran ou notez {pluriel ? 'vos numéros' : 'votre numéro'}, puis montrez-{pluriel ? 'les' : 'le'} au stand. Prévenez l'équipe.
@@ -2098,7 +2100,7 @@ function PanneImpression({ phase, onRetry, pluriel }) {
         <button onClick={onRetry}
           style={{
             marginTop: 10, background: '#fff', color: COLORS.marine, border: `0.5px solid ${COLORS.marine}`,
-            borderRadius: 10, padding: '10px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+            borderRadius: 14, padding: '10px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
           }}>
           Réessayer l'impression
         </button>
@@ -2195,7 +2197,7 @@ function Ticket({ resa, onDone, logoUrl, stands = [], festival = '' }) {
             : imprime ? 'fait' : null
           return (
           <div key={t.numero} style={{
-            background: '#fff', borderRadius: 14, width: 260,
+            background: '#fff', borderRadius: 20, width: 260,
             border: etatTicket === 'encours' ? `2px solid ${COLORS.coral}` : etatTicket === 'fait' ? `2px solid ${COLORS.green}` : `1px dashed ${COLORS.border}`,
             boxShadow: '0 2px 10px rgba(0,48,72,.06)',
             padding: '16px 18px', display: 'grid', gap: 10,
@@ -2295,7 +2297,7 @@ function Ticket({ resa, onDone, logoUrl, stands = [], festival = '' }) {
       <button onClick={onDone}
         style={{
           background: COLORS.marine, color: '#fff',
-          border: 'none', borderRadius: 10, padding: '14px 36px',
+          border: 'none', borderRadius: 14, padding: '14px 36px',
           fontSize: 14, fontWeight: 600, cursor: 'pointer',
           fontFamily: 'inherit', display: phase === 'impression' ? 'none' : 'inline-block',
         }}>
@@ -2344,7 +2346,7 @@ function TicketBenevole({ resa, onDone, logoUrl, festival = '' }) {
       </div>
       {phase === 'impression' && <Progression progres={progres} colors={COLORS}/>}
       {(phase === 'panne' || phase === 'absente') && <PanneImpression phase={phase} onRetry={reessayer} pluriel={false}/>}
-      <div style={{ background: '#fff', borderRadius: 14, width: 280, border: `1px dashed ${COLORS.border}`, padding: '16px 18px', display: 'grid', gap: 10, textAlign: 'center' }}>
+      <div style={{ background: '#fff', borderRadius: 20, width: 280, border: `1px dashed ${COLORS.border}`, padding: '16px 18px', display: 'grid', gap: 10, textAlign: 'center' }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Bénévole</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.marine }}>Dirigez-vous au stand bénévoles</div>
         {resa?.stand && <div style={{ fontSize: 56, fontWeight: 800, lineHeight: 1, color: COLORS.marine }}>N° {resa.stand.numero}</div>}
@@ -2358,7 +2360,7 @@ function TicketBenevole({ resa, onDone, logoUrl, festival = '' }) {
         </div>
         {resa?.nom && <div style={{ fontSize: 12, color: COLORS.muted }}>{resa.nom}</div>}
       </div>
-      <button onClick={onDone} style={{ marginTop: 18, background: COLORS.marine, color: '#fff', border: 'none', borderRadius: 10, padding: '14px 36px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+      <button onClick={onDone} style={{ marginTop: 18, background: COLORS.marine, color: '#fff', border: 'none', borderRadius: 14, padding: '14px 36px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
         {phase === 'impression' ? 'Impression…' : `Terminer (${secondsLeft} s)`}
       </button>
     </div>
