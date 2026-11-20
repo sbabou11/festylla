@@ -10,6 +10,7 @@ import FacturationSettings from './settings/FacturationSettings'
 import { isEmLinked } from '../../em/pages'
 import RapportCloture from './settings/RapportCloture'
 import SecoursSettings from './settings/SecoursSettings'
+import { APP_VERSION_LONG } from '../../utils/buildInfo'
 import { useExport }             from '../../hooks/useExport'
 import { migrerVersV2 }          from '../../utils/migrationV2'
 import { migrerVersEvenement }   from '../../utils/migrationRacineVersEvent'
@@ -227,16 +228,6 @@ export default function Settings({ onNavigate }) {
             <span className={s.label}>Nom du festival</span>
             <input className={s.input} value={festName} onChange={e => setFestName(e.target.value)}/>
           </label>
-          <div className={s.grid}>
-            <label className={s.field}>
-              <span className={s.label}>1 € = X points</span>
-              <input type="number" className={s.input} defaultValue={100}/>
-            </label>
-            <label className={s.field}>
-              <span className={s.label}>Solde max (centimes)</span>
-              <input type="number" className={s.input} defaultValue={10000}/>
-            </label>
-          </div>
           <p className={s.hint}>Le nom du festival est enregistré automatiquement.</p>
         </div>
       </Card>
@@ -248,7 +239,7 @@ export default function Settings({ onNavigate }) {
       <SecoursSettings/>
 
       {/* Exports */}
-      <Card title={title(Download, 'Export des données')} subtitle="Générés côté client — aucun serveur requis.">
+      <Card title={title(Download, 'Export des données')} subtitle="Fichiers préparés à la demande, à partir des données de l'événement.">
         <div className={s.actions}>
           <ProgressButton variant="secondary" icon={Download} runningLabel="Génération…" doneLabel="Export prêt"
             onRun={runExport(exportTransactionsCsv, "L'export des transactions n'a pas abouti.")}>
@@ -321,7 +312,7 @@ export default function Settings({ onNavigate }) {
       <Card title="Informations système">
         <dl className={s.info}>
           {[
-            ['Version',          '1.0.0'],
+            ['Version',          APP_VERSION_LONG],
             ['PWA',              'serviceWorker' in navigator ? 'Supportée' : 'Non supportée'],
             ['Espace spectateur', 'lien reçu par e-mail avec le billet'],
           ].map(([k, v]) => (

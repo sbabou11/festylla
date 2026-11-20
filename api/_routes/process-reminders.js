@@ -45,9 +45,12 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') { res.status(204).end(); return }
 
   // ── Vérif token (sauf pour appels locaux/admin)  ─────────────────
+  // Sécurité (20/11/2026) : le secret est obligatoire. Sans CRON_SECRET réglé dans Vercel, l'adresse
+  // reste fermée (avant, elle s'ouvrait à tout le monde). Le secret ne se passe plus dans l'adresse.
   const expected = process.env.CRON_SECRET
-  const provided = req.headers['x-cron-secret'] || req.query?.secret
-  if (expected && expected !== provided) {
+  const provided = req.headers['x-cron-secret']
+  if (!expected) { res.status(503).json({ error: 'CRON_SECRET non réglé : rappels désactivés.' }); return }
+  if (expected !== provided) {
     res.status(401).json({ error: 'Unauthorized: invalid or missing x-cron-secret' })
     return
   }

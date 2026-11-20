@@ -75,10 +75,11 @@ jobs:
         if: always()
         env:
           REMINDERS_URL: ${{ secrets.REMINDERS_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         shell: bash
         run: |
           if [ -z "$REMINDERS_URL" ]; then echo "Secret REMINDERS_URL manquant."; exit 0; fi
           url="${REMINDERS_URL%%\?*}"
           url="${url/process-reminders/process-entrees}"
           echo "Appel de $url"
-          curl -sS -X POST --max-time 60 -H "User-Agent: github-actions-cron" "$url" || echo "Appel impossible, nouvel essai à la prochaine minute."
+          curl -sS -X POST --max-time 60 -H "User-Agent: github-actions-cron" -H "x-cron-secret: $CRON_SECRET" "$url" || echo "Appel impossible, nouvel essai à la prochaine minute."

@@ -14,7 +14,7 @@ import s from './BottomNav.module.css'
 const FAVORITES = {
   super_admin:          ['accueil', 'debit', 'transactions', 'alertes'],
   admin:                ['accueil', 'debit', 'transactions', 'alertes'],
-  billetterie:          ['credit', 'commande-sur-place', 'nouveau', 'cloture'],
+  billetterie:          ['credit', 'commande-sur-place', 'entree', 'cloture'],   // « Compte de secours » ne sert qu'en panne : menu Plus
   stand:                ['debit', 'reservations-admin', 'transactions', 'mon-profil'],
   consultation:         ['transactions', 'reservations-admin', 'analytics'],
   directeur_artistique: ['planning', 'gestion-artistes', 'mon-profil'],   // planning masqué si relié à Event Manager
@@ -23,7 +23,7 @@ const FAVORITES = {
 // Libellés courts : 5 cases sur 375 px
 const SHORT = {
   dashboard: 'Direct', accueil: 'Accueil', transactions: 'Flux', alertes: 'Alertes', benevoles: 'Bénévoles',
-  credit: 'Recharger', 'commande-sur-place': 'Sur place', nouveau: 'Nouveau', cloture: 'Clôture', debit: 'Encaisser',
+  credit: 'Recharger', 'commande-sur-place': 'Sur place', nouveau: 'Secours', entree: 'Entrée', 'lien-perdu': 'Lien perdu', cloture: 'Clôture', debit: 'Encaisser',
   retrait: 'Retrait', 'reservations-admin': 'Réserv.', analytics: 'Analyse',
   planning: 'Planning', 'gestion-artistes': 'Artistes', 'mon-profil': 'Profil', evenements: 'Événements', spectateurs: 'Public',
 }

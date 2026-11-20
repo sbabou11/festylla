@@ -163,6 +163,8 @@ export const createSpectateur = async (nom, soldeEuros, staffNom = 'Billetterie'
   const id    = uid()
   const solde = toCents(soldeEuros)
   const eid   = getEventId()
+  // Compte de secours (20/11/2026) : même plafond qu'une recharge au guichet
+  if (!(solde >= 0 && solde <= 50000)) throw new Error('Le solde de départ va de 0 € à 500 €.')
   // Clé du compte (sécurité, mesure 3) : contenue dans le QR remis au spectateur, elle ouvre son espace
   const cle   = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
   // Sécurité (20/11/2026) : la clé n'est plus dans la fiche (lisible par les bénévoles), mais dans
@@ -221,6 +223,10 @@ export const crediter = async (specId, montantEuros, staffNom = 'Billetterie', e
   const snap = await getDocs(query(collection(db, 'events', eid, 'spectateurs'), where('id', '==', specId)))
   if (snap.empty) throw new Error('Spectateur introuvable')
   const specRef = snap.docs[0].ref
+  // Limites de la recharge au guichet (20/11/2026) : contrôlées ici, plus seulement à l'écran
+  if (!(pts >= 100 && pts <= 50000)) throw new Error('Une recharge va de 1 € à 500 €.')
+  // Billet annulé : le compte ne paie plus et ne se recharge plus ; son solde reste remboursable
+  if (snap.docs[0].data().billet?.annule) throw new Error('Billet annulé : ce compte ne se recharge plus. Son solde reste remboursable.')
   // Billet sans compte (choix de l'acheteur sur le site) : personne ne peut ouvrir ce porte-monnaie
   if (snap.docs[0].data().billet?.sansCompte) throw new Error('Billet sans compte : pas de recharge possible. Son porteur commande et paie à la billetterie (Commande sur place).')
 

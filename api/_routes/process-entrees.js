@@ -44,6 +44,15 @@ async function sendToEventManager(url, key, body) {
 const EM_URL = 'https://gestion.maisonylla.com/api/public/billetterie'
 
 module.exports = async (req, res) => {
+  // Sécurité (20/11/2026) : réservé à la tâche planifiée (secret x-cron-secret) et aux personnes
+  // connectées à YllaCash (l'écran « Entrée » relance l'envoi juste après un contrôle).
+  const secret = process.env.CRON_SECRET
+  const parSecret = !!secret && req.headers['x-cron-secret'] === secret
+  if (!parSecret) {
+    const { verifyCaller } = require('../_auth/server')
+    const caller = await verifyCaller(req).catch(() => null)
+    if (!caller || !['staff', 'benevole'].includes(caller.type)) { res.status(401).json({ error: 'Non autorisé.' }); return }
+  }
   const url = process.env.YLLA_EM_URL || EM_URL
 
   let db

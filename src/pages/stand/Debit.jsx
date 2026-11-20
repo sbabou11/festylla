@@ -173,7 +173,7 @@ export default function Debit() {
           if (bSnap.exists()) { setClient({ ...bSnap.data(), id: uid, _docId: uid, _eventId: evId, _isBenev: true, solde: null }); return }
         } catch {}
       }
-      setScanError(`Aucun compte pour le code ${uid}. Vérifiez le QR ou saisissez le code à la main.`)
+      setScanError('Aucun compte trouvé. Demandez au client de présenter le QR de son espace YllaCash.')
     } catch (e) {
       setScanError(friendlyError(e, 'Recherche du client impossible.'))
     } finally {

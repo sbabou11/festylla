@@ -399,7 +399,7 @@ function StaffApp() {
       {/* Bandeau hors-ligne */}
       {isOffline && (
         <div className={shell.offline} role="status">
-          <WifiOff size={14} aria-hidden="true" /> Hors ligne : les opérations sont gardées et seront envoyées au retour du réseau.
+          <WifiOff size={14} aria-hidden="true" /> Hors ligne : les opérations déjà saisies sont gardées et partiront au retour du réseau. Reconnaître un nouveau client demande le réseau.
           <button type="button" onClick={syncNow} className={shell.offlineBtn}>Forcer la synchro</button>
         </div>
       )}

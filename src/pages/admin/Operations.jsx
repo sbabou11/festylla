@@ -245,18 +245,17 @@ export default function Operations({ onNavigate }) {
             stats={[]}
           />
 
-          {/* Pancarte 2 : Nouveau QR code */}
+          {/* Pancarte 2 : compte de secours (les comptes se créent sur le site internet) */}
           <PancartePrincipale
             onClick={() => onNavigate && onNavigate('nouveau', 'operations')}
             isMobile={isMobile}
             gradient="linear-gradient(135deg, #D89030 0%, #A87020 100%)"
             icon={<QrCode size={isMobile ? 36 : 44} strokeWidth={2}/>}
-            titre="Nouveau QR code"
-            description="Créer un compte et imprimer son badge"
+            titre="Compte de secours"
+            description="Seulement si la liaison du site tombe"
             stats={[
-              { label: 'Inscrits', value: (spectateurs || []).length },
+              { label: 'Comptes', value: (spectateurs || []).length },
               { label: 'Avec solde', value: (spectateurs || []).filter(s => (s.solde || 0) > 0).length },
-              { label: 'À l\'entrée', value: '✓' },
             ]}
           />
 

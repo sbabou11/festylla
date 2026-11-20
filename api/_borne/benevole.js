@@ -56,7 +56,7 @@ function preparerCommande({ benev, jour, lignes, menuById, standBenev }) {
   const reste = restants(benev, jour)
   for (const [type, qty] of Object.entries(parType)) {
     if (qty > reste[type]) {
-      throw new Error(`Droits insuffisants pour ${LABEL[type]} aujourd'hui : il en reste ${reste[type]}, la commande en demande ${qty}.`)
+      throw new Error(`Droits insuffisants pour ${LABEL[type]}${isEmFiche(benev) ? ' aujourd\'hui' : ''} : il en reste ${reste[type]}, la commande en demande ${qty}.`)
     }
   }
   const em = isEmFiche(benev)

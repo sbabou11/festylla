@@ -51,7 +51,7 @@ export const ALL_PAGES = {
   settings:             { icon: Settings,        label: 'Paramètres' },
   credit:               { icon: PlusCircle,      label: 'Créditer' },
   'commande-sur-place': { icon: ShoppingBag,     label: 'Commande sur place' },
-  nouveau:              { icon: QrCode,          label: 'Nouveau QR' },
+  nouveau:              { icon: QrCode,          label: 'Compte de secours' },
   remboursement:        { icon: Banknote,        label: 'Remboursement' },
   'lien-perdu':         { icon: KeyRound,        label: 'Lien perdu' },
   debit:                { icon: ShoppingCart,    label: 'Encaisser' },

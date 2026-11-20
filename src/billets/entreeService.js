@@ -11,9 +11,11 @@ import {
   collection, doc, runTransaction, onSnapshot, query, where, FieldPath, deleteField, serverTimestamp, updateDoc,
 } from 'firebase/firestore'
 import { db } from '../firebase/config'
+import { apiFetch } from '../firebase/session'
 import { checkEntree, parisNow } from './entree'
 
-const nudgeSender = () => { fetch('/api/process-entrees', { method: 'POST' }).catch(() => {}) }
+// L'adresse demande une session YllaCash (20/11/2026) : on passe par apiFetch, qui joint le jeton
+const nudgeSender = () => { apiFetch('/api/process-entrees').catch(() => {}) }
 
 /** Contrôle un billet et enregistre l'entrée du jour si elle est valable. */
 export async function controlerBillet({ eventId, specId, par }) {
