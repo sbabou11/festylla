@@ -69,6 +69,9 @@ export default function Analytics({ onNavigate }) {
   const totalSoldes   = spectateurs.reduce((a, sp) => a + (sp.solde || 0), 0)
   const totalVentes   = allTx.filter(t => t.type === 'debit').reduce((a, t) => a + (t.montant || 0), 0)
   const totalCredits  = allTx.filter(t => t.type === 'credit').reduce((a, t) => a + (t.montant || 0), 0)
+  const txDons        = allTx.filter(t => t.type === 'don' && !t.annulee)
+  const totalDons     = txDons.reduce((a, t) => a + (t.montant || 0), 0)
+  const donsAuto      = txDons.filter(t => t.auto).reduce((a, t) => a + (t.montant || 0), 0)
   const totalResas    = reservations.filter(r => !r.isBenev).length
   const resaCollected = reservations.filter(r => r.status === 'collected' && !r.isBenev).length
   const tauxRetrait   = totalResas ? Math.round(resaCollected / totalResas * 100) : 0
@@ -110,6 +113,11 @@ export default function Analytics({ onNavigate }) {
         <Stat label="CA net" value={fmt(caNette)} icon={PiggyBank} tone={caNette >= 0 ? 'success' : 'coral'} sub="après charge bénévoles" />
         <Stat label="Total rechargé" value={fmt(totalCredits)} icon={HandCoins} tone="warning" />
         <Stat label="Soldes restants" value={fmt(totalSoldes)} icon={Wallet} sub="en circulation" />
+        {/* Dons à l'ONG Ylla (20/11/2026) : ce que l'association doit reverser à l'ONG */}
+        {totalDons > 0 && (
+          <Stat label="Dons à l'ONG Ylla" value={fmt(totalDons)} icon={HeartHandshake} tone="coral"
+            sub={donsAuto > 0 ? `dont ${fmt(donsAuto)} de soldes non réclamés` : 'à reverser à l\'ONG'} />
+        )}
         <Stat label="Taux de retrait résa" value={tauxRetrait + ' %'} icon={Bookmark} tone={tauxRetrait > 60 ? 'success' : 'warning'}
           sub={`${resaCollected}/${totalResas} réservations`} />
       </div>

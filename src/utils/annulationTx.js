@@ -49,6 +49,9 @@ export function planAnnulation(tx) {
       return tx.surPlace && moyen
         ? { delta: +m, contre: { type: 'credit', moyen: tx.moyen, label: base }, caisse: { sens: 'plus', moyen } }
         : { delta: +m, contre: { type: 'credit_correction', label: base }, caisse: null }
+    case 'don':
+      // Don à l'ONG Ylla annulé par un administrateur (erreur du spectateur) : le solde revient
+      return { delta: +m, contre: { type: 'credit_correction', label: base }, caisse: null }
     case 'credit_correction':
       return { delta: -m, contre: { type: 'debit_correction', label: base }, caisse: null }
     case 'debit_correction':

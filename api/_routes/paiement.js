@@ -14,6 +14,10 @@
  *        par Stripe (solde débité d'abord, recrédité si Stripe refuse) ; la part SumUp et les espèces
  *        attendent la billetterie (events/{ev}/demandes-remboursement).
  *   POST { action: 'annulerDemande', ev, id }         le spectateur annule la partie billetterie.
+ *   POST { action: 'don', ev, montant }               espace spectateur (bouton maintenu 3 s, 20/11/2026) :
+ *        don de tout ou partie du solde à l'ONG Ylla (1 € au moins, jamais plus que le solde).
+ *        Le solde est débité, une transaction « don » garde la trace. Un don est définitif.
+ * Le remboursement se demande jusqu'à 2 mois après le dernier jour de l'événement (_paiement/dons.js).
  * Variables d'environnement (saisies par l'organisateur dans Vercel, jamais dans le code) :
  *   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET.
  */
@@ -21,6 +25,7 @@ const { admin, getDb, verifyCaller } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { montantValide, retourValide, formEncode, paramsSession, verifierSignature, rechargeDepuisEvenement } = require('../_paiement/stripe')
 const { planRemboursement } = require('../_paiement/remboursement')
+const { montantDon, delaiDepasse, limiteRemboursement, BENEFICIAIRE, DON_MIN } = require('../_paiement/dons')
 
 const ID = /^[\w-]{1,128}$/
 
@@ -202,6 +207,12 @@ async function rembourser(req, res, body) {
 
   let plan, specNom, txIds = []
   try {
+    // Date limite (20/11/2026) : deux mois après le dernier jour de l'événement
+    const event = await evRef.get()
+    if (event.exists && delaiDepasse(event.data())) {
+      const l = parisDate.format(new Date(limiteRemboursement(event.data())))
+      throw Object.assign(new Error(`Le remboursement était possible jusqu'au ${l}. Ce délai est dépassé.`), { status: 403 })
+    }
     await db.runTransaction(async (t) => {
       const spec = await t.get(specRef)
       if (!spec.exists || spec.data().id !== caller.specId) throw Object.assign(new Error('Compte introuvable.'), { status: 404 })
@@ -294,6 +305,54 @@ async function rembourser(req, res, body) {
   })
 }
 
+// ── Don du solde à l'ONG Ylla (20/11/2026) ────────────────────────────────────────────────
+async function donner(req, res, body) {
+  const who = await spectateurAppelant(req, res, body)
+  if (!who) return
+  const { ev, caller } = who
+  const db = getDb()
+  const evRef = db.collection('events').doc(ev)
+  const specRef = evRef.collection('spectateurs').doc(String(caller.specDoc))
+  const now = new Date()
+  const iso = now.toISOString()
+  try {
+    const r = await db.runTransaction(async (t) => {
+      const spec = await t.get(specRef)
+      if (!spec.exists || spec.data().id !== caller.specId) throw Object.assign(new Error('Compte introuvable.'), { status: 404 })
+      // Une demande de remboursement en attente à la billetterie porte sur ce même solde
+      if (spec.data().demandeRemboursement) {
+        throw Object.assign(new Error('Une demande de remboursement est en cours : annulez-la d\'abord pour faire un don.'), { status: 409 })
+      }
+      const solde = Math.round(Number(spec.data().solde) || 0)
+      const montant = montantDon(body.montant, solde)
+      if (!montant) {
+        throw Object.assign(new Error(solde < DON_MIN
+          ? 'Votre solde est trop bas pour faire un don.'
+          : `Choisissez un montant entre ${euros(DON_MIN)} et ${euros(solde)}.`), { status: 400 })
+      }
+      t.update(specRef, { solde: admin.firestore.FieldValue.increment(-montant) })
+      t.set(evRef.collection('transactions').doc(), {
+        specId: caller.specId, specNom: spec.data().nom || '—', type: 'don', beneficiaire: BENEFICIAIRE,
+        label: `Don à l'${BENEFICIAIRE}`, montant, staff: 'Spectateur',
+        soldeBefore: solde, soldeAfter: solde - montant,
+        date: parisDate.format(now), heure: parisTime.format(now), timestamp: iso,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+      return { montant, solde: solde - montant, nom: spec.data().nom || '—' }
+    })
+    await evRef.collection('audit').add({
+      action: 'DON_ONG', specId: caller.specId, montant: r.montant, staff: 'Spectateur',
+      label: `Don de ${euros(r.montant)} à l'${BENEFICIAIRE} par ${r.nom}`,
+      timestamp: iso, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }).catch(() => {})
+    res.status(200).json({ montant: r.montant, solde: r.solde })
+  } catch (e) {
+    if (e.status) { res.status(e.status).json({ error: e.message }); return }
+    console.error('paiement (don):', e)
+    res.status(500).json({ error: 'Le don n\'a pas été enregistré, réessayez.' })
+  }
+}
+
 async function annulerDemande(req, res, body) {
   const who = await spectateurAppelant(req, res, body)
   if (!who) return
@@ -330,5 +389,6 @@ module.exports = async (req, res) => {
   try { body = (await readBody(req)) || {} } catch { res.status(400).json({ error: 'Requête illisible.' }); return }
   if (body.action === 'rembourser') return rembourser(req, res, body)
   if (body.action === 'annulerDemande') return annulerDemande(req, res, body)
+  if (body.action === 'don') return donner(req, res, body)
   return creer(req, res, body)
 }

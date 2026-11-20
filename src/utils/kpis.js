@@ -29,13 +29,20 @@ export function computeKPIs({ spectateurs = [], reservations = [], logs = [], me
                                       .reduce((a, t) => a + (t.montant || 0), 0)
   const totalCreditsCorrection = allTx.filter(t => t.type === 'credit_correction')
                                       .reduce((a, t) => a + (t.montant || 0), 0)
+  // Dons à l'ONG Ylla (20/11/2026) : dons des spectateurs et soldes non réclamés reversés (auto).
+  // Un don annulé par un administrateur reste compté ici : la correction qui recrédite le solde le compense.
+  const txDons          = allTx.filter(t => t.type === 'don')
+  const totalDons       = txDons.reduce((a, t) => a + (t.montant || 0), 0)
+  // À reverser à l'ONG : les dons annulés n'en font plus partie
+  const donsAReverser   = txDons.filter(t => !t.annulee).reduce((a, t) => a + (t.montant || 0), 0)
+  const donsAuto        = txDons.filter(t => !t.annulee && t.auto).reduce((a, t) => a + (t.montant || 0), 0)
 
   // Écart comptable : sommes ENTRANTES - sommes SORTANTES - soldes courants devrait = 0
   //   Entrées : crédits + crédits de correction
   //   Sorties : ventes (debit/retrait/benev-retrait) + remboursements de solde
   //   Soldes  : ce qu'il reste sur les comptes
   const ecartComptable  = (totalCredits + totalCreditsCorrection)
-                          - (totalVentes + totalRemboursements)
+                          - (totalVentes + totalRemboursements + totalDons)
                           - totalSoldes
 
   // ── Bénévoles ──────────────────────────────────────────────────────
@@ -86,7 +93,7 @@ export function computeKPIs({ spectateurs = [], reservations = [], logs = [], me
     'credit','debit','retrait','benev-retrait',
     'reservation','annulation','benev-reservation','benev-annulation',
     'artist-gift','cachet-artiste',
-    'remboursement','credit_correction',
+    'remboursement','credit_correction','don',
   ]
   const txByType = TX_TYPES.map(typ => ({
     type: typ,
@@ -112,6 +119,7 @@ export function computeKPIs({ spectateurs = [], reservations = [], logs = [], me
     totalCredits, totalVentes, totalSoldes, ecartComptable,
     coutBenev, caNette,
     totalRemboursements, totalCreditsCorrection,
+    totalDons, donsAReverser, donsAuto,
     // Spectateurs
     nbSpectateurs, specAvecSolde, soldeMax, soldeMoyen,
     // Bénévoles

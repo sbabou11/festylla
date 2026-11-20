@@ -231,6 +231,7 @@ export function useExport() {
       ['CA encaissé (€)', (totalVentes/100).toFixed(2)],
       ['Total rechargé (€)', (totalCredits/100).toFixed(2)],
       ['Soldes restants (€)', (totalSoldes/100).toFixed(2)],
+      ["Dons à l'ONG Ylla (€)", (allTx.filter(t=>t.type==='don'&&!t.annulee).reduce((a,t)=>a+(t.montant||0),0)/100).toFixed(2)],
       ['Nb spectateurs', (specs||[]).length],
       ['Nb transactions', allTx.length],
     ])

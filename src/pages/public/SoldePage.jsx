@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
   Search, Wallet, Clock, Bookmark, LayoutList, BarChart2, CalendarDays, UtensilsCrossed,
-  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote,
+  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote, Heart,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
@@ -34,6 +34,7 @@ import { friendlyError } from '../../utils/errors'
 import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, HoldButton, focusFirstInvalid } from '../../ui'
 import { planRemboursement } from '../../utils/remboursementPlan'
 import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../../utils/historiqueSpec'
+import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../utils/dons'
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
 import sp from './spectateur/SoldePage.module.css'
@@ -54,6 +55,7 @@ const TX_LOOK = {
   remboursement:     { icon: Undo2, tone: 'neutral', sign: '' },
   credit_correction: { icon: Plus,  tone: 'success', sign: '' },
   debit_correction:  { icon: Minus, tone: 'coral',   sign: '' },
+  don:               { icon: Heart, tone: 'coral',   sign: '' },   // don à l'ONG Ylla (20/11/2026)
 }
 const txLook = (type) => TX_LOOK[type] || { icon: Wallet, tone: 'brand', sign: '' }
 
@@ -149,6 +151,13 @@ export default function SoldePage({ demo = null }) {
   const [demandes, setDemandes]       = useState(demo?.demandes || [])
   const [rembBusy, setRembBusy]       = useState(false)
   const [rembErr, setRembErr]         = useState('')
+  // Don du solde à l'ONG Ylla (20/11/2026)
+  const [donOpen, setDonOpen]         = useState(false)
+  const [donChoix, setDonChoix]       = useState(null)     // montant d'une tuile, en centimes ; null = « Autre »
+  const [donAutre, setDonAutre]       = useState('')
+  const [donBusy, setDonBusy]         = useState(false)
+  const [donErr, setDonErr]           = useState('')
+  const [donFait, setDonFait]         = useState(null)     // { montant, solde } après un don
   const [rayonId, setRayonId]         = useState(null)
   const [catKey, setCatKey]           = useState(null)
   const [cancelCode, setCancelCode]   = useState(null)
@@ -414,6 +423,35 @@ export default function SoldePage({ demo = null }) {
     } catch (e) { setRembErr(friendlyError(e, 'La demande n\'a pas pu être envoyée. Réessayez.')) }
     finally { setRembBusy(false) }
   }
+  // ── Date limite de remboursement et don à l'ONG Ylla (20/11/2026) ──
+  const limiteRemb = limiteRemboursement(eventMeta)
+  const limiteTxt = limiteRemb ? new Date(limiteRemb).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : ''
+  const rembClos = delaiDepasse(eventMeta)
+  const soldeDon = spec?.solde || 0
+  const donSaisi = donChoix != null ? donChoix : Math.round((parseFloat(String(donAutre).replace(',', '.')) || 0) * 100)
+  const donMontant = montantDon(donSaisi, soldeDon)
+  const ouvrirDon = () => {
+    setDonErr(''); setDonAutre('')
+    setDonChoix(soldeDon >= 1000 ? 1000 : soldeDon)
+    setDonOpen(true)
+  }
+  const donner = async () => {
+    if (!donMontant) return
+    setDonErr(''); setDonBusy(true)
+    try {
+      let r
+      if (demo) {
+        r = { montant: donMontant, solde: soldeDon - donMontant }
+        setSpec(x => ({ ...x, solde: r.solde }))
+        setTxs(l => [{ type: 'don', label: "Don à l'ONG Ylla", montant: donMontant, date: nowStr(), heure: new Date().toLocaleTimeString('fr-FR'), createdAt: { seconds: Math.floor(Date.now() / 1000) } }, ...l])
+      } else {
+        r = await apiFetch('/api/paiement', { body: { action: 'don', ev: eventId, montant: donMontant } })
+      }
+      setDonOpen(false); setDonFait(r); window.scrollTo(0, 0)
+    } catch (e) { setDonErr(friendlyError(e, "Le don n'a pas été enregistré. Réessayez.")) }
+    finally { setDonBusy(false) }
+  }
+
   const annulerDemande = async () => {
     if (!demandeEnCours) return
     setRembErr('')
@@ -479,7 +517,7 @@ export default function SoldePage({ demo = null }) {
   }
 
   // ── Calculs dérivés ────────────────────────────────────────────
-  const { recharge: totalRecharge, depense: totalDepense, rembourse: totalRembourse } = totauxCompte(txs)
+  const { recharge: totalRecharge, depense: totalDepense, rembourse: totalRembourse, donne: totalDonne } = totauxCompte(txs)
   const nbResas        = resas.length
   const activeResas    = resas.filter(r=>r.status!=='collected'&&r.status!=='cancelled')
   const codesEnLigne   = codes.filter(c => c.origine === 'en-ligne')
@@ -535,7 +573,7 @@ export default function SoldePage({ demo = null }) {
     return () => { lock?.release?.().catch?.(() => {}) }
   }, [qrOpen])
 
-  const go = (t) => { setTab(t); window.scrollTo(0, 0) }
+  const go = (t) => { setTab(t); setDonFait(null); window.scrollTo(0, 0) }
   // Sécurité (20/11/2026) : changer de compte oublie vraiment celui-ci sur ce téléphone (clé, session,
   // numéro dans l'adresse) ; il se rouvrira seulement avec son lien
   const logoutSpec = () => {
@@ -716,6 +754,7 @@ export default function SoldePage({ demo = null }) {
                   <span>Rechargé <b className={sp.successText}>{fmt(totalRecharge)}</b></span>
                   <span>Dépensé <b className={sp.coralText}>{fmt(totalDepense)}</b></span>
                   {totalRembourse > 0 && <span>Remboursé <b>{fmt(totalRembourse)}</b></span>}
+                  {totalDonne > 0 && <span>Donné <b>{fmt(totalDonne)}</b></span>}
                 </div>
                 {txs.length === 0 ? (
                   <Empty icon={Wallet} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
@@ -757,7 +796,24 @@ export default function SoldePage({ demo = null }) {
           {tab === 'rembourser' && (
             <div className={sp.stack}>
               <button type="button" className={sp.back} onClick={() => go('accueil')}><ArrowLeft size={16} /> Mon solde</button>
-              {demandeVue ? (
+              {donFait ? (
+                <section className={clsx(sp.card, sp.done)}>
+                  <span className={sp.doneIcon}><Heart size={28} /></span>
+                  <h2>Merci {String(spec.nom || '').split(' ')[0]} !</h2>
+                  <b className={sp.rechargeMontant}>{fmt(donFait.montant)}</b>
+                  <p>donnés à l'ONG Ylla pour la lutte contre le cancer du sein.</p>
+                  <p>Solde restant : <b>{fmt(spec.solde || 0)}</b></p>
+                  <p className={sp.muted}>Le don apparaît dans votre historique.</p>
+                  <div className={sp.doneActions}>
+                    <Button block onClick={() => go('accueil')}>Retour au solde</Button>
+                  </div>
+                </section>
+              ) : rembClos ? (
+                <section className={sp.card}>
+                  <h2>Remboursement</h2>
+                  <p className={sp.info}>Le remboursement était possible jusqu'au {limiteTxt}. Passé cette date, les soldes non réclamés sont reversés à l'ONG Ylla, pour la lutte contre le cancer du sein.</p>
+                </section>
+              ) : demandeVue ? (
                 <section className={sp.card}>
                   <div className={sp.rembHead}>
                     <h2>Ma demande</h2>
@@ -806,9 +862,19 @@ export default function SoldePage({ demo = null }) {
                   </HoldButton>
                   <p className={clsx(sp.muted, sp.center)}>Gardez le doigt appuyé 3 secondes pour confirmer</p>
                   <p className={clsx(sp.muted, sp.center)}>Aucun frais. Relâcher avant la fin n'envoie rien.</p>
+                  {limiteTxt && <p className={clsx(sp.muted, sp.center)}>Remboursement possible jusqu'au {limiteTxt}.</p>}
                 </section>
               ) : (
                 <Empty icon={Wallet} title="Rien à rembourser">Votre solde est à zéro.</Empty>
+              )}
+              {/* Don à l'ONG Ylla : proposé tant qu'aucune demande n'attend la billetterie */}
+              {!donFait && !rembClos && !demandeEnCours && soldeDon >= DON_MIN && (
+                <section className={sp.card}>
+                  <h2>Faire un don</h2>
+                  <p className={sp.muted}>Offrez tout ou partie de votre solde à l'ONG Ylla, engagée contre le cancer du sein.</p>
+                  <Button variant="secondary" block icon={Heart} onClick={ouvrirDon}>Donner à l'ONG Ylla</Button>
+                  {limiteTxt && <p className={clsx(sp.muted, sp.center)}>Après le {limiteTxt}, un solde non réclamé est reversé à l'ONG Ylla.</p>}
+                </section>
               )}
             </div>
           )}
@@ -1086,6 +1152,45 @@ export default function SoldePage({ demo = null }) {
           <Button variant="secondary" onClick={closeQr}>Fermer</Button>
         </div>
       )}
+
+      <Dialog open={donOpen} onClose={() => { if (!donBusy) setDonOpen(false) }} title="Donner à l'ONG Ylla"
+        footer={<Button variant="ghost" disabled={donBusy} onClick={() => setDonOpen(false)}>Annuler</Button>}>
+        <div className={sp.donBody}>
+          <span className={sp.catTitle}>L'ONG Ylla</span>
+          <p>L'ONG Ylla œuvre en France et en Afrique pour la lutte contre le cancer du sein, l'accompagnement des populations et la promotion du vivre-ensemble. Elle agit en mémoire de Yolande Ylla Seri Bah.</p>
+          <span className={sp.catTitle}>À quoi sert votre don</span>
+          <div className={sp.rembLines}>
+            <div className={sp.rembLine}><span className={sp.rembText}><b>Prévenir et sensibiliser</b><span className={sp.muted}>informer pour réduire les risques</span></span></div>
+            <div className={sp.rembLine}><span className={sp.rembText}><b>Dépister</b><span className={sp.muted}>détecter tôt pour sauver des vies</span></span></div>
+            <div className={sp.rembLine}><span className={sp.rembText}><b>Accompagner</b><span className={sp.muted}>soutenir les femmes touchées par la maladie</span></span></div>
+          </div>
+          <p className={sp.muted}>Déjà plus de 1 000 femmes et hommes sensibilisés, dans 3 pays. <a className={sp.donLink} href="https://ongylla.org" target="_blank" rel="noopener noreferrer">Découvrir l'ONG sur ongylla.org</a></p>
+          <span className={sp.catTitle}>Montant du don</span>
+          <div className={sp.montants}>
+            {[200, 500, 1000, 2000].filter(m => m < soldeDon).map(m => (
+              <button key={m} type="button" aria-pressed={donChoix === m} className={clsx(sp.montant, donChoix === m && sp.montantOn)}
+                onClick={() => { setDonChoix(m); setDonAutre(''); setDonErr('') }}>{m / 100} €</button>
+            ))}
+            <button type="button" aria-pressed={donChoix === soldeDon} className={clsx(sp.montant, donChoix === soldeDon && sp.montantOn)}
+              onClick={() => { setDonChoix(soldeDon); setDonAutre(''); setDonErr('') }}>Tout</button>
+            <input className={clsx(sp.montant, sp.montantAutre, donChoix == null && sp.montantOn)} inputMode="decimal"
+              placeholder="Autre" aria-label="Autre montant en euros" value={donAutre}
+              onFocus={() => setDonChoix(null)}
+              onChange={e => { setDonChoix(null); setDonAutre(e.target.value.replace(/[^\d.,]/g, '').slice(0, 6)); setDonErr('') }} />
+          </div>
+          <div className={sp.nouveauSolde}><span>Solde après le don</span><b>{donMontant ? fmt(soldeDon - donMontant) : '—'}</b></div>
+          {!donMontant && donSaisi > 0 && (
+            <p className={sp.error} role="alert">{donSaisi > soldeDon ? `Le don ne peut pas dépasser votre solde de ${fmt(soldeDon)}.` : 'Le don minimum est de 1 €.'}</p>
+          )}
+          {donErr && <p className={sp.error} role="alert">{donErr}</p>}
+          <p className={sp.rembInfo}>La totalité de votre don est reversée à l'ONG Ylla. Un don est définitif : il ne peut pas être remboursé.</p>
+          <HoldButton tone="brand" block duration={3000} disabled={donBusy || !donMontant} onConfirm={donner}
+            fillingLabel="Gardez appuyé…" doneLabel="Merci !" hint="Gardez le doigt appuyé 3 secondes pour confirmer">
+            {donMontant ? `Donner ${fmt(donMontant)} à l'ONG Ylla` : 'Choisissez un montant'}
+          </HoldButton>
+          <p className={clsx(sp.muted, sp.center)}>Gardez le doigt appuyé 3 secondes pour confirmer</p>
+        </div>
+      </Dialog>
 
       <Dialog open={!!cancelCode} onClose={() => setCancelCode(null)} title="Annuler ce code ?"
         footer={<>

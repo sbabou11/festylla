@@ -450,3 +450,9 @@
 
 /* Panier : solde insuffisant, recharge en un geste (20/11/2026) */
 .cartRecharge { width: 100%; order: 4; display: grid; gap: 6px; text-align: center; }
+
+/* Don à l'ONG Ylla (20/11/2026) : fenêtre d'explication */
+.donBody { display: grid; gap: var(--space-3); }
+.donBody p { font-size: var(--fs-13); line-height: 1.45; }
+.donBody p.muted { font-size: var(--fs-12); }
+.donLink { color: var(--brand); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }

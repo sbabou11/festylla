@@ -92,7 +92,8 @@ function detectAnomalies(spectateurs, logs, reservations, menu = [], SEUILS = DE
     const totalCredits = (logs||[]).filter(t=>t.type==='credit').reduce((a,t)=>a+(t.montant||0),0)
     const totalDebits  = (logs||[]).filter(t=>t.type==='debit').reduce((a,t)=>a+(t.montant||0),0)
     const totalSoldes  = spectateurs.reduce((a,s)=>a+(s.solde||0),0)
-    const ecartTheorique = totalCredits - totalDebits
+    const totalDons    = (logs||[]).filter(t=>t.type==='don').reduce((a,t)=>a+(t.montant||0),0)
+    const ecartTheorique = totalCredits - totalDebits - totalDons
     const ecartReel      = Math.abs(ecartTheorique - totalSoldes)
 
     if (ecartReel > SEUILS.ecartSoldeMax && totalCredits > 0) {

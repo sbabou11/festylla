@@ -16,7 +16,7 @@ const at = (minAgo) => {
 }
 
 const DEMO = {
-  eventMeta: { nom: 'Festylla 2026' },
+  eventMeta: { nom: 'Festylla 2026', date: '2027-06-05', dateFin: '2027-06-06' },
   spec: { id: 'FY-4F2A', nom: 'Léa Martin', solde: 2750 },
   txs: [
     { type: 'debit',  label: 'Bar Scène A · 2 Bière, 1 Eco-cup', montant: 1100, ...at(28) },

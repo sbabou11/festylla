@@ -18,8 +18,8 @@ import useEventStore from '../../store/useEventStore'
 import { Button, Badge, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
 import s from './transactions/transactions.module.css'
 
-const TYPE_LABEL = { credit: 'Crédit', debit: 'Débit', reservation: 'Réservation', annulation: 'Annulation', 'benev-reservation': 'Résa bénévole', 'benev-retrait': 'Retrait bénévole', 'benev-annulation': 'Annul. bénévole', 'artist-gift': 'Avantage artiste' }
-const TYPE_TONE  = { credit: 'brand', debit: 'danger', reservation: 'warning', annulation: 'neutral', 'benev-reservation': 'warning', 'benev-retrait': 'brand', 'benev-annulation': 'neutral', 'artist-gift': 'coral' }
+const TYPE_LABEL = { credit: 'Crédit', debit: 'Débit', reservation: 'Réservation', annulation: 'Annulation', 'benev-reservation': 'Résa bénévole', 'benev-retrait': 'Retrait bénévole', 'benev-annulation': 'Annul. bénévole', 'artist-gift': 'Avantage artiste', don: 'Don ONG Ylla' }
+const TYPE_TONE  = { credit: 'brand', debit: 'danger', reservation: 'warning', annulation: 'neutral', 'benev-reservation': 'warning', 'benev-retrait': 'brand', 'benev-annulation': 'neutral', 'artist-gift': 'coral', don: 'coral' }
 // Types affichés sans signe (ni + ni −)
 const NO_SIGN = ['reservation','benev-reservation','annulation','benev-annulation','benev-retrait','artist-gift']
 

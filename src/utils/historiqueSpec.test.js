@@ -20,7 +20,12 @@ describe('historique de l\'espace spectateur', () => {
     expect(txs.reduce((a, t) => a + effetSolde(t), 0)).toBe(1500)
   })
   it('totaux : un ticket remboursé ne compte plus comme dépensé', () => {
-    expect(totauxCompte(txs)).toEqual({ recharge: 3000, depense: 0, rembourse: 1500 })
+    expect(totauxCompte(txs)).toEqual({ recharge: 3000, depense: 0, rembourse: 1500, donne: 0 })
+    // Don à l'ONG Ylla (20/11/2026) : il baisse le solde et se compte à part
+    const don = { type: 'don', montant: 1000 }
+    expect(effetSolde(don)).toBe(-1000)
+    expect(signeDe(don)).toBe('−')
+    expect(totauxCompte([...txs, don]).donne).toBe(1000)
   })
   it('dit où est allé un remboursement', () => {
     expect(destinationRemboursement(txs[3])).toBe('sur votre carte')

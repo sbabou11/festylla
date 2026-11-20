@@ -18,6 +18,7 @@ export function effetSolde(t) {
     case 'reservation':
     case 'remboursement':       // solde rendu au spectateur (carte, espèces)
     case 'debit_correction':
+    case 'don':                 // solde donné à l'ONG Ylla (20/11/2026)
       return -m
     default:
       return 0
@@ -39,13 +40,14 @@ export function destinationRemboursement(t) {
 
 /** Totaux de l'en-tête : rechargé, dépensé (tickets remboursés déduits), remboursé */
 export function totauxCompte(txs = []) {
-  let recharge = 0, depense = 0, rembourse = 0
+  let recharge = 0, depense = 0, rembourse = 0, donne = 0
   for (const t of txs) {
     const m = Math.round(Number(t.montant) || 0)
     if (t.type === 'credit') recharge += m
     else if (t.type === 'debit' || t.type === 'reservation') depense += m
     else if (t.type === 'annulation') depense -= m
     else if (t.type === 'remboursement') rembourse += m
+    else if (t.type === 'don') donne += m
   }
-  return { recharge, depense: Math.max(0, depense), rembourse }
+  return { recharge, depense: Math.max(0, depense), rembourse, donne }
 }

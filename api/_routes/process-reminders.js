@@ -17,6 +17,7 @@
  */
 
 const admin = require('firebase-admin')
+const { reverserSoldes } = require('../_paiement/reversement')
 
 let app = null
 function getAdminApp() {
@@ -72,6 +73,7 @@ module.exports = async (req, res) => {
     skipped: [],     // détaille les rappels non envoyés et pourquoi
     sent: [],        // détaille les envois réussis
     errors: [],
+    reversements: [],   // soldes non réclamés reversés à l'ONG Ylla pendant ce passage
   }
 
   // ── 1. Liste tous les événements actifs ──────────────────────────
@@ -89,6 +91,14 @@ module.exports = async (req, res) => {
   const now = Date.now()
   for (const evDoc of eventDocs) {
     const eventId = evDoc.id
+    // Soldes non réclamés (20/11/2026) : deux mois après l'événement, reversés à l'ONG Ylla.
+    // Sans effet (une simple comparaison de dates) tant que le délai n'est pas passé.
+    try {
+      const r = await reverserSoldes(admin, evDoc)
+      if (r) summary.reversements.push({ eventId, ...r })
+    } catch (e) {
+      summary.errors.push({ eventId, error: 'reversement : ' + e.message })
+    }
     try {
       // Récupère les rappels dus (dueAt <= now ET sent == false)
       // On évite le double where pour ne pas exiger d'index composite
