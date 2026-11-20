@@ -9,7 +9,7 @@
  *   - Bandeau d'urgence pour les résas en attente trop longtemps
  */
 
-import { linkFor } from '../../firebase/publicSession'
+import BorneDialog from './operations/BorneDialog'
 import React, { useMemo, useEffect, useState } from 'react'
 import {
   PlusCircle, ShoppingCart, List, Bookmark,
@@ -107,6 +107,7 @@ export default function Operations({ onNavigate }) {
 
   // Charge les seuils d'alertes paramétrables
   const [seuils, setSeuils] = useState(DEFAULT_SEUILS)
+  const [borneOpen, setBorneOpen] = useState(false)
   useEffect(() => {
     if (!currentEventId) return
     getSettings(currentEventId).then(s => {
@@ -419,12 +420,8 @@ export default function Operations({ onNavigate }) {
             )}
             {canDebit && (
               <ActionCompacte
-                onClick={() => {
-                  if (!currentEventId) return
-                  // Lien d'appareil avec clé (sécurité, lot 2) : c'est ce lien qu'on ouvre sur la tablette
-                  const w = window.open('about:blank', '_blank')
-                  linkFor(currentEventId, 'borne').then(u => { if (w) w.location.href = u }).catch(() => w?.close())
-                }}
+                // Fenêtre du lien de la borne (20/11/2026) : QR pour la tablette, ouverture, renouvellement
+                onClick={() => { if (currentEventId) setBorneOpen(true) }}
                 icon={<ShoppingBag size={20}/>}
                 label="Borne self-service"
                 desc="Tablette commande client"
@@ -436,6 +433,8 @@ export default function Operations({ onNavigate }) {
           </div>
         </>
       )}
+
+      <BorneDialog open={borneOpen} onClose={() => setBorneOpen(false)} eventId={currentEventId} isAdmin={isAdmin}/>
 
       {/* ─── Bandeau urgence : résas en attente > 10 min ───────────────
           Masqué pour billetterie (ils ne gèrent pas les réservations) */}

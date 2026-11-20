@@ -19,9 +19,9 @@
  */
 const {
   blockedMinutes, afterFailure, counterKey, PUBLIC_LIMIT, LIMIT, isKey, sameKey, accountKey,
-  spectatorSession, LINK_KINDS, linkDocId, deviceSession, sessionFor, publicAccount,
+  spectatorSession, LINK_KINDS, linkDocId, deviceSession, sessionFor, publicAccount, newKey,
 } = require('../_auth/core')
-const { admin, getDb, clientIp, verifyCaller, loadAccount } = require('../_auth/server')
+const { admin, getDb, clientIp, verifyCaller, loadAccount, writeAudit, ADMIN_ROLES } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { cleDuCompte } = require('../_auth/cles')
 
@@ -44,6 +44,31 @@ module.exports = async (req, res) => {
   if (!ID.test(ev)) { res.status(400).json({ error: 'Événement manquant dans l\'adresse.' }); return }
   let db
   try { db = getDb() } catch { res.status(503).json({ error: 'Service indisponible.' }); return }
+
+  // Administrateur : nouveau lien pour la borne (20/11/2026). La clé change (l'ancien lien ne s'ouvre
+  // plus) et les sessions des bornes déjà ouvertes sont révoquées : elles s'arrêtent dans l'heure,
+  // le temps que leur jeton en cours expire.
+  if (body.mode === 'renouveler-borne') {
+    try {
+      const caller = await verifyCaller(req)
+      if (!caller) { res.status(401).json({ error: 'Session expirée : reconnectez-vous.' }); return }
+      if (!ADMIN_ROLES.includes(caller.role)) { res.status(403).json({ error: 'Réservé aux administrateurs.' }); return }
+      const event = await db.collection('events').doc(ev).get()
+      if (!event.exists || event.data().deleted) { res.status(404).json({ error: 'Événement inconnu.' }); return }
+      const cle = newKey()
+      await db.collection('events').doc(ev).collection('liens').doc(linkDocId('borne', '')).set({
+        cle, kind: 'borne', id: null, creeLe: admin.firestore.FieldValue.serverTimestamp(), creePar: caller.uid,
+      })
+      // La borne n'a peut-être jamais ouvert de session : l'absence de compte n'est pas une erreur
+      await admin.auth().revokeRefreshTokens(deviceSession('borne', ev).uid).catch(() => {})
+      await writeAudit(db, ev, { action: 'LIEN_BORNE_RENOUVELE', staff: caller.uid, userType: 'admin', label: 'Lien de la borne renouvelé : l\'ancien ne fonctionne plus' })
+      res.status(200).json({ cle })
+    } catch (e) {
+      console.error('session renouveler-borne:', e)
+      res.status(500).json({ error: 'Le lien n\'a pas été renouvelé, réessayez.' })
+    }
+    return
+  }
 
   const now = Date.now()
   const ipRef = db.collection('securite-connexions').doc(counterKey('pub', clientIp(req)))

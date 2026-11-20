@@ -113,6 +113,15 @@ export async function renewLinkKey(ev, kind, id = '') {
   return cle
 }
 
+/**
+ * Nouveau lien pour la borne (administrateurs) : passe par le serveur, qui change la clé et coupe
+ * aussi les bornes déjà ouvertes (elles s'arrêtent dans l'heure). Renvoie la nouvelle adresse.
+ */
+export async function renewBorneLink(ev) {
+  const r = await apiFetch('/api/session', { body: { mode: 'renouveler-borne', ev } })
+  return `${window.location.origin}/borne?ev=${ev}&k=${r.cle}`
+}
+
 /** Adresse complète d'un lien personnel ou d'appareil */
 export async function linkFor(ev, kind, id = '', extra = '') {
   const cle = await linkKey(ev, kind, id)
