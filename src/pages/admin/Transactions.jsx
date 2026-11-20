@@ -15,6 +15,7 @@ import { annulerTransaction } from '../../firebase/service'
 import { planAnnulation } from '../../utils/annulationTx'
 import { db } from '../../firebase/config'
 import useEventStore from '../../store/useEventStore'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { Button, Badge, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
 import s from './transactions/transactions.module.css'
 
@@ -51,6 +52,9 @@ export default function Transactions({ onNavigate }) {
   const [sortKey, setSortKey]           = useState('date')
   const [sortDir, setSortDir]           = useState('desc') // 'asc' | 'desc'
   const [hoverDetail, setHoverDetail]   = useState(null) // { tx, x, y, pinned }
+  // Téléphone (20/11/2026) : une ligne par transaction, une seule dépliée à la fois
+  const { isMobile } = useBreakpoint()
+  const [openKey, setOpenKey] = useState(null)
 
   const specMap = Object.fromEntries(spectateurs.map(s => [s.id, s.nom]))
 
@@ -187,10 +191,126 @@ export default function Transactions({ onNavigate }) {
   ]
 
 
+  const typeLabel = (t) => TYPE_LABEL[t.type] || (t.type === 'debit_correction' ? 'Correction −' : t.type === 'credit_correction' ? 'Correction +' : t.type)
+  const emptyFiltre = (
+    <Empty icon={SearchX} title="Aucune transaction ne correspond aux filtres"
+      action={<Button variant="secondary" onClick={resetFilters}>Réinitialiser les filtres</Button>}>
+      {isMobile ? 'Changez le filtre ou la recherche.' : null}
+    </Empty>
+  )
+
+  // Disposition téléphone (20/11/2026) : mêmes données et mêmes actions que le tableau,
+  // le détail complet et l'annulation sont dans la partie dépliée.
+  const mobileView = isMobile && (
+    <>
+      <div className={s.mFilters}>
+        <label className={s.mField}>
+          <span className={s.mLabel}>Rechercher dans le détail</span>
+          <span className={s.mSearch}>
+            <Search size={18} className={s.searchIcon} aria-hidden="true"/>
+            <input type="search" value={searchDetail} onChange={e => setSearchDetail(e.target.value)}
+              placeholder="Article, stand, recharge…" className={s.mInput}/>
+            {searchDetail && (
+              <button type="button" onClick={() => setSearchDetail('')} className={s.mClear} aria-label="Effacer la recherche">
+                <X size={18}/>
+              </button>
+            )}
+          </span>
+        </label>
+        <div className={s.mRow}>
+          <label className={s.mField}>
+            <span className={s.mLabel}>Type</span>
+            <select className={s.mSelect} value={filterType} onChange={e => setFilterType(e.target.value)}>
+              <option value="">Tous les types</option>
+              {typeOptions.map(t => <option key={t} value={t}>{TYPE_LABEL[t] || t}</option>)}
+            </select>
+          </label>
+          {isAdmin && staffOptions.length > 0 && (
+            <label className={s.mField}>
+              <span className={s.mLabel}>Staff</span>
+              <select className={s.mSelect} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
+                <option value="">Tout le staff</option>
+                {staffOptions.map(nom => <option key={nom} value={nom}>{nom}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+        <div className={s.mRow}>
+          <label className={s.mField}>
+            <span className={s.mLabel}>Trier par</span>
+            <select className={s.mSelect} value={sortKey} onChange={e => changeSort(e.target.value)}>
+              {SORTS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+            </select>
+          </label>
+          <Button variant="secondary" iconOnly icon={sortDir === 'asc' ? ArrowUp : ArrowDown} className={s.mSortBtn}
+            aria-label={sortDir === 'asc' ? 'Tri croissant, passer en décroissant' : 'Tri décroissant, passer en croissant'}
+            onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}/>
+        </div>
+        {hasFilters && (
+          <Button variant="ghost" icon={X} block onClick={resetFilters}>Réinitialiser les filtres</Button>
+        )}
+      </div>
+
+      {displayTx.length === 0 ? emptyFiltre : (
+        <ul className={s.mList}>
+          {displayTx.slice(0, visible).map(t => {
+            const open = openKey === t._k
+            const tone = TYPE_TONE[t.type] || 'neutral'
+            const quand = t.heure ? String(t.heure).slice(0, 5) : t.date
+            return (
+              <li key={t._k} className={s.mItem}>
+                <button type="button" className={s.mLine} aria-expanded={open}
+                  onClick={() => setOpenKey(open ? null : t._k)}>
+                  <span className={clsx(s.mDot, s[`dot_${tone}`])} aria-hidden="true">{sign(t) || '•'}</span>
+                  <span className={s.mMain}>
+                    <span className={s.mName}>{t.snom}</span>
+                    <span className={s.mSub}>{t.annulee ? 'Annulée · ' : ''}{t.label || '—'}{quand ? ` · ${quand}` : ''}</span>
+                  </span>
+                  <span className={clsx(s.amount, s.mAmount, s[`amt_${tone}`], t.annulee && s.mStruck)}>{sign(t)}{fmt(t.montant || 0)}</span>
+                </button>
+                {open && (
+                  <div className={s.mMore}>
+                    <dl className={s.mKv}>
+                      {t.specId && (<><dt>Compte</dt><dd className={s.mono}>{t.specId}</dd></>)}
+                      <dt>Date</dt><dd>{t.date || '—'}</dd>
+                      <dt>Type</dt>
+                      <dd className={s.mBadges}>
+                        <Badge tone={tone} className={s.mBadge}>{typeLabel(t)}</Badge>
+                        {t.annulee && <Badge tone="neutral" className={s.mBadge}>Annulée</Badge>}
+                      </dd>
+                      <dt>Détail</dt><dd>{t.label || '—'}</dd>
+                      <dt>Staff</dt><dd>{t.staff || '—'}</dd>
+                    </dl>
+                    {Array.isArray(t.items) && t.items.length > 0 && (
+                      <div className={s.mItems}>
+                        {t.items.map((it, idx) => (
+                          <div key={idx} className={s.mItemLine}>
+                            <span>{(it.qty || 1)} × {it.nom || '—'}</span>
+                            <span className={s.tooltipPrice}>{fmt(it.total || (it.prixUnit || it.prix || 0) * (it.qty || 1))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {isAdmin && !(t.annulee || t.annuleTx) && (
+                      <Button variant="danger" icon={Undo2} block
+                        loading={deleting === t._docId} disabled={!!deleting || !t._docId}
+                        onClick={() => { setMotifAnnul(''); setPending(t) }}>Annuler cette transaction</Button>
+                    )}
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </>
+  )
+
   return (
     <div className={s.page}>
+      {mobileView}
       {/* Barre de filtres et de tri */}
-      <div className={s.filters}>
+      {!isMobile && <div className={s.filters}>
         <div className={s.search}>
           <Search size={15} className={s.searchIcon} aria-hidden="true"/>
           <input type="search" value={searchDetail} onChange={e => setSearchDetail(e.target.value)}
@@ -224,14 +344,11 @@ export default function Transactions({ onNavigate }) {
         {hasFilters && (
           <Button variant="ghost" size="sm" icon={X} onClick={resetFilters}>Réinitialiser</Button>
         )}
-      </div>
+      </div>}
 
-      <Table columns={columns} rows={displayTx.slice(0, visible)} rowKey="_k"
+      {!isMobile && <Table columns={columns} rows={displayTx.slice(0, visible)} rowKey="_k"
         sort={{ key: sortKey, dir: sortDir }} onSort={headerSort}
-        empty={(
-          <Empty icon={SearchX} title="Aucune transaction ne correspond aux filtres"
-            action={<Button variant="secondary" onClick={resetFilters}>Réinitialiser les filtres</Button>}/>
-        )}/>
+        empty={emptyFiltre}/>}
 
       {/* Pagination */}
       {(displayTx.length > 10) && (

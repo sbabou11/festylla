@@ -12,7 +12,8 @@ import { AlertTriangle, CheckCircle, Bell, BellOff, ShieldCheck, Settings as Set
 import useAppStore  from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import { fmt } from '../../utils/helpers'
-import { Button, Card, Badge, Stat, Dialog, toast } from '../../ui'
+import { Button, Card, Badge, Stat, Dialog, Sheet, toast } from '../../ui'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import s from './alertes/alertes.module.css'
 import { getSettings, saveSettings } from '../../firebase/service'
 import { friendlyError } from '../../utils/errors'
@@ -137,6 +138,8 @@ function detectAnomalies(spectateurs, logs, reservations, menu = [], SEUILS = DE
     const seuil  = m.seuilAlerte || SEUILS.stockBasSeuilDefaut
     if (stock === 0 && SEUILS.detectRuptureStock) {
       anomalies.push({
+        // Correction (20/11/2026) : chaque alerte de stock a son identifiant, pour s'acquitter une par une
+        id:      `rupture-${m.id || m.nom}`,
         niveau:  'critique',
         titre:   `Rupture de stock — ${m.nom}`,
         detail:  `L'article "${m.nom}" (${m.cat}) est en rupture totale. Impossible de l'acheter ou le réserver.`,
@@ -144,7 +147,8 @@ function detectAnomalies(spectateurs, logs, reservations, menu = [], SEUILS = DE
       })
     } else if (stock > 0 && stock <= seuil && SEUILS.detectStockBas) {
       anomalies.push({
-        niveau:  'warning',
+        id:      `stockbas-${m.id || m.nom}`,
+        niveau:  'attention',   // était 'warning' : jamais compté dans « En attention »
         titre:   `Stock bas — ${m.nom}`,
         detail:  `Il ne reste que ${stock} unité${stock>1?'s':''} de "${m.nom}". Seuil d'alerte : ${seuil}.`,
         emoji:   '⚠️',
@@ -194,6 +198,9 @@ export default function Alertes() {
   const [configOpen, setConfigOpen] = useState(false)
   const [savingConf, setSavingConf] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  // 20/11/2026 — téléphone (moins de 641 px) : disposition en liste + feuille de réglages
+  const { isMobile } = useBreakpoint()
+  const [reglagesOpen, setReglagesOpen] = useState(false)
 
   useEffect(() => {
     if (!currentEventId) return
@@ -275,6 +282,164 @@ export default function Alertes() {
 
   const enAttention = actives.filter(a=>a.niveau==='attention').length
 
+  // 20/11/2026 — contenu du paramétrage des seuils, partagé entre le panneau
+  // (tablette, ordinateur) et la feuille de réglages (téléphone)
+  const configBody = (
+    <>
+    {/* Détections globales (toggles) */}
+    <div className={s.configToggles}>
+      {[
+        ['soldeNegatif',       'Solde négatif',           'Alerte si un compte spectateur passe en négatif'],
+        ['detectTxRapides',    'Transactions rapides',    'Plusieurs paiements en peu de temps'],
+        ['detectDebitEleve',   'Débit élevé unique',      'Une grosse somme débitée en une fois'],
+        ['detectEcartGlobal',  'Écart comptable global',  'Crédits/débits ≠ soldes'],
+        ['detectDoublons',     'Transactions dupliquées', 'Même tx répétée en quelques secondes'],
+        ['detectRuptureStock', 'Rupture de stock',        'Article à 0'],
+        ['detectStockBas',     'Stock bas',               'Article sous son seuil'],
+      ].map(([key, label, desc]) => (
+        <label key={key} className={s.configToggle}>
+          <input type="checkbox" checked={!!seuils[key]}
+            onChange={e => setSeuils(prev => ({ ...prev, [key]: e.target.checked }))}/>
+          <span>
+            <span className={s.configLabel}>{label}</span>
+            <span className={s.configDesc}>{desc}</span>
+          </span>
+        </label>
+      ))}
+    </div>
+
+    {/* Seuils numériques */}
+    <div className={s.configFields}>
+      <SeuilField label="Écart comptable max"
+        suffix="€" value={Math.round(seuils.ecartSoldeMax / 100)}
+        onChange={v => setSeuils(prev => ({ ...prev, ecartSoldeMax: Math.max(0, v) * 100 }))}
+        desc="Tolérance avant alerte d'écart"/>
+      <SeuilField label="Débit élevé à partir de"
+        suffix="€" value={Math.round(seuils.debitEleveSeuil / 100)}
+        onChange={v => setSeuils(prev => ({ ...prev, debitEleveSeuil: Math.max(0, v) * 100 }))}
+        desc="Au-dessus, alerte attention"/>
+      <SeuilField label="Tx rapides — seuil"
+        suffix="tx" value={seuils.txRapides}
+        onChange={v => setSeuils(prev => ({ ...prev, txRapides: Math.max(2, v) }))}
+        desc="Nb d'opérations qui déclenche l'alerte"/>
+      <SeuilField label="Fenêtre tx rapides"
+        suffix="s" value={seuils.txRapidesWindowSec}
+        onChange={v => setSeuils(prev => ({ ...prev, txRapidesWindowSec: Math.max(10, v) }))}
+        desc="Durée pendant laquelle on compte les tx"/>
+      <SeuilField label="Fenêtre doublons"
+        suffix="s" value={seuils.doublonWindowSec}
+        onChange={v => setSeuils(prev => ({ ...prev, doublonWindowSec: Math.max(5, v) }))}
+        desc="Tx identique en moins de X secondes"/>
+      <SeuilField label="Seuil stock bas (défaut)"
+        suffix="u." value={seuils.stockBasSeuilDefaut}
+        onChange={v => setSeuils(prev => ({ ...prev, stockBasSeuilDefaut: Math.max(1, v) }))}
+        desc="Si non défini par article"/>
+    </div>
+    </>
+  )
+
+  const resetDialog = (
+    <Dialog open={confirmReset} onClose={() => setConfirmReset(false)} title="Remettre les seuils par défaut ?"
+      footer={<>
+        <Button variant="secondary" onClick={() => setConfirmReset(false)}>Annuler</Button>
+        <Button variant="danger" onClick={handleResetSeuils}>Remettre par défaut</Button>
+      </>}>
+      Tous les seuils reprennent leurs valeurs d'origine. La modification s'applique à l'enregistrement.
+    </Dialog>
+  )
+
+  // 20/11/2026 — disposition téléphone : compteurs sur une rangée, alertes en liste,
+  // actions rares (son, seuils, tout acquitter) dans une feuille montant du bas.
+  // Mêmes données et mêmes fonctions que la disposition large.
+  if (isMobile) {
+    return (
+      <div className={s.page}>
+        <div className={s.heading}>
+          <h2 className={s.title}>Alertes financières en temps réel</h2>
+          {actives.length>0&&(
+            <span className={s.mCount}>{actives.length} à traiter</span>
+          )}
+        </div>
+
+        <div className={s.mStats}>
+          <div className={clsx(s.mStat, critiques.length > 0 && s.mStatAlert)}>
+            <b>{critiques.length}</b><span>Critiques</span>
+          </div>
+          <div className={s.mStat}><b>{enAttention}</b><span>Attention</span></div>
+          <div className={s.mStat}><b>{acquittees.size}</b><span>Acquittées</span></div>
+        </div>
+
+        {actives.length === 0
+          ? (
+            <div className={s.allClear}>
+              <ShieldCheck size={28} aria-hidden="true"/>
+              <div className={s.allClearTitle}>
+                {anomalies.length > 0 ? 'Toutes les alertes sont acquittées' : 'Aucune anomalie détectée'}
+              </div>
+              <div className={s.allClearSub}>Surveillance active en temps réel</div>
+            </div>
+          )
+          : (
+            <ul className={s.mList}>
+              {actives.map((a, i) => {
+                const crit = a.niveau === 'critique'
+                return (
+                  <li key={a.id || `${a.titre}-${i}`} className={clsx(s.mRow, crit && s.mCrit)}>
+                    <span className={s.mDot} aria-hidden="true">!</span>
+                    <div className={s.mText}>
+                      <span className={s.mSev}>{crit ? 'Critique' : 'Attention'}</span>
+                      <span className={s.mType}>{a.type || a.titre}</span>
+                      <span className={s.mDetail}>{a.detail}</span>
+                      {a.date && <span className={s.mDate}>{a.date}</span>}
+                    </div>
+                    <Button variant="secondary" size="sm" className={s.mTap}
+                      aria-label={`Acquitter : ${a.type || a.titre}`} onClick={()=>acquitter(a.id)}>Acquitter</Button>
+                  </li>
+                )
+              })}
+            </ul>
+          )
+        }
+
+        <Button variant="secondary" block icon={SettingsIcon} aria-haspopup="dialog"
+          onClick={() => setReglagesOpen(true)}>Réglages des alertes</Button>
+
+        <Sheet open={reglagesOpen} onClose={() => setReglagesOpen(false)} title="Réglages des alertes">
+          <div className={s.mSheet}>
+            <button type="button" className={s.mOption} aria-pressed={son} onClick={()=>setSon(v=>!v)}>
+              {son ? <Bell size={18} aria-hidden="true"/> : <BellOff size={18} aria-hidden="true"/>}
+              <span className={s.mOptionText}>Son<small>À chaque nouvelle alerte</small></span>
+              <b>{son ? 'Activé' : 'Coupé'}</b>
+            </button>
+            <button type="button" className={s.mOption} aria-expanded={configOpen} onClick={() => setConfigOpen(v => !v)}>
+              <SettingsIcon size={18} aria-hidden="true"/>
+              <span className={s.mOptionText}>Seuils<small>Détections et seuils de l'événement</small></span>
+              {configOpen ? <ChevronUp size={18} aria-hidden="true"/> : <ChevronDown size={18} aria-hidden="true"/>}
+            </button>
+            {configOpen && (
+              <div className={s.mConfig}>
+                <div className={s.mConfigHead}>
+                  <div className={s.mConfigTitle}>Paramétrer les alertes financières</div>
+                  <div className={s.mConfigSub}>Réglages enregistrés au niveau de l'événement</div>
+                </div>
+                {configBody}
+                <div className={s.mConfigActions}>
+                  <Button variant="ghost" size="sm" className={s.mTap} icon={RotateCcw} onClick={() => setConfirmReset(true)}>Par défaut</Button>
+                  <Button size="sm" className={s.mTap} icon={Save} loading={savingConf} onClick={handleSaveSeuils}>Enregistrer</Button>
+                </div>
+              </div>
+            )}
+            <Button variant="secondary" block icon={CheckCircle} disabled={actives.length === 0}
+              onClick={() => { acquitterTout(); setReglagesOpen(false) }}>Tout acquitter</Button>
+            <Button variant="ghost" block onClick={() => setReglagesOpen(false)}>Fermer</Button>
+          </div>
+        </Sheet>
+
+        {resetDialog}
+      </div>
+    )
+  }
+
   return (
     <div className={s.page}>
       {/* En-tête */}
@@ -311,65 +476,11 @@ export default function Alertes() {
             <Button size="sm" icon={Save} loading={savingConf} onClick={handleSaveSeuils}>Enregistrer</Button>
           </>}
         >
-          {/* Détections globales (toggles) */}
-          <div className={s.configToggles}>
-            {[
-              ['soldeNegatif',       'Solde négatif',           'Alerte si un compte spectateur passe en négatif'],
-              ['detectTxRapides',    'Transactions rapides',    'Plusieurs paiements en peu de temps'],
-              ['detectDebitEleve',   'Débit élevé unique',      'Une grosse somme débitée en une fois'],
-              ['detectEcartGlobal',  'Écart comptable global',  'Crédits/débits ≠ soldes'],
-              ['detectDoublons',     'Transactions dupliquées', 'Même tx répétée en quelques secondes'],
-              ['detectRuptureStock', 'Rupture de stock',        'Article à 0'],
-              ['detectStockBas',     'Stock bas',               'Article sous son seuil'],
-            ].map(([key, label, desc]) => (
-              <label key={key} className={s.configToggle}>
-                <input type="checkbox" checked={!!seuils[key]}
-                  onChange={e => setSeuils(prev => ({ ...prev, [key]: e.target.checked }))}/>
-                <span>
-                  <span className={s.configLabel}>{label}</span>
-                  <span className={s.configDesc}>{desc}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-
-          {/* Seuils numériques */}
-          <div className={s.configFields}>
-            <SeuilField label="Écart comptable max"
-              suffix="€" value={Math.round(seuils.ecartSoldeMax / 100)}
-              onChange={v => setSeuils(prev => ({ ...prev, ecartSoldeMax: Math.max(0, v) * 100 }))}
-              desc="Tolérance avant alerte d'écart"/>
-            <SeuilField label="Débit élevé à partir de"
-              suffix="€" value={Math.round(seuils.debitEleveSeuil / 100)}
-              onChange={v => setSeuils(prev => ({ ...prev, debitEleveSeuil: Math.max(0, v) * 100 }))}
-              desc="Au-dessus, alerte attention"/>
-            <SeuilField label="Tx rapides — seuil"
-              suffix="tx" value={seuils.txRapides}
-              onChange={v => setSeuils(prev => ({ ...prev, txRapides: Math.max(2, v) }))}
-              desc="Nb d'opérations qui déclenche l'alerte"/>
-            <SeuilField label="Fenêtre tx rapides"
-              suffix="s" value={seuils.txRapidesWindowSec}
-              onChange={v => setSeuils(prev => ({ ...prev, txRapidesWindowSec: Math.max(10, v) }))}
-              desc="Durée pendant laquelle on compte les tx"/>
-            <SeuilField label="Fenêtre doublons"
-              suffix="s" value={seuils.doublonWindowSec}
-              onChange={v => setSeuils(prev => ({ ...prev, doublonWindowSec: Math.max(5, v) }))}
-              desc="Tx identique en moins de X secondes"/>
-            <SeuilField label="Seuil stock bas (défaut)"
-              suffix="u." value={seuils.stockBasSeuilDefaut}
-              onChange={v => setSeuils(prev => ({ ...prev, stockBasSeuilDefaut: Math.max(1, v) }))}
-              desc="Si non défini par article"/>
-          </div>
+          {configBody}
         </Card>
       )}
 
-      <Dialog open={confirmReset} onClose={() => setConfirmReset(false)} title="Remettre les seuils par défaut ?"
-        footer={<>
-          <Button variant="secondary" onClick={() => setConfirmReset(false)}>Annuler</Button>
-          <Button variant="danger" onClick={handleResetSeuils}>Remettre par défaut</Button>
-        </>}>
-        Tous les seuils reprennent leurs valeurs d'origine. La modification s'applique à l'enregistrement.
-      </Dialog>
+      {resetDialog}
 
       {/* Stats rapides */}
       <div className={clsx(s.stats, 'yc-stagger')}>

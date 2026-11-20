@@ -91,6 +91,68 @@
 .pwdErr { color: var(--red) !important; }
 .promote { color: var(--purple) !important; border-color: color-mix(in srgb, var(--purple) 40%, transparent) !important; }
 
+/* 20/11/2026 — Équipe sur téléphone (moins de 641 px) : ces classes ne servent qu'à la vue téléphone */
+.mSearch {
+  width: 100%;
+  height: 48px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--border2);
+  border-radius: 99px;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 16px var(--font); /* 16 px : pas de zoom automatique sur iPhone */
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.mSearch::placeholder { color: var(--muted); }
+.mSearch:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
+.mList { display: grid; }
+.mRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+  min-height: 56px;
+  padding: 10px var(--space-4);
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mRow:first-child { border-top: none; }
+.mRow:active { background: var(--bg2); }
+.mRow:focus-visible { outline-offset: -3px; }
+.mAvatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--brand-light);
+  color: var(--brand);
+  font-size: var(--fs-15);
+  font-weight: 800;
+}
+.mAvatar img { width: 100%; height: 100%; object-fit: cover; }
+.mText { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.mName { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-15); font-weight: 600; color: var(--text); }
+.mNameText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mSub { font-size: var(--fs-13); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mNote { font-size: var(--fs-12); font-weight: 600; }
+.mNoteOk { color: var(--brand-dark); }
+.mNoteErr { color: var(--red-dark); }
+.mChev { flex-shrink: 0; color: var(--muted); }
+.mSheet { display: grid; gap: var(--space-3); }
+.mSheetMeta { margin: 0 0 var(--space-1); font-size: var(--fs-15); color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+
 /* Formulaires */
 .form { display: grid; gap: var(--space-4); }
 .field { display: grid; gap: 6px; min-width: 0; }

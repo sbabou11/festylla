@@ -111,3 +111,80 @@
 .annulLabel { font-size: var(--fs-12); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .annulInput { width: 100%; min-height: 44px; padding: 0 12px; border: 1.5px solid var(--border2); border-radius: var(--radius-md); background: var(--bg); color: var(--text); font: 600 var(--fs-15) var(--font); outline: none; }
 .annulInput:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
+
+/* Téléphone (20/11/2026) : une ligne par transaction, dépliable ; filtres en listes déroulantes.
+   Ces classes ne servent que sous 641 px (le composant ne les rend pas au-delà). */
+.mFilters { display: grid; gap: var(--space-3); min-width: 0; }
+.mRow { display: flex; align-items: flex-end; gap: var(--space-2); min-width: 0; }
+.mField { display: grid; gap: var(--space-1); flex: 1 1 0; min-width: 0; }
+.mLabel { font-size: var(--fs-12); font-weight: 600; color: var(--muted); }
+.mSearch { position: relative; display: block; }
+.mInput, .mSelect {
+  width: 100%;
+  min-height: 48px;
+  border: 1.5px solid var(--border2);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: 500 16px var(--font);
+  outline: none;
+}
+.mInput { padding: 0 48px 0 38px; }
+.mSelect { padding: 0 10px; min-width: 0; text-overflow: ellipsis; }
+.mInput:focus, .mSelect:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
+.mInput::-webkit-search-cancel-button { display: none; }
+.mClear {
+  position: absolute; right: 2px; top: 2px;
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border: none; background: none; color: var(--muted); cursor: pointer;
+}
+.mSortBtn.mSortBtn { width: 48px; min-height: 48px; flex: none; }
+
+.mList {
+  list-style: none; margin: 0; padding: 0 var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  min-width: 0;
+}
+.mItem + .mItem { border-top: 1px solid var(--border); }
+.mLine {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; min-height: 60px; padding: var(--space-2) 0;
+  border: none; background: none; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.mLine:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--radius); }
+.mDot {
+  flex: none; width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center;
+  font: 800 var(--fs-18) var(--font-display); line-height: 1;
+  background: var(--bg2); color: var(--muted);
+}
+.dot_brand   { background: var(--green-light); color: var(--green-dark); }
+.dot_danger  { background: var(--coral-light); color: var(--coral-dark); }
+.dot_warning { background: var(--gold-light);  color: var(--gold-dark); }
+.dot_coral   { background: var(--coral-light); color: var(--coral-dark); }
+.dot_neutral { background: var(--bg2); color: var(--muted); }
+.mMain { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.mName { font-size: var(--fs-15); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mSub { font-size: var(--fs-12); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mAmount { flex: none; font-size: var(--fs-15); }
+.mStruck { text-decoration: line-through; }
+
+.mMore { display: grid; gap: var(--space-3); padding: 0 0 var(--space-3) 48px; }
+.mKv { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--fs-13); }
+.mKv dt { color: var(--muted); }
+.mKv dd { margin: 0; text-align: right; font-weight: 600; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
+.mBadges { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-1); }
+.mBadge.mBadge { font-size: var(--fs-12); }
+.mItems { display: grid; gap: 2px; padding-top: var(--space-2); border-top: 1px solid var(--border); font-size: var(--fs-13); }
+.mItemLine { display: flex; justify-content: space-between; gap: var(--space-3); }
+
+@media (max-width: 640px) {
+  /* Pagination et motif d'annulation : cibles de 44 px, saisie en 16 px */
+  .pager button { min-height: 44px; }
+  .annulInput { font-size: 16px; }
+}

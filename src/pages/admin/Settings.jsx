@@ -2,8 +2,8 @@
  * pages/admin/Settings.jsx — v3
  * Super admin : paramètres + exports + réinitialisation complète événement
  */
-import React, { useRef, useState } from 'react'
-import { Download, FileSpreadsheet, Wand2, Save, AlertTriangle, ShieldAlert, Eye, EyeOff, Check, RefreshCw } from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { Download, FileSpreadsheet, Wand2, Save, AlertTriangle, ShieldAlert, Eye, EyeOff, Check, RefreshCw, ChevronRight, ArrowLeft } from 'lucide-react'
 import clsx from 'clsx'
 import DiagnosticTransactions from '../../components/DiagnosticTransactions'
 import FacturationSettings from './settings/FacturationSettings'
@@ -27,6 +27,7 @@ import {
 } from 'firebase/firestore'
 import { saveSettings }          from '../../firebase/service'
 import { useAutosave }           from '../../hooks/useAutosave'
+import { useBreakpoint }         from '../../hooks/useBreakpoint'
 import { Button, Card, Dialog, Field, ProgressButton, SaveStatus, focusFirstInvalid, toast } from '../../ui'
 import s from './settings/settings.module.css'
 
@@ -72,6 +73,41 @@ const EVENT_COL_GROUPS = {
   comm:   { label: '💬 Communication',        desc: 'Notifications, chat, walkie' },
   admin:  { label: '🔧 Administration',       desc: 'Équipe, rôles, audit, paramètres' },
 }
+
+// ── Téléphone (20/11/2026) : rubriques rangées en quatre familles ───────────
+// Sous 641 px, la page d'entrée est la liste de ces rubriques ; en toucher une
+// affiche cette seule rubrique. `si` : condition d'affichage, la même que celle
+// de la carte correspondante (une rubrique absente de la page n'est pas listée).
+const FAMILLES = [
+  ['Événement', [
+    { cle: 'general',      nom: 'Paramètres généraux' },
+    { cle: 'thematiques',  nom: "Thématiques d'exposition", si: 'facturation' },
+    { cle: 'studio',       nom: 'Personnalisation visuelle' },
+  ]],
+  ['Documents', [
+    { cle: 'organisateur', nom: "Coordonnées de l'organisateur", si: 'facturation' },
+    { cle: 'identite',     nom: 'Identité visuelle des PDF',     si: 'facturation' },
+    { cle: 'tva',          nom: 'TVA',                           si: 'facturation' },
+    { cle: 'decharge',     nom: 'Templates de décharge',         si: 'facturation' },
+    { cle: 'facture',      nom: 'Templates de facture',          si: 'facturation' },
+    { cle: 'rapport',      nom: 'Rapport de clôture PDF' },
+  ]],
+  ['Paiement et données', [
+    { cle: 'secours',      nom: 'Paiement : modes de secours', si: 'secours' },
+    { cle: 'export',       nom: 'Export des données' },
+    { cle: 'push',         nom: 'Notifications push' },
+  ]],
+  ['Avancé', [
+    { cle: 'infos',        nom: 'Informations système' },
+    { cle: 'maj',          nom: "Mises à jour de l'app" },
+    { cle: 'diagnostic',   nom: 'Diagnostic transactions' },
+    { cle: 'migration',    nom: 'Migration architecture v2', si: 'migration' },
+    { cle: 'danger',       nom: 'Zone dangereuse : réinitialisation', danger: true },
+  ]],
+]
+
+// Recherche sans tenir compte des accents ni des majuscules
+const simplifier = (txt) => txt.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
 async function resetEventData(eventId, toDelete = []) {
   if (!eventId) throw new Error('Aucun événement sélectionné')
@@ -211,17 +247,80 @@ export default function Settings({ onNavigate }) {
   const title = (Icon, label) => <span className={s.cardTitle}><Icon size={16}/>{label}</span>
   const running = resetStep === 'running'
 
+  // ── Téléphone (20/11/2026) : liste de rubriques, puis une rubrique à la fois ──
+  // Toutes les rubriques restent montées (masquées) : chargements, enregistrements
+  // automatiques et saisies en cours se comportent comme sur la page dépliée.
+  const { isMobile } = useBreakpoint()
+  const [ouverte, setOuverte] = useState(null)
+  const [recherche, setRecherche] = useState('')
+  const pageRef = useRef(null)
+  const dispo = {
+    facturation: !emLinked,
+    secours: ['admin', 'super_admin'].includes(user?.role) && !!currentEventId, // même condition que SecoursSettings
+    migration: !!currentEventId && user?.role === 'super_admin',
+  }
+  const familles = FAMILLES
+    .map(([nom, rubriques]) => [nom, rubriques.filter(r => !r.si || dispo[r.si])])
+    .filter(([, rubriques]) => rubriques.length)
+  const toutes = familles.flatMap(([, rubriques]) => rubriques)
+  const active = isMobile ? (toutes.find(r => r.cle === ouverte) || null) : null
+  const q = simplifier(recherche.trim())
+  const trouvees = familles
+    .map(([nom, rubriques]) => [nom, rubriques.filter(r => simplifier(r.nom).includes(q))])
+    .filter(([, rubriques]) => rubriques.length)
+  // Ordinateur et tablette : la carte telle quelle. Téléphone : un bloc par rubrique.
+  const rub = (cle, node) => isMobile
+    ? <div key={cle} className={s.rub} hidden={active?.cle !== cle}>{node}</div>
+    : node
+  const retour = (
+    <Button variant="secondary" icon={ArrowLeft} block onClick={() => setOuverte(null)}>Retour aux paramètres</Button>
+  )
+  // Changement de vue : on repart du haut de la page
+  const activeCle = active?.cle || null
+  const premierRendu = useRef(true)
+  useEffect(() => {
+    if (premierRendu.current) { premierRendu.current = false; return }
+    if (isMobile) pageRef.current?.scrollIntoView({ block: 'start' })
+  }, [activeCle, isMobile])
+
   return (
-    <div className={clsx(s.page, 'yc-settings-grid')}>
+    <div ref={pageRef} className={clsx(s.page, 'yc-settings-grid')}>
+
+      {/* Téléphone (20/11/2026) : page d'entrée = recherche + liste des rubriques par famille */}
+      {isMobile && !active && (
+        <div className={s.sommaire}>
+          <p className={s.compte}>{toutes.length} rubriques</p>
+          <input type="search" className={s.input} value={recherche} onChange={e => setRecherche(e.target.value)}
+            placeholder="TVA, facture, export" aria-label="Chercher un réglage"/>
+          {trouvees.map(([nom, rubriques]) => (
+            <section key={nom} className={s.famille}>
+              <h2 className={s.familleNom}>{nom}</h2>
+              <div className={s.liste}>
+                {rubriques.map(r => (
+                  <button key={r.cle} type="button" className={clsx(s.ligne, r.danger && s.ligneDanger)}
+                    onClick={() => setOuverte(r.cle)}>
+                    <span>{r.nom}</span>
+                    <ChevronRight size={18} aria-hidden="true"/>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+          {trouvees.length === 0 && (
+            <p className={s.placeholder}>Aucune rubrique ne correspond. Essayez un autre mot.</p>
+          )}
+        </div>
+      )}
+      {active && retour}
 
       {/* Diagnostic notifications push */}
-      <PushDiagnostic/>
+      {rub('push', <PushDiagnostic/>)}
 
       {/* Diagnostic mises à jour de l'app */}
-      <UpdateDiagnostic/>
+      {rub('maj', <UpdateDiagnostic/>)}
 
       {/* Paramètres généraux */}
-      <Card title={title(Save, 'Paramètres généraux')}
+      {rub('general', <Card title={title(Save, 'Paramètres généraux')}
         actions={<SaveStatus status={festAutosave.status} savedAt={festAutosave.savedAt} onRetry={festAutosave.retry}/>}>
         <div className={s.stack}>
           <label className={s.field}>
@@ -230,16 +329,16 @@ export default function Settings({ onNavigate }) {
           </label>
           <p className={s.hint}>Le nom du festival est enregistré automatiquement.</p>
         </div>
-      </Card>
+      </Card>)}
 
       {/* Exposants et facturation (thématiques, organisateur, identité, TVA, templates) */}
-      {!emLinked && <FacturationSettings currentEventId={currentEventId} onNavigate={onNavigate}/>}
+      {!emLinked && <FacturationSettings currentEventId={currentEventId} onNavigate={onNavigate} wrap={rub}/>}
 
       {/* Modes de secours du paiement (20/11/2026) */}
-      <SecoursSettings/>
+      {rub('secours', <SecoursSettings/>)}
 
       {/* Exports */}
-      <Card title={title(Download, 'Export des données')} subtitle="Fichiers préparés à la demande, à partir des données de l'événement.">
+      {rub('export', <Card title={title(Download, 'Export des données')} subtitle="Fichiers préparés à la demande, à partir des données de l'événement.">
         <div className={s.actions}>
           <ProgressButton variant="secondary" icon={Download} runningLabel="Génération…" doneLabel="Export prêt"
             onRun={runExport(exportTransactionsCsv, "L'export des transactions n'a pas abouti.")}>
@@ -254,22 +353,22 @@ export default function Settings({ onNavigate }) {
             Journal d’audit (XLSX)
           </ProgressButton>
         </div>
-      </Card>
+      </Card>)}
 
       {/* Outil de diagnostic transactions */}
-      <Card>
+      {rub('diagnostic', <Card>
         <DiagnosticTransactions/>
-      </Card>
+      </Card>)}
 
       {/* Studio */}
-      <Card className={s.brandCard} title={title(Wand2, 'Personnalisation visuelle')}>
+      {rub('studio', <Card className={s.brandCard} title={title(Wand2, 'Personnalisation visuelle')}>
         <p className={s.text}>
           Ouvrez le <strong>Studio</strong> via le bouton en haut à droite pour personnaliser couleurs, logo, typographie et QR code.
         </p>
-      </Card>
+      </Card>)}
 
       {/* ── MIGRATION V2 — staff/categories/benevoles dans l'événement ── */}
-      {currentEventId && user?.role === 'super_admin' && (
+      {currentEventId && user?.role === 'super_admin' && rub('migration',
         <Card className={s.purpleCard} title={title(RefreshCw, 'Migration architecture v2')}>
           <div className={s.stack}>
             <p className={s.text}>
@@ -294,10 +393,10 @@ export default function Settings({ onNavigate }) {
       )}
 
       {/* ── RAPPORT DE CLÔTURE ── */}
-      <RapportCloture currentEventId={currentEventId}/>
+      {rub('rapport', <RapportCloture currentEventId={currentEventId}/>)}
 
       {/* ── ZONE DANGER — Réinitialisation événement ── */}
-      <Card className={clsx(s.dangerCard, 'yc-settings-wide')} title={title(ShieldAlert, 'Zone dangereuse — Réinitialisation')}>
+      {rub('danger', <Card className={clsx(s.dangerCard, 'yc-settings-wide')} title={title(ShieldAlert, 'Zone dangereuse — Réinitialisation')}>
         <div className={s.stack}>
           <p className={s.text}>
             Supprime définitivement toutes les transactions, réservations et comptes spectateurs. Action irréversible.
@@ -306,10 +405,10 @@ export default function Settings({ onNavigate }) {
             <Button variant="danger" icon={AlertTriangle} onClick={() => setResetOpen(true)}>Réinitialiser l'événement</Button>
           </div>
         </div>
-      </Card>
+      </Card>)}
 
       {/* Infos système */}
-      <Card title="Informations système">
+      {rub('infos', <Card title="Informations système">
         <dl className={s.info}>
           {[
             ['Version',          APP_VERSION_LONG],
@@ -322,7 +421,8 @@ export default function Settings({ onNavigate }) {
             </div>
           ))}
         </dl>
-      </Card>
+      </Card>)}
+      {active && retour}
 
       {/* Confirmation migration v2 */}
       <Dialog

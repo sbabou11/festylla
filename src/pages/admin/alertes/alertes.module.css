@@ -64,3 +64,54 @@
 @media (max-width: 480px) {
   .alertDetail { margin-left: 0; }
 }
+
+/* ── 20/11/2026 — disposition téléphone (moins de 641 px) ──────────────
+   Ces classes ne servent qu'à l'arbre rendu sous 641 px (isMobile) :
+   l'affichage tablette et ordinateur n'est pas touché. */
+.mCount { font-size: var(--fs-12); font-weight: 700; color: var(--red-dark); background: var(--red-light); border-radius: 99px; padding: 2px var(--space-2); }
+
+/* Trois compteurs sur une seule rangée */
+.mStats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
+.mStat { min-width: 0; padding: 10px var(--space-3); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+.mStat b { display: block; font: 800 var(--fs-18) var(--font-display); color: var(--text); font-variant-numeric: tabular-nums; }
+.mStat span { display: block; font-size: var(--fs-12); color: var(--muted); overflow-wrap: anywhere; }
+.mStatAlert { border-color: var(--red); }
+.mStatAlert b { color: var(--red-dark); }
+
+/* Liste : une ligne par alerte */
+.mList { list-style: none; margin: 0; padding: 0 var(--space-3); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+.mRow { --tone: var(--gold-dark); --tone-bg: var(--gold-light); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); padding: var(--space-3) 0; }
+.mRow + .mRow { border-top: 1px solid var(--border); }
+.mCrit { --tone: var(--red-dark); --tone-bg: var(--red-light); }
+.mDot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--tone-bg); color: var(--tone); font-size: var(--fs-15); font-weight: 800; }
+.mText { display: grid; gap: 2px; min-width: 0; }
+.mSev { font-size: var(--fs-12); font-weight: 700; color: var(--tone); text-transform: uppercase; letter-spacing: .04em; }
+.mType { font-size: var(--fs-15); font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+.mDetail { font-size: var(--fs-12); color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
+.mDate { font-size: var(--fs-12); color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Cible tactile de 44 px (sélecteur doublé : passe devant la taille « sm » du bouton) */
+.mTap.mTap { min-height: var(--touch); padding: 0 14px; font-size: var(--fs-13); }
+
+/* Feuille « Réglages des alertes » */
+.mSheet { display: grid; gap: var(--space-3); }
+.mOption { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; padding: var(--space-2) var(--space-3); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text); font: inherit; font-size: var(--fs-15); text-align: left; cursor: pointer; }
+.mOption:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.mOption > svg { flex-shrink: 0; color: var(--muted); }
+.mOption b { font-size: var(--fs-13); color: var(--brand-dark); }
+.mOptionText { flex: 1; min-width: 0; font-weight: 700; }
+.mOptionText small { display: block; margin-top: 2px; font-size: var(--fs-12); font-weight: 400; color: var(--muted); }
+
+/* Seuils dans la feuille : mêmes champs, agrandis pour le doigt */
+.mConfig { display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.mConfigTitle { font-size: var(--fs-15); font-weight: 700; color: var(--text); }
+.mConfigSub { margin-top: 2px; font-size: var(--fs-12); color: var(--muted); }
+.mConfigActions { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+.mConfig .configToggles { grid-template-columns: 1fr; margin-bottom: 0; }
+.mConfig .configToggle { align-items: center; min-height: var(--touch); }
+.mConfig .configToggle input { width: 20px; height: 20px; min-height: 0; margin-top: 0; }
+.mConfig .configLabel { font-size: var(--fs-13); }
+.mConfig .configDesc, .mConfig .stepperSuffix { font-size: var(--fs-12); }
+.mConfig .configFields { grid-template-columns: 1fr; }
+.mConfig .stepper button { width: var(--touch); height: var(--touch); }
+.mConfig .stepper input { width: 64px; height: var(--touch); }

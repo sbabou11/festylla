@@ -14,8 +14,9 @@ import { db } from '../../firebase/config'
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore'
 import {
   Trash2, KeyRound, ShieldCheck, Plus, Pencil,
-  X, Save, Lock, Eye, EyeOff, MailQuestion, Check, Tags,
+  X, Save, Lock, Eye, EyeOff, MailQuestion, Check, Tags, ChevronRight, SearchX,
 } from 'lucide-react'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { Button, Card, Badge, Tabs, Empty, Dialog, Sheet, PasswordStrength, Field, focusFirstInvalid, toast } from '../../ui'
 import s from './staff/staff.module.css'
 
@@ -79,6 +80,9 @@ const DEFAULT_ROLES = {
 
 const initials = (nom) => (nom || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
+// 20/11/2026 — recherche de l'équipe sur téléphone : sans majuscules ni accents
+const norm = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
 // ── Badge de rôle (couleur DATA via --c) ───────────────────────────
 const RoleBadge = ({ nom, couleur }) => (
   <span className={s.roleBadge} style={{ '--c': couleur }}>{nom || 'Aperçu'}</span>
@@ -130,6 +134,11 @@ export default function Staff() {
   const [section, setSection]         = useState('equipe')
   const [resetState, setResetState]   = useState({})
   const [promotingId, setPromotingId] = useState(null)
+
+  // 20/11/2026 — téléphone (moins de 641 px) : une ligne par membre, recherche, feuille d'actions
+  const { isMobile } = useBreakpoint()
+  const [memberQuery, setMemberQuery] = useState('')
+  const [sheetId, setSheetId]         = useState(null) // id du membre dont la feuille d'actions est ouverte
 
   // ── Ajout/édition membre ──────────────────────────────────────────
   const [memberForm, setMemberForm] = useState(null) // null | { nom, email, role, couleur, _docId? }
@@ -354,6 +363,19 @@ export default function Staff() {
     } catch {}
   }
 
+  // 20/11/2026 — téléphone : liste filtrée et membre de la feuille d'actions
+  const visibleStaff = staff.filter(m => isSuperAdmin || m.role !== 'super_admin')
+  const q = norm(memberQuery.trim())
+  const shownStaff = q
+    ? visibleStaff.filter(m => norm(`${m.nom} ${m.username || ''} ${roleInfo(m.role).nom || m.role}`).includes(q))
+    : visibleStaff
+  const sheetMember = isMobile && section === 'equipe' ? visibleStaff.find(m => m.id === sheetId) || null : null
+  const sheetEvents = sheetMember
+    ? (sheetMember.eventIds || []).map(eid => visibleEvents.find(e => e.id === eid)?.nom).filter(Boolean)
+    : []
+  // Ferme la feuille puis lance l'action existante, inchangée
+  const fromSheet = (action) => { const m = sheetMember; setSheetId(null); if (m) action(m) }
+
   const isEditMember = !!(memberForm && (memberForm._docId || memberForm.id))
   const permCount = Object.values(roleForm.permissions).filter(Boolean).length
 
@@ -432,7 +454,8 @@ export default function Staff() {
           { value:'equipe', label:'Équipe' },
           { value:'roles',  label:'Rôles & permissions' },
         ]}/>
-        {section === 'equipe' && (
+        {/* 20/11/2026 — sur téléphone, ce bouton passe sous la liste, en pleine largeur */}
+        {section === 'equipe' && !isMobile && (
           <Button icon={Plus} onClick={openNewMember}>Ajouter un membre</Button>
         )}
         {section === 'roles' && editingRole === null && (
@@ -443,7 +466,74 @@ export default function Staff() {
       {/* ══════════════════════════════════════════════════════
           SECTION ÉQUIPE
       ══════════════════════════════════════════════════════ */}
-      {section === 'equipe' && (
+      {/* 20/11/2026 — téléphone : recherche, une ligne par membre, bouton d'ajout en pleine largeur */}
+      {section === 'equipe' && isMobile && (
+        <>
+          <input type="search" className={s.mSearch} value={memberQuery}
+            onChange={e => setMemberQuery(e.target.value)}
+            placeholder="Nom ou rôle" aria-label="Chercher un membre"
+            autoComplete="off" autoCapitalize="none" spellCheck={false} enterKeyHint="search"/>
+          <Card title={`${staff.length} membre${staff.length>1?'s':''} dans l'équipe`} flush>
+            {shownStaff.length === 0 && q ? (
+              <Empty icon={SearchX} title="Aucun membre ne correspond"
+                action={<Button variant="secondary" onClick={() => setMemberQuery('')}>Effacer la recherche</Button>}>
+                Aucun nom ni rôle ne contient « {memberQuery.trim()} ».
+              </Empty>
+            ) : (
+              <div className={s.mList}>
+                {shownStaff.map(m => {
+                  const ri = roleInfo(m.role)
+                  const rs = resetState[m.id]
+                  return (
+                    <button key={m.id} type="button" className={s.mRow} aria-haspopup="dialog"
+                      onClick={() => setSheetId(m.id)}>
+                      <span className={s.mAvatar}>
+                        {m.avatar ? <img src={m.avatar} alt=""/> : initials(m.nom)}
+                      </span>
+                      <span className={s.mText}>
+                        <span className={s.mName}>
+                          <span className={s.mNameText}>{m.nom}</span>
+                          {m.id === user?.id && <Badge tone="brand">Vous</Badge>}
+                        </span>
+                        <span className={s.mSub}>{m.username ? `@${m.username}` : '—'} · {ri.nom || m.role}</span>
+                        {rs === 'success' && <span className={clsx(s.mNote, s.mNoteOk)}>Mot de passe changé ✓</span>}
+                        {rs === 'error' && <span className={clsx(s.mNote, s.mNoteErr)}>Le mot de passe n'a pas été changé</span>}
+                      </span>
+                      <ChevronRight size={20} className={s.mChev} aria-hidden="true"/>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </Card>
+          <Button icon={Plus} block onClick={openNewMember}>Ajouter un membre</Button>
+        </>
+      )}
+
+      {/* 20/11/2026 — téléphone : feuille d'actions d'un membre (mêmes fonctions que les boutons de la liste) */}
+      <Sheet open={!!sheetMember} onClose={() => setSheetId(null)} title={sheetMember?.nom}>
+        {sheetMember && (
+          <div className={s.mSheet}>
+            <p className={s.mSheetMeta}>
+              {sheetMember.username ? `@${sheetMember.username}` : '—'}
+              {' · '}{roleInfo(sheetMember.role).nom || sheetMember.role}
+              {' · '}{sheetEvents.length ? sheetEvents.join(', ') : 'Aucun événement'}
+            </p>
+            <Button block variant="secondary" icon={Pencil} onClick={() => fromSheet(openEditMember)}>Modifier</Button>
+            <Button block variant="secondary" icon={KeyRound} onClick={() => fromSheet(handleResetPwd)}>Changer le mot de passe</Button>
+            {sheetMember.role !== 'admin' && sheetMember.role !== 'super_admin' && isSuperAdmin && (
+              <Button block variant="secondary" icon={ShieldCheck} className={s.promote}
+                onClick={() => fromSheet(handlePromote)}>Promouvoir</Button>
+            )}
+            {sheetMember.id !== user?.id && (
+              <Button block variant="danger" icon={Trash2} onClick={() => fromSheet(handleDelete)}>Supprimer ce membre</Button>
+            )}
+            <Button block variant="ghost" onClick={() => setSheetId(null)}>Fermer</Button>
+          </div>
+        )}
+      </Sheet>
+
+      {section === 'equipe' && !isMobile && (
         <Card title={`${staff.length} membre${staff.length>1?'s':''} dans l'équipe`} flush>
           <div className={s.members}>
             {staff.filter(m => isSuperAdmin || m.role !== 'super_admin').map(m => {

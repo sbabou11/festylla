@@ -107,7 +107,11 @@ function OrgInput({ label, value, onChange, placeholder }) {
   )
 }
 
-export default function FacturationSettings({ currentEventId, onNavigate }) {
+// wrap (20/11/2026) : sur téléphone, Settings.jsx range chaque rubrique dans son propre bloc
+// (une seule affichée à la fois). Par défaut, rien ne change.
+const sansBloc = (_cle, node) => node
+
+export default function FacturationSettings({ currentEventId, onNavigate, wrap = sansBloc }) {
   // Thématiques d'exposition prédéfinies : [{ id, label, tarif (centimes) }]
   // Coordonnées de l'organisateur : pour génération factures/décharges PDF
   const [expoThematiques, setExpoThematiques] = useState([])
@@ -471,7 +475,7 @@ pour un montant total facturé de {{montantTotal}}.`,
   return (
     <>
       {/* Thématiques d'exposition */}
-      <Card title={cardTitle(Tag, "Thématiques d'exposition")} actions={chip(thmAuto)}
+      {wrap('thematiques', <Card title={cardTitle(Tag, "Thématiques d'exposition")} actions={chip(thmAuto)}
         subtitle="Définissez les types de stands et leurs tarifs. Les exposants sélectionneront une thématique pour un calcul automatique du montant.">
         <div className={s.stack}>
           {!settingsLoaded ? (
@@ -527,10 +531,10 @@ pour un montant total facturé de {{montantTotal}}.`,
             Tarif en euros (ex : <code>250.00</code> pour 250 €). Calcul automatique appliqué lors de la création d'un exposant.
           </p>
         </div>
-      </Card>
+      </Card>)}
 
       {/* Coordonnées de l'organisateur */}
-      <Card title={cardTitle(Building2, "Coordonnées de l'organisateur")} actions={chip(orgAuto)}
+      {wrap('organisateur', <Card title={cardTitle(Building2, "Coordonnées de l'organisateur")} actions={chip(orgAuto)}
         subtitle="Informations utilisées pour générer les factures et décharges (en-tête des PDF).">
         <div className={s.stack}>
           <OrgInput label="Raison sociale" placeholder="Ex : Association Festylla" {...orgField('raisonSociale')}/>
@@ -557,10 +561,10 @@ pour un montant total facturé de {{montantTotal}}.`,
             <OrgInput label="Site web (optionnel)" placeholder="https://festylla.com" {...orgField('siteWeb')}/>
           </div>
         </div>
-      </Card>
+      </Card>)}
 
       {/* Identité visuelle : logo + couleur, réutilisés dans tous les PDF */}
-      <Card title={cardTitle(Palette, 'Identité visuelle des PDF')} actions={chip(identiteAuto)}
+      {wrap('identite', <Card title={cardTitle(Palette, 'Identité visuelle des PDF')} actions={chip(identiteAuto)}
         subtitle="Logo et couleur appliqués automatiquement sur les factures et décharges générées.">
         <div className={s.stack}>
           <div className={s.field}>
@@ -593,10 +597,10 @@ pour un montant total facturé de {{montantTotal}}.`,
             {!colorOk && <p className={s.error}>Code couleur attendu au format #rrggbb : la couleur sera enregistrée une fois complète.</p>}
           </div>
         </div>
-      </Card>
+      </Card>)}
 
       {/* TVA */}
-      <Card title={cardTitle(Receipt, 'TVA')} actions={chip(tvaAuto)}
+      {wrap('tva', <Card title={cardTitle(Receipt, 'TVA')} actions={chip(tvaAuto)}
         subtitle="Activez la TVA si votre structure y est assujettie. Le taux par défaut s'applique à toutes les lignes facturables, sauf override individuel. Si désactivée, la mention d'exonération apparaît automatiquement sur les factures.">
         <div className={s.stack}>
           <label className={s.toggle}>
@@ -643,10 +647,10 @@ pour un montant total facturé de {{montantTotal}}.`,
             </label>
           )}
         </div>
-      </Card>
+      </Card>)}
 
       {/* Templates de décharge : variables {{exposant}}, {{montant}}, {{montantLettres}}, {{montantTotal}} */}
-      <Card className="yc-settings-wide" title={cardTitle(FileText, 'Templates de décharge')}>
+      {wrap('decharge', <Card className="yc-settings-wide" title={cardTitle(FileText, 'Templates de décharge')}>
         <div className={s.stack}>
           <p className={s.text}>
             Modèles de texte réutilisables pour les décharges signées. Variables disponibles dans le texte :
@@ -700,10 +704,10 @@ pour un montant total facturé de {{montantTotal}}.`,
               <Button variant="secondary" icon={Plus} onClick={addTemplate}>Nouveau template</Button>            </div>
           )}
         </div>
-      </Card>
+      </Card>)}
 
       {/* Templates de facture : éditer, dupliquer, exporter, supprimer, définir par défaut */}
-      <Card className="yc-settings-wide" title={cardTitle(FileText, 'Templates de facture')}>
+      {wrap('facture', <Card className="yc-settings-wide" title={cardTitle(FileText, 'Templates de facture')}>
         <div className={s.stack}>
           <p className={s.text}>
             Personnalisez la mise en page de vos factures via l'éditeur visuel
@@ -767,7 +771,7 @@ pour un montant total facturé de {{montantTotal}}.`,
             {' '}Les fichiers exportés (.yllatpl.json) peuvent être réimportés ici ou partagés entre événements.
           </p>
         </div>
-      </Card>
+      </Card>)}
 
       <Dialog open={!!pendingConfirm} onClose={() => setPendingConfirm(null)} title={pendingConfirm?.title}
         footer={<>

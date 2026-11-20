@@ -251,3 +251,55 @@
 .info dt { color: var(--muted); }
 .info dd { margin: 0; color: var(--text); text-align: right; overflow-wrap: anywhere; }
 .mono { font-family: ui-monospace, monospace; }
+
+/* ── Téléphone (20/11/2026) : liste des rubriques, puis une rubrique à la fois ── */
+.rub[hidden] { display: none; }
+.sommaire { display: grid; gap: var(--space-4); }
+.compte { margin: 0; font-size: var(--fs-13); color: var(--muted); }
+.famille { display: grid; gap: var(--space-2); }
+.familleNom { margin: 0; padding-left: var(--space-1); font: 700 var(--fs-12) var(--font); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.liste { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); }
+.ligne {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: 600 var(--fs-15) var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.ligne:last-child { border-bottom: none; }
+.ligne:active { background: var(--bg2); }
+.ligne:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.ligne svg { flex-shrink: 0; color: var(--muted); }
+.ligneDanger, .ligneDanger svg { color: var(--red-dark); }
+
+/* Sous 641 px : écriture des champs à 16 px (sinon l'iPhone zoome), aucun texte
+   sous 12 px, cibles tactiles de 44 px. Les modales sont hors de .page, d'où les
+   classes citées une à une. Rien ne s'applique à partir de 641 px. */
+@media (max-width: 640px) {
+  .page input, .page select, .page textarea,
+  .rapportDialog input, .rapportDialog select, .rapportDialog textarea,
+  .input, .rcInput, .rcInputSm { font-size: max(16px, var(--fs-15)) !important; }
+
+  .label, .hint, .note, .stack code, .note code, .tplMeta, .rememberedSub, .groupDesc, .log,
+  .rapportCount, .rcHeadCount, .rcIntro, .rcSectionDesc, .rcFiltersBtn, .rcQuick, .rcLabel,
+  .rcEmpty, .rcHelp, .rcHelpItalic, .rcCheck, .rcMini, .rcSubLabel, .rcInactiveText,
+  .rcActivate, .rcLink, .rcWarn { font-size: var(--fs-12); }
+
+  .page button, .rapportDialog button { min-height: var(--touch) !important; min-width: var(--touch); }
+  .rcCheck, .logoPick, .checkGroup > .check, .groupItems .check { min-height: var(--touch); }
+  .rcInputNarrow { width: 120px; }
+  /* Thématiques : la colonne du bouton de suppression suit la cible de 44 px */
+  .page .thematique { grid-template-columns: minmax(0, 1fr) 130px var(--touch); }
+}
+@media (max-width: 520px) {
+  .page .thematique { grid-template-columns: 1fr var(--touch) !important; }
+}
