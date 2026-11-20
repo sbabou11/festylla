@@ -10,7 +10,7 @@ import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { Sun, Moon, Palette, WifiOff, Search, X, HandHeart, ArrowLeft } from 'lucide-react'
 import CommandPalette from './components/CommandPalette'
 import './utils/pendingSales' // envoie au démarrage les encaissements restés en attente
-import { ToastViewport, Skeleton } from './ui'
+import { ToastViewport, Skeleton, SessionBanner } from './ui'
 import shell from './App.module.css'
 import NotifBell from './components/NotifBell'
 import EventSelector from './components/EventSelector'
@@ -258,7 +258,7 @@ function UrlSync({ pageId }) {
 }
 
 function StaffApp() {
-  const { user, logout, checkSession, espaceChoisi, setEspaceChoisi: setEspaceStore, canAccessPage: canAccessRole } = useAuthStore()
+  const { user, logout, checkSession, espaceChoisi, setEspaceChoisi: setEspaceStore, canAccessPage: canAccessRole, sessionExpiree } = useAuthStore()
   // Lot D : pages passées dans Event Manager, masquées pour un événement qui y est relié
   const emEvent = useEventStore(st => st.events.find(e => e.id === st.currentEventId))
   const canAccessPage = (pid) => canAccessRole(pid) && !pageRetiree(emEvent, pid)
@@ -474,6 +474,13 @@ function StaffApp() {
               </button>
             </div>
           </header>
+
+          {/* Connexion expirée (20/11/2026) : la base ne répond plus aux écoutes de l'équipe */}
+          {sessionExpiree && (
+            <SessionBanner flush title="Connexion expirée" actionLabel="Me reconnecter" onAction={logout}>
+              Les données ne se mettent plus à jour. Reconnectez-vous pour continuer ; rien n'est perdu.
+            </SessionBanner>
+          )}
 
           {/* Édition archivée consultée : lecture seule */}
           <ArchiveBanner />

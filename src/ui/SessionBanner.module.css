@@ -1,0 +1,17 @@
+/* Bandeau « session expirée » (20/11/2026) : couleurs et rayons de src/index.css uniquement */
+.ban {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--gold-light);
+  color: var(--gold-dark);
+  font-family: var(--font);
+}
+/* Sous la barre du haut de l'équipe : pleine largeur, sans arrondi */
+.flush { border-radius: 0; border-bottom: 1px solid var(--border); }
+.title { font-size: var(--fs-15); font-weight: 700; line-height: 1.3; }
+.text { margin: 0; font-size: var(--fs-13); line-height: 1.45; }
+/* Bouton : au moins 44 px de haut, même si le thème réduit --touch */
+.action { justify-self: start; min-height: max(44px, var(--touch)); margin-top: var(--space-1); }
+@media (max-width: 480px) { .action { justify-self: stretch; } }

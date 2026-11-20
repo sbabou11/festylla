@@ -10,7 +10,7 @@ import useAppStore from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt } from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
-import { Undo2, Receipt, ArrowUp, ArrowDown, Search, SearchX, X } from 'lucide-react'
+import { Undo2, Receipt, ArrowUp, ArrowDown, ArrowUpDown, Search, SearchX, X } from 'lucide-react'
 import { annulerTransaction } from '../../firebase/service'
 import { planAnnulation } from '../../utils/annulationTx'
 import { db } from '../../firebase/config'
@@ -31,6 +31,13 @@ const SORTS = [
   ['label',      'Détail'],
   ['montant',    'Montant'],
   ['staff',      'Staff'],
+]
+// Tablette (20/11/2026) : les quatre colonnes du tableau [clé de tri, libellé, aligné à droite]
+const TAB_COLS = [
+  ['spectateur', 'Spectateur', false],
+  ['label',      'Détail',     false],
+  ['date',       'Date',       false],
+  ['montant',    'Montant',    true],
 ]
 
 const normalize = (str) => (str || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -53,7 +60,8 @@ export default function Transactions({ onNavigate }) {
   const [sortDir, setSortDir]           = useState('desc') // 'asc' | 'desc'
   const [hoverDetail, setHoverDetail]   = useState(null) // { tx, x, y, pinned }
   // Téléphone (20/11/2026) : une ligne par transaction, une seule dépliée à la fois
-  const { isMobile } = useBreakpoint()
+  // Tablette (20/11/2026) : de 641 à 1024 px, quatre colonnes et la même ligne dépliable
+  const { isMobile, isTablet } = useBreakpoint()
   const [openKey, setOpenKey] = useState(null)
 
   const specMap = Object.fromEntries(spectateurs.map(s => [s.id, s.nom]))
@@ -199,6 +207,39 @@ export default function Transactions({ onNavigate }) {
     </Empty>
   )
 
+  // Contenu de la ligne dépliée (20/11/2026), commun au téléphone et à la tablette :
+  // compte, date, type écrit en toutes lettres, détail, staff, articles et annulation.
+  const detailDeplie = (t, tone) => (
+    <>
+      <dl className={s.mKv}>
+        {t.specId && (<><dt>Compte</dt><dd className={s.mono}>{t.specId}</dd></>)}
+        <dt>Date</dt><dd>{t.date || '—'}</dd>
+        <dt>Type</dt>
+        <dd className={s.mBadges}>
+          <Badge tone={tone} className={s.mBadge}>{typeLabel(t)}</Badge>
+          {t.annulee && <Badge tone="neutral" className={s.mBadge}>Annulée</Badge>}
+        </dd>
+        <dt>Détail</dt><dd>{t.label || '—'}</dd>
+        <dt>Staff</dt><dd>{t.staff || '—'}</dd>
+      </dl>
+      {Array.isArray(t.items) && t.items.length > 0 && (
+        <div className={s.mItems}>
+          {t.items.map((it, idx) => (
+            <div key={idx} className={s.mItemLine}>
+              <span>{(it.qty || 1)} × {it.nom || '—'}</span>
+              <span className={s.tooltipPrice}>{fmt(it.total || (it.prixUnit || it.prix || 0) * (it.qty || 1))}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {isAdmin && !(t.annulee || t.annuleTx) && (
+        <Button variant="danger" icon={Undo2} block={isMobile} className={isTablet ? s.tAnnul : undefined}
+          loading={deleting === t._docId} disabled={!!deleting || !t._docId}
+          onClick={() => { setMotifAnnul(''); setPending(t) }}>Annuler cette transaction</Button>
+      )}
+    </>
+  )
+
   // Disposition téléphone (20/11/2026) : mêmes données et mêmes actions que le tableau,
   // le détail complet et l'annulation sont dans la partie dépliée.
   const mobileView = isMobile && (
@@ -270,32 +311,7 @@ export default function Transactions({ onNavigate }) {
                 </button>
                 {open && (
                   <div className={s.mMore}>
-                    <dl className={s.mKv}>
-                      {t.specId && (<><dt>Compte</dt><dd className={s.mono}>{t.specId}</dd></>)}
-                      <dt>Date</dt><dd>{t.date || '—'}</dd>
-                      <dt>Type</dt>
-                      <dd className={s.mBadges}>
-                        <Badge tone={tone} className={s.mBadge}>{typeLabel(t)}</Badge>
-                        {t.annulee && <Badge tone="neutral" className={s.mBadge}>Annulée</Badge>}
-                      </dd>
-                      <dt>Détail</dt><dd>{t.label || '—'}</dd>
-                      <dt>Staff</dt><dd>{t.staff || '—'}</dd>
-                    </dl>
-                    {Array.isArray(t.items) && t.items.length > 0 && (
-                      <div className={s.mItems}>
-                        {t.items.map((it, idx) => (
-                          <div key={idx} className={s.mItemLine}>
-                            <span>{(it.qty || 1)} × {it.nom || '—'}</span>
-                            <span className={s.tooltipPrice}>{fmt(it.total || (it.prixUnit || it.prix || 0) * (it.qty || 1))}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {isAdmin && !(t.annulee || t.annuleTx) && (
-                      <Button variant="danger" icon={Undo2} block
-                        loading={deleting === t._docId} disabled={!!deleting || !t._docId}
-                        onClick={() => { setMotifAnnul(''); setPending(t) }}>Annuler cette transaction</Button>
-                    )}
+                    {detailDeplie(t, tone)}
                   </div>
                 )}
               </li>
@@ -306,11 +322,75 @@ export default function Transactions({ onNavigate }) {
     </>
   )
 
+  // Disposition tablette (20/11/2026) : quatre colonnes sans défilement latéral. Le type est porté
+  // par la pastille et reste écrit dans la partie dépliée ; l'annulation y garde les mêmes conditions.
+  const tabletView = isTablet && (displayTx.length === 0 ? emptyFiltre : (
+    <>
+      <div className={s.tWrap}>
+        <table className={s.tTable}>
+          <thead>
+            <tr>
+              {TAB_COLS.map(([key, label, right]) => {
+                const on = sortKey === key
+                const Arrow = on ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+                return (
+                  <th key={key} scope="col" className={clsx(s[`tCol_${key}`], right && s.tRight)}
+                    aria-sort={on ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                    <button type="button" className={clsx(s.tSort, on && s.tSortOn)} onClick={() => headerSort(key)}>
+                      {label}<Arrow size={14} aria-hidden="true"/>
+                    </button>
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {displayTx.slice(0, visible).map(t => {
+              const open = openKey === t._k
+              const tone = TYPE_TONE[t.type] || 'neutral'
+              return (
+                <React.Fragment key={t._k}>
+                  {/* Toute la ligne se touche ; au clavier, c'est le nom (bouton) qui déplie */}
+                  <tr className={clsx(s.tRow, open && s.tRowOpen)} onClick={() => setOpenKey(open ? null : t._k)}>
+                    <td>
+                      <span className={s.tSpec}>
+                        <span className={clsx(s.mDot, s[`dot_${tone}`])} aria-hidden="true">{sign(t) || '•'}</span>
+                        <button type="button" className={s.tName} aria-expanded={open} aria-controls={`tx-detail-${t._k}`}>
+                          {t.snom}
+                        </button>
+                      </span>
+                    </td>
+                    <td>
+                      <span className={s.tLabel}>{t.label || '—'}</span>
+                      <span className={s.tSub}>{t.annulee ? 'Annulée · ' : ''}{t.staff || '—'}</span>
+                    </td>
+                    <td className={s.tDate}>{t.date}</td>
+                    <td className={s.tRight}>
+                      <span className={clsx(s.amount, s.tAmount, s[`amt_${tone}`], t.annulee && s.mStruck)}>{sign(t)}{fmt(t.montant || 0)}</span>
+                    </td>
+                  </tr>
+                  {open && (
+                    <tr className={s.tMoreRow} id={`tx-detail-${t._k}`}>
+                      <td colSpan={TAB_COLS.length}>
+                        <div className={s.tMore}>{detailDeplie(t, tone)}</div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className={s.muted}>{isAdmin ? 'Touchez une ligne pour voir le compte, le type et annuler.' : 'Touchez une ligne pour voir le compte et le type.'}</p>
+    </>
+  ))
+
   return (
     <div className={s.page}>
       {mobileView}
       {/* Barre de filtres et de tri */}
-      {!isMobile && <div className={s.filters}>
+      {!isMobile && <div className={clsx(s.filters, isTablet && s.tFilters)}>
         <div className={s.search}>
           <Search size={15} className={s.searchIcon} aria-hidden="true"/>
           <input type="search" value={searchDetail} onChange={e => setSearchDetail(e.target.value)}
@@ -332,9 +412,10 @@ export default function Transactions({ onNavigate }) {
           </select>
         )}
         <label className={s.sort}>
-          <span className={s.sortLabel}>Trier par</span>
-          <select className={s.select} value={sortKey} onChange={e => changeSort(e.target.value)}>
-            {SORTS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+          {/* Tablette (20/11/2026) : le libellé passe dans la liste pour tenir sur une ligne */}
+          {!isTablet && <span className={s.sortLabel}>Trier par</span>}
+          <select className={s.select} value={sortKey} onChange={e => changeSort(e.target.value)} aria-label={isTablet ? 'Trier par' : undefined}>
+            {SORTS.map(([val, label]) => <option key={val} value={val}>{isTablet ? `Tri : ${label.toLowerCase()}` : label}</option>)}
           </select>
         </label>
         <Button variant="secondary" size="sm" iconOnly icon={sortDir === 'asc' ? ArrowUp : ArrowDown} className={s.iconBtn}
@@ -342,11 +423,15 @@ export default function Transactions({ onNavigate }) {
           title={sortDir === 'asc' ? 'Tri croissant' : 'Tri décroissant'}
           onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}/>
         {hasFilters && (
-          <Button variant="ghost" size="sm" icon={X} onClick={resetFilters}>Réinitialiser</Button>
+          isTablet
+            ? <Button variant="ghost" size="sm" iconOnly icon={X} className={s.iconBtn} aria-label="Réinitialiser les filtres" title="Réinitialiser les filtres" onClick={resetFilters}/>
+            : <Button variant="ghost" size="sm" icon={X} onClick={resetFilters}>Réinitialiser</Button>
         )}
       </div>}
 
-      {!isMobile && <Table columns={columns} rows={displayTx.slice(0, visible)} rowKey="_k"
+      {tabletView}
+
+      {!isMobile && !isTablet && <Table columns={columns} rows={displayTx.slice(0, visible)} rowKey="_k"
         sort={{ key: sortKey, dir: sortDir }} onSort={headerSort}
         empty={emptyFiltre}/>}
 

@@ -188,3 +188,77 @@
   .pager button { min-height: 44px; }
   .annulInput { font-size: 16px; }
 }
+
+/* Tablette (20/11/2026) : de 641 à 1024 px. Quatre colonnes qui tiennent sans défilement latéral,
+   ligne dépliable, filtres sur une ligne. Ces classes ne sont rendues qu'en tablette. */
+.tFilters { flex-wrap: nowrap; }
+.tFilters .search { flex: 1.5 1 0; min-width: 0; }
+.tFilters .searchInput { min-height: 44px; padding-right: 44px; text-overflow: ellipsis; }
+.tFilters .clear { right: 0; width: 44px; height: 44px; }
+.tFilters .select { flex: 1 1 0; min-width: 0; min-height: 44px; text-overflow: ellipsis; }
+.tFilters .sort { flex: 1 1 0; min-width: 0; }
+.tFilters .sort .select { width: 100%; }
+.tFilters .iconBtn.iconBtn { flex: none; min-width: 44px; min-height: 44px; }
+
+.tWrap {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+.tTable { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-13); }
+.tTable th {
+  padding: 0 var(--space-3);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: var(--fs-12);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+}
+.tTable td { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; overflow-wrap: anywhere; }
+.tTable tbody tr:last-child td { border-bottom: none; }
+.tCol_spectateur { width: 32%; }
+.tCol_date { width: 18%; }
+.tCol_montant { width: 19%; }
+.tTable .tRight { text-align: right; font-variant-numeric: tabular-nums; }
+.tSort {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  min-height: 44px; padding: 0;
+  border: none; background: none; color: inherit;
+  font: inherit; letter-spacing: inherit; text-transform: inherit;
+  cursor: pointer;
+}
+.tSort:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--radius); }
+.tSortOn { color: var(--brand-dark); }
+.tRow { cursor: pointer; }
+.tRow:active td, .tRowOpen td { background: var(--bg2); }
+.tTable .tRowOpen td { border-bottom-color: transparent; }
+.tSpec { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.tName {
+  flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 0;
+  border: none; background: none; color: var(--text);
+  font: 600 var(--fs-13) var(--font); text-align: left; overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.tName:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--radius); }
+.tLabel { display: block; }
+.tSub { display: block; margin-top: 2px; font-size: var(--fs-12); color: var(--muted); }
+.tDate { font-size: var(--fs-12); color: var(--muted); font-variant-numeric: tabular-nums; }
+.tTable td.tDate { color: var(--muted); }
+.tAmount { font-size: var(--fs-15); }
+.tTable .tMoreRow td { background: var(--bg2); padding-top: 0; }
+.tMore { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--space-3) var(--space-4); padding: 0 0 var(--space-2) 44px; }
+.tMore .mKv { flex: 1 1 260px; min-width: 0; }
+.tMore .mKv dd { text-align: left; }
+.tMore .mBadges { justify-content: flex-start; }
+.tMore .mItems { flex: 1 1 100%; }
+.tAnnul.tAnnul { flex: none; min-height: 44px; margin-left: auto; }
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  /* Pagination : cibles de 44 px */
+  .pager button { min-height: 44px; }
+}

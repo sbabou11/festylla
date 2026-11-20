@@ -93,7 +93,7 @@ function openSession(set, compte, method) {
     via: method,
   }
   const token = btoa(JSON.stringify({ id: compte.id, role: userRole, exp: Date.now() + 8 * 3600 * 1000 }))
-  set({ user, token, loginLoading:false, loginError:null, espaceChoisi:'' })
+  set({ user, token, loginLoading:false, loginError:null, espaceChoisi:'', sessionExpiree:false })
   // Auto-sélectionner l'événement du staff si défini
   if (compte.eventId) {
     try {
@@ -128,6 +128,10 @@ const useAuthStore = create(
   persist(
     (set, get) => ({
       user:null, token:null, loginError:null, loginLoading:false, espaceChoisi:'',
+      // Connexion expirée (20/11/2026) : la base a refusé une écoute de l'équipe alors que quelqu'un
+      // est connecté. Jamais gardé sur l'appareil ; remis à zéro à la connexion et à la déconnexion.
+      sessionExpiree:false,
+      signalerSessionExpiree: () => { if (get().user && !get().sessionExpiree) set({ sessionExpiree:true }) },
 
       login: async (username, password) => {
         set({ loginLoading:true, loginError:null })
@@ -200,7 +204,7 @@ const useAuthStore = create(
         const { user } = get()
         // L'audit part encore avec la session, puis la session Firebase est fermée
         const audit = user ? writeAudit('DECONNEXION', { staff: user.nom, role: user.role, userType: user.role === 'benevole' ? 'benevole' : 'staff', label: `Déconnexion de ${user.nom}` }).catch(()=>{}) : Promise.resolve()
-        set({ user:null, token:null, loginError:null, espaceChoisi:'' })
+        set({ user:null, token:null, loginError:null, espaceChoisi:'', sessionExpiree:false })
         audit.finally(() => closeFirebaseSession())
       },
 

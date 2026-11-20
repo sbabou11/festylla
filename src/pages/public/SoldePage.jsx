@@ -31,7 +31,7 @@ import NotifBell from '../../components/NotifBell'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
 import { friendlyError } from '../../utils/errors'
-import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, HoldButton, focusFirstInvalid } from '../../ui'
+import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, HoldButton, SessionBanner, focusFirstInvalid } from '../../ui'
 import { planRemboursement } from '../../utils/remboursementPlan'
 import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../../utils/historiqueSpec'
 import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../utils/dons'
@@ -114,6 +114,8 @@ export default function SoldePage({ demo = null }) {
   const [menu, setMenu]               = useState(demo?.menu || [])
   const [loading, setLoading]         = useState(false)
   const [err, setErr]                 = useState('')
+  // Session expirée (20/11/2026) : la base a refusé de répondre à une écoute du compte
+  const [sessionExpiree, setSessionExpiree] = useState(false)
   const [codeTried, setCodeTried]     = useState(false)
   const [tab, setTab]                 = useState(() => (params.get('recharge') || params.get('annule') ? 'recharger' : 'accueil'))
   const [qtys, setQtys]               = useState({})
@@ -236,6 +238,13 @@ export default function SoldePage({ demo = null }) {
   const clearListeners = () => { unsubsRef.current.forEach(u => u()); unsubsRef.current = [] }
   useEffect(() => () => clearListeners(), [])
 
+  // Session expirée (20/11/2026) : une écoute refusée par la base (session absente ou plus valable)
+  // n'est plus avalée ; on le retient pour l'expliquer au spectateur. Les autres erreurs (réseau,
+  // index manquant) gardent leur comportement d'avant.
+  const refusBase = (e) => {
+    if (e?.code === 'permission-denied' || e?.code === 'unauthenticated') setSessionExpiree(true)
+  }
+
   const findSpec = async (id = inputId.trim().toUpperCase()) => {
     if (!id) return
     setLoading(true); setErr(''); clearListeners()
@@ -249,29 +258,33 @@ export default function SoldePage({ demo = null }) {
       if (snap.empty) { setErr('Aucun compte trouvé pour : ' + id); setLoading(false); return }
       const d = snap.docs[0]
       setSpec(d.data()); setSpecDocId(d.id); setLoading(false)
+      setSessionExpiree(false)   // le compte s'est rouvert : le bandeau disparaît (20/11/2026)
 
       const unsubSpec = onSnapshot(query(specCol(db), where('id','==',id)),
-        snap => { if (!snap.empty) setSpec(snap.docs[0].data()) })
+        snap => { if (!snap.empty) setSpec(snap.docs[0].data()) }, refusBase)
 
       const unsubTx = onSnapshot(
         query(txCol(db), where('specId','==',id), orderBy('createdAt','desc')),
         snap => setTxs(snap.docs.map(x => x.data())),
-        () => onSnapshot(query(txCol(db), where('specId','==',id)),
-          snap => setTxs(snap.docs.map(x => x.data())))
+        (e) => {
+          refusBase(e)
+          return onSnapshot(query(txCol(db), where('specId','==',id)),
+            snap => setTxs(snap.docs.map(x => x.data())), refusBase)
+        }
       )
 
       const unsubResa = onSnapshot(query(resaCol(db), where('specId','==',id)),
-        snap => setResas(snap.docs.map(x => ({ ...x.data(), id: x.id }))))
+        snap => setResas(snap.docs.map(x => ({ ...x.data(), id: x.id }))), refusBase)
 
       const unsubCodes = eventId
         ? onSnapshot(query(collection(db, 'events', eventId, 'codes'), where('specId', '==', id)),
-            snap => setCodes(snap.docs.map(x => x.data())), () => {})
+            snap => setCodes(snap.docs.map(x => x.data())), refusBase)
         : () => {}
 
       const unsubDemandes = eventId
         ? onSnapshot(query(collection(db, 'events', eventId, 'demandes-remboursement'), where('specId', '==', id)),
             snap => setDemandes(snap.docs.map(x => ({ ...x.data(), id: x.id }))
-              .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))), () => {})
+              .sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))), refusBase)
         : () => {}
 
       unsubsRef.current = [unsubSpec, unsubTx, unsubResa, unsubCodes, unsubDemandes]
@@ -578,7 +591,7 @@ export default function SoldePage({ demo = null }) {
   // numéro dans l'adresse) ; il se rouvrira seulement avec son lien
   const logoutSpec = () => {
     const id = spec?.id
-    clearListeners()
+    clearListeners(); setSessionExpiree(false)
     setSpec(null); setInputId(''); setTxs([]); setResas([]); setQtys({}); setCodes([]); setDemandes([]); go('accueil')
     if (!demo && eventId && id) {
       oublierCompte(eventId, id)
@@ -676,6 +689,15 @@ export default function SoldePage({ demo = null }) {
         )}
 
         {spec && (<>
+          {/* Session expirée (20/11/2026) : on le dit, et « Réessayer » relance l'ouverture du compte */}
+          {sessionExpiree && !demo && (
+            <SessionBanner className={sp.sessionBan} title="Votre espace doit être rouvert" actionLabel="Réessayer"
+              variant="secondary" loading={loading} onAction={() => findSpec(spec.id)}>
+              Votre session a expiré. Rouvrez votre espace avec le lien reçu par e-mail avec votre billet, ou réessayez.
+            </SessionBanner>
+          )}
+          {/* « Réessayer » n'a pas abouti : la raison donnée par l'ouverture du compte (20/11/2026) */}
+          {sessionExpiree && !demo && err && <p className={clsx(sp.error, sp.sessionBan)} role="alert">{err}</p>}
           {/* Contenu : animation entre les onglets */}
           <PageTransition pageKey={tab}>
           {/* ── SOLDE ── */}
@@ -732,7 +754,9 @@ export default function SoldePage({ demo = null }) {
                   {txTotal > 0 && <button type="button" className={sp.more} onClick={() => go('historique')}>Tout voir</button>}
                 </header>
                 {txs.length === 0 ? (
-                  <Empty icon={Wallet} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
+                  sessionExpiree && !demo
+                    ? <Empty icon={Wallet} title="Opérations non chargées">Elles réapparaîtront dès que votre espace sera rouvert.</Empty>
+                    : <Empty icon={Wallet} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
                 ) : (
                   <ul className={sp.txList}>{txTriees.slice(0, 3).map((t, i) => <TxRow key={i} t={t} />)}</ul>
                 )}
@@ -800,7 +824,9 @@ export default function SoldePage({ demo = null }) {
                 {totalDonne > 0 && <span>Donné <b>{fmt(totalDonne)}</b></span>}
               </div>
               {txTotal === 0 ? (
-                <Empty icon={Clock} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
+                sessionExpiree && !demo
+                  ? <Empty icon={Clock} title="Opérations non chargées">Elles réapparaîtront dès que votre espace sera rouvert.</Empty>
+                  : <Empty icon={Clock} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
               ) : chartMode ? (
                 <SoldeChart timeline={timeline} maxBal={maxBal} hoverIdx={hoverIdx} setHoverIdx={setHoverIdx}
                   zoom={chartZoom} setZoom={setChartZoom} fmt={fmt} />

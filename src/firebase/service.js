@@ -147,9 +147,11 @@ const notif = async (type, titre, message, extra = {}) => {
 // ════════════════════════════════════════════════════════════════════
 
 export const // Limité à 1000 spectateurs pour la performance
-watchSpectateurs = (callback, evId) =>
+// onError (20/11/2026) : facultatif, appelé si la base refuse l'écoute (session expirée…)
+watchSpectateurs = (callback, evId, onError) =>
   onSnapshot(collection(db, 'events', evId || getEventId(), 'spectateurs'), snap =>
-    callback(snap.docs.map(d => ({ ...d.data(), _docId: d.id })))
+    callback(snap.docs.map(d => ({ ...d.data(), _docId: d.id }))),
+    onError
   )
 
 export const getSpectateur = async (id, evId) => {
@@ -202,13 +204,14 @@ export const updateSpecNom = async (specDocId, nom) => {
 export const addTransaction = async (tx) =>
   addDoc(collection(db, 'events', getEventId(), 'transactions'), { ...tx, date: tx.date || nowStr(), createdAt: serverTimestamp() })
 
-export const watchTransactions = (callback, evId) =>
+export const watchTransactions = (callback, evId, onError) =>
   // Limite à 5000 transactions récentes pour le store temps réel.
   // Note : le rapport de clôture charge l'intégralité des transactions
   // directement depuis Firestore (lecture ponctuelle), il ne dépend pas
   // de cette limite. Voir useRapportCloture.js.
   onSnapshot(query(collection(db, 'events', evId || getEventId(), 'transactions'), orderBy('createdAt', 'desc'), limit(5000)), snap =>
-    callback(snap.docs.map(d => ({ ...d.data(), _docId: d.id })))
+    callback(snap.docs.map(d => ({ ...d.data(), _docId: d.id }))),
+    onError
   )
 
 // ════════════════════════════════════════════════════════════════════
@@ -360,9 +363,10 @@ export const creerReservation = async (specId, specNom, items) => {
   return { id: resaDocId, ...resa }
 }
 
-export const watchReservations = (callback, evId) =>
+export const watchReservations = (callback, evId, onError) =>
   onSnapshot(query(collection(db, 'events', evId || getEventId(), 'reservations'), orderBy('createdAt', 'desc')), snap =>
-    callback(snap.docs.map(d => ({ ...d.data(), id: d.id })))
+    callback(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
+    onError
   )
 
 // Prise en charge : pending → processing
@@ -668,9 +672,10 @@ const checkStockAlertes = async (items) => {
   }
 }
 
-export const watchMenu = (callback, evId) =>
+export const watchMenu = (callback, evId, onError) =>
   onSnapshot(collection(db, 'events', evId || getEventId(), 'menu'), snap =>
-    callback(snap.docs.map(d => ({ ...d.data(), id: d.id })))
+    callback(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
+    onError
   )
 
 export const addMenuItem    = async (item) => {
@@ -789,12 +794,13 @@ export const deleteMenuItemPhoto = async (itemId, evId = null) => {
 // STAFF (global — hors événement)
 // ════════════════════════════════════════════════════════════════════
 
-export const watchStaff = (callback, evId) => {
+export const watchStaff = (callback, evId, onError) => {
   const col = evId
     ? collection(db, 'events', evId, 'staff')
     : collection(db, 'staff') // fallback racine
   return onSnapshot(col, snap =>
-    callback(snap.docs.map(d => ({ ...d.data(), id: d.id })))
+    callback(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
+    onError
   )
 }
 

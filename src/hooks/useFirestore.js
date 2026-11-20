@@ -22,6 +22,22 @@ import {
 } from '../firebase/service'
 import useAppStore   from '../store/useAppStore'
 import useEventStore from '../store/useEventStore'
+import useAuthStore  from '../store/useAuthStore'
+import { waitForSession } from '../firebase/session'
+
+// Connexion expirée (20/11/2026) : une écoute de l'équipe refusée par la base n'est signalée que si
+// la session de l'équipe n'est vraiment plus là (fermée, expirée, remplacée par une autre sur cet
+// appareil). Si la session est toujours valable, le refus vient des droits (événement non autorisé
+// pour cette fiche) : se reconnecter n'y changerait rien, on ne dit rien. Hors ligne, la base ne
+// renvoie pas ces codes : rien n'est signalé non plus.
+const REFUS = ['permission-denied', 'unauthenticated']
+async function sessionEquipePerdue() {
+  const u = await waitForSession()
+  if (!u) return true
+  const r = await u.getIdTokenResult().catch(() => null)
+  if (!r) return false   // jeton illisible (réseau) : dans le doute, pas de bandeau
+  return !(r.claims?.yc && r.claims.type === 'staff')
+}
 
 // enabled : faux tant que personne de l'équipe n'est connecté (sécurité, lot 3 : rien n'est lu avant)
 export function useFirestore({ enabled = true } = {}) {
@@ -60,12 +76,24 @@ export function useFirestore({ enabled = true } = {}) {
       setLoading(false)
     }
 
+    // Connexion expirée (20/11/2026) : écoutes réservées à l'équipe (spectateurs, réservations, carte,
+    // transactions, équipe). Avant, leur refus n'était pas géré : l'écran gardait ses dernières
+    // données, ou restait vide, sans rien dire.
+    let actif = true
+    const refus = (nom) => (e) => {
+      console.warn(`Écoute « ${nom} » refusée :`, e?.code || e)
+      if (!REFUS.includes(e?.code)) return
+      sessionEquipePerdue().then(perdue => {
+        if (actif && perdue) useAuthStore.getState().signalerSessionExpiree()
+      }).catch(() => {})
+    }
+
     const subs = [
-      watchSpectateurs(data => { setSpectateurs(data); markLoaded() }, currentEventId),
-      watchReservations(data  => { setReservations(data); markLoaded() }, currentEventId),
-      watchMenu(data          => { setMenu(data); markLoaded() },         currentEventId),
-      watchTransactions(data  => { setLogs(data); markLoaded() },         currentEventId),
-      watchStaff(data         => { setStaff(data); markLoaded() },        currentEventId),
+      watchSpectateurs(data => { setSpectateurs(data); markLoaded() }, currentEventId, refus('spectateurs')),
+      watchReservations(data  => { setReservations(data); markLoaded() }, currentEventId, refus('reservations')),
+      watchMenu(data          => { setMenu(data); markLoaded() },         currentEventId, refus('menu')),
+      watchTransactions(data  => { setLogs(data); markLoaded() },         currentEventId, refus('transactions')),
+      watchStaff(data         => { setStaff(data); markLoaded() },        currentEventId, refus('staff')),
       watchCategories(data    => { setCategories(data); markLoaded() },   currentEventId),
       watchPlanning(data      => { setPlanning(data); markLoaded() },     currentEventId),
       watchExpositions(data   => { setExpositions(data); markLoaded() },  currentEventId),
@@ -76,7 +104,7 @@ export function useFirestore({ enabled = true } = {}) {
       if (s?.festName) updateTheme({ festName: s.festName === 'YllaTok' ? 'YllaCash' : s.festName })
     }).catch(() => {})
 
-    return () => { clearTimeout(fallback); subs.forEach(u => u?.()) }
+    return () => { actif = false; clearTimeout(fallback); subs.forEach(u => u?.()) }
   }, [currentEventId, enabled])
 
   // Rôles — globaux

@@ -484,3 +484,6 @@ button.rowBtn, button.rowLine { cursor: pointer; }
 .donBody p { font-size: var(--fs-13); line-height: 1.45; }
 .donBody p.muted { font-size: var(--fs-12); }
 .donLink { color: var(--brand); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Session expirée (20/11/2026) : bandeau et message en haut du contenu, dans la grille de .wrap */
+.sessionBan { min-width: 0; }

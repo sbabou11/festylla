@@ -2,6 +2,8 @@
  * Carte de chaleur des ventes : stands ou caissiers en lignes, heures de la journée festival en colonnes
  * Téléphone (moins de 641 px, 20/11/2026) : la carte est remplacée par des barres classées, regroupées
  * par stand ou par heure ; chaque barre se déplie pour montrer le détail croisé (mêmes chiffres).
+ * Tablette (641 à 1024 px, 20/11/2026) : les colonnes d'heures se partagent la largeur de la carte,
+ * les montants des cases sont écrits sans « € » (précisé dans le sous-titre), les noms longs sont tronqués.
  */
 import React, { useMemo, useState } from 'react'
 import { Flame, ChevronDown } from 'lucide-react'
@@ -31,7 +33,7 @@ const hourRange = (h) => {
 const ranked = (list) => list.filter(x => x.value > 0).sort((a, b) => b.value - a.value)
 
 export default function SalesHeatmap() {
-  const { isMobile } = useBreakpoint()
+  const { isMobile, isTablet } = useBreakpoint()
   const [group, setGroup] = useState('stand')
   const { logs } = useAppStore()
   const today = dayStart(Date.now())
@@ -45,6 +47,11 @@ export default function SalesHeatmap() {
   const map = useMemo(() => salesHeatmap(transactions, day, mode), [transactions, day, mode])
   const show = (v) => (mode === 'montant' ? fmt(v) : String(v))
   const short = (v) => (mode === 'montant' ? (v >= 10000 ? Math.round(v / 100) + '€' : (v / 100).toFixed(0) + '€') : String(v))
+  // Tablette (20/11/2026) : même valeur que « short », sans le « € » répété dans chaque case
+  const euros = isTablet && mode === 'montant'
+  const cellText = (v) => (euros ? short(v).replace('€', '') : short(v))
+  // Tablette (20/11/2026) : largeur de la colonne « Total » d'après le plus long total affiché (en caractères)
+  const totalCh = Math.max(6, ...map.rows.map(r => show(r.total).length))
 
   // Barres du téléphone (20/11/2026) : totaux déjà calculés par salesHeatmap, sans nouveau calcul
   const bars = useMemo(() => {
@@ -113,7 +120,8 @@ export default function SalesHeatmap() {
   return (
     <Card
       title="Carte de chaleur des ventes"
-      subtitle={map.peak ? `Pic ${map.peak.label} · ${show(map.peak.value)} · total ${show(map.total)}` : 'Ventes par heure et par stand'}
+      subtitle={(map.peak ? `Pic ${map.peak.label} · ${show(map.peak.value)} · total ${show(map.total)}` : 'Ventes par heure et par stand')
+        + (euros ? ' · montants en euros' : '')}
       actions={measure}
     >
       <div className={s.chips} role="tablist" aria-label="Journée">
@@ -129,10 +137,12 @@ export default function SalesHeatmap() {
         <Empty icon={Flame} title="Aucune vente sur cette journée">Les ventes par heure et par stand s'afficheront ici dès le premier encaissement.</Empty>
       ) : (
         <div className={s.heatWrap}>
-          <table className={s.heat}>
+          {/* Tablette (20/11/2026) : tableau à colonnes partagées ; --heat-cols et --heat-total-ch servent à sa largeur minimale */}
+          <table className={isTablet ? `${s.heat} ${s.heatFit}` : s.heat}
+            style={isTablet ? { '--heat-cols': map.hours.length, '--heat-total-ch': totalCh } : undefined}>
             <thead>
               <tr>
-                <th scope="col" className={s.heatName}>Stand / caissier</th>
+                <th scope="col" className={s.heatName} title={isTablet ? 'Stand / caissier' : undefined}>Stand / caissier</th>
                 {map.hours.map(h => <th key={h.index} scope="col">{h.label}</th>)}
                 <th scope="col" className={s.heatTotal}>Total</th>
               </tr>
@@ -140,14 +150,14 @@ export default function SalesHeatmap() {
             <tbody>
               {map.rows.map(r => (
                 <tr key={r.staff}>
-                  <th scope="row" className={s.heatName}>{r.staff}</th>
+                  <th scope="row" className={s.heatName} title={isTablet ? r.staff : undefined}>{r.staff}</th>
                   {r.values.map((v, i) => {
                     const p = map.max ? Math.round((v / map.max) * 100) : 0
                     return (
                       <td key={i} title={`${r.staff} · ${map.hours[i].label} : ${show(v)}`}
                         style={{ '--heat': `${v ? Math.max(8, p) : 0}%` }}
                         className={p > 55 ? `${s.cell} ${s.cellHot}` : s.cell}>
-                        {v ? short(v) : ''}
+                        {v ? cellText(v) : ''}
                       </td>
                     )
                   })}
