@@ -46,7 +46,7 @@ import { parisNow } from '../../billets/entree'
 import { festDay, quotasDuJour, isEmFiche, dayLabel, nextDay } from '../../em/jour'
 import useAuthStore from '../../store/useAuthStore'
 import { useTheme } from '../../hooks/useTheme'
-import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, SuccessCheck, toast } from '../../ui'
+import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, SuccessCheck, SessionBanner, toast } from '../../ui'
 import s from './benevole/BenevoleApp.module.css'
 
 const BRAND    = 'var(--brand)'
@@ -111,6 +111,19 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const [scanOpen,    setScanOpen]    = useState(false)
   const [pointage,    setPointage]    = useState({ state: 'idle' }) // idle | busy | done | error
   const [now,         setNow]         = useState(Date.now())
+  // Session fermée (20/11/2026) : la base a refusé de répondre à une écoute de cet espace
+  const [sessionFermee, setSessionFermee] = useState(false)
+  // Une écoute refusée par la base (session absente ou remplacée par un autre lien) n'est plus
+  // avalée : on le retient pour l'expliquer au bénévole. Les autres erreurs (réseau, index manquant)
+  // gardent leur comportement d'avant. Jamais en démonstration, ni sans événement (aucune session
+  // de lien n'est alors ouverte, « Réessayer » n'y changerait rien).
+  const refusBase = (e) => {
+    if (demo || !eventId) return
+    if (e?.code === 'permission-denied' || e?.code === 'unauthenticated') setSessionFermee(true)
+  }
+  // « Réessayer » : la page est rechargée, et LinkGate rouvre la session à partir du lien personnel
+  // (clé de l'adresse ou clé retenue par le téléphone). Aucun autre chemin d'ouverture n'est ajouté.
+  const rouvrirEspace = () => window.location.reload()
 
   // Horloge : le ruban et les libellés « dans 20 min » restent à jour
   useEffect(() => {
@@ -148,7 +161,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       : doc(db, 'benevoles', docId)
     const unsub = onSnapshot(ref, snap => {
       if (snap.exists()) setBenev({ ...snap.data(), _id: snap.id })
-    })
+    }, refusBase)
     return unsub
   }, [docId, eventId])
 
@@ -157,23 +170,25 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     if (!eventId || demo) return
     const unsub = onSnapshot(menuCol(), snap => {
       setMenu(snap.docs.map(d => ({ ...d.data(), id: d.id })).filter(m => m.typeConsommation))
-    })
+    }, refusBase)
     return () => unsub()
   }, [eventId])
 
   // Rayons, catégories et codes du bénévole (parcours borne)
   useEffect(() => {
     if (!eventId || demo) return
+    // La carte (réglages de l'événement) est une lecture publique : elle ne peut pas être refusée
+    // pour une question de session, son erreur reste donc ignorée (20/11/2026)
     const offCarte = watchCarte(eventId, setCarte, () => {})
     const offCats = onSnapshot(collection(db, 'events', eventId, 'categories'),
-      snap => setCategories(snap.docs.map(d => ({ ...d.data(), id: d.id }))), () => {})
+      snap => setCategories(snap.docs.map(d => ({ ...d.data(), id: d.id }))), refusBase)
     return () => { offCarte(); offCats() }
   }, [eventId])
   useEffect(() => {
     if (!eventId || !docId || demo) return
     return onSnapshot(query(collection(db, 'events', eventId, 'codes'), where('benevoleId', '==', docId)),
       snap => setCodes(snap.docs.map(d => d.data()).sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''))),
-      () => {})
+      refusBase)
   }, [eventId, docId])
 
   // Liste de tous les bénévoles (pour afficher les noms dans le planning d'auto-inscription)
@@ -182,7 +197,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     // Sécurité, lot 3 : annuaire (prénom, nom, poste) tenu par l'équipe, jamais les fiches complètes
     const unsub = onSnapshot(collection(db, 'events', eventId, 'benevoles-annuaire'), snap => {
       setBenevoles(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    }, () => setBenevoles([]))
+    }, (e) => { setBenevoles([]); refusBase(e) })
     return () => unsub()
   }, [eventId])
 
@@ -199,7 +214,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     if (!docId || !eventId || demo) return
     const unsub = onSnapshot(
       query(resaCol(), where('benevoleId', '==', docId)),
-      snap => setResas(snap.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0)))
+      snap => setResas(snap.docs.map(d => ({ ...d.data(), id: d.id })).sort((a,b) => (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0))),
+      refusBase
     )
     return () => unsub()
   }, [docId, eventId])
@@ -463,6 +479,15 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     : myShifts(shifts, myId).some(x => x.shift.date === parisNow().jour && postsById[x.postId]?.controleBillets))
   const demain = em ? quotasDuJour(benev, nextDay(jour)).droits : null
 
+  // Session fermée (20/11/2026) : ce qui n'a pas pu être chargé est dit, au lieu de barres à zéro
+  const fermee = sessionFermee && !demo
+  const quotasNonCharges = (
+    <div className={s.noSlot}>
+      <b>Quotas non chargés</b>
+      <p>Ils réapparaîtront dès que votre espace sera rouvert.</p>
+    </div>
+  )
+
   const NAV = [
     { id: 'accueil',   label: 'Accueil',  icon: Home },
     ...(canControl ? [{ id: 'entree', label: 'Entrée', icon: Ticket }] : []),
@@ -513,6 +538,14 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       </header>
 
       <main className={s.wrap}>
+        {/* Session fermée (20/11/2026) : on le dit sur tous les onglets ; « Réessayer » recharge la
+            page, ce qui rouvre l'espace à partir du lien personnel */}
+        {fermee && (
+          <SessionBanner className={s.sessionBan} title="Votre espace doit être rouvert" actionLabel="Réessayer"
+            variant="secondary" onAction={rouvrirEspace}>
+            Il a été fermé sur ce téléphone, par exemple parce qu'un autre lien YllaCash y a été ouvert. Réessayez, ou rouvrez votre lien personnel de bénévole.
+          </SessionBanner>
+        )}
         {/* Animation entre les onglets */}
         <PageTransition pageKey={tab}>
         {tab === 'accueil' && (
@@ -609,6 +642,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                   <h2>{em ? 'Mes quotas du jour' : 'Mes quotas'}</h2>
                   <span className={s.muted}>Ce qu'il vous reste</span>
                 </div>
+                {fermee ? quotasNonCharges : (<>
                 <div className={s.bars}>
                   {Object.entries(TYPE_CFG).map(([type, cfg]) => {
                     const max = quotas.droits[type] || 0
@@ -626,6 +660,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                   <p className={s.muted}>Pas de repas ni de boissons prévus aujourd'hui.</p>
                 )}
                 {em && <p className={s.hint}>Valables jusqu'à 6 h du matin. Ce qui n'est pas utilisé ne passe pas au lendemain.</p>}
+                </>)}
               </section>
 
 
@@ -646,9 +681,20 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
               <Button variant="secondary" size="lg" block icon={UtensilsCrossed} onClick={() => setTab('commander')}>Commander mon repas</Button>
               <p className={s.hint}>Présentez votre QR code à la borne pour commander. Le bouton « Mon QR », en haut, l'agrandit.</p>
 
-              <DernieresCommandes resas={resas} setTab={setTab}/>
+              <DernieresCommandes resas={resas} setTab={setTab}
+                nonChargees={fermee ? 'Votre QR bénévole reste utilisable.' : ''}/>
 
               <div className={s.themeRow}><span>Thème clair ou sombre</span><ThemeToggle variant="light" style={{ width: 44, height: 44, minHeight: 0 }}/></div>
+            </>
+          ) : fermee ? (
+            /* Session fermée avant que la fiche soit chargée (20/11/2026) : plus de « Chargement… » sans fin */
+            <>
+              <section className={s.card}>
+                <div className={s.cardHead}><h2>Mes quotas</h2></div>
+                {quotasNonCharges}
+              </section>
+              <DernieresCommandes resas={resas} setTab={setTab}
+                nonChargees="Elles réapparaîtront dès que votre espace sera rouvert."/>
             </>
           ) : (
             <div className={s.loading}>Chargement…</div>
@@ -675,7 +721,17 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           )}
 
         {tab === 'mes-resas' && <MesCodes codes={codes} onCancel={setCancelCode}/>}
-        {tab === 'mes-resas' && (
+        {/* Session fermée (20/11/2026) : une liste vide n'est pas présentée comme « aucune réservation » */}
+        {tab === 'mes-resas' && fermee && resas.length === 0 && (
+          <section className={s.card}>
+            <div className={s.cardHead}><h2>Mes réservations</h2></div>
+            <div className={s.noSlot}>
+              <b>Réservations non chargées</b>
+              <p>Elles réapparaîtront dès que votre espace sera rouvert.</p>
+            </div>
+          </section>
+        )}
+        {tab === 'mes-resas' && !(fermee && resas.length === 0) && (
           <BenevoleResas
             resas={resas} BRAND={BRAND} AMBER={AMBER} AMBER_L={AMBER_L}
             cancelResa={(id, code) => setCancelAsk({ id, code })}
@@ -814,7 +870,8 @@ const fmtResaDate = (r) => {
   return ts.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }) + ' ' + heure
 }
 
-function DernieresCommandes({ resas, setTab }) {
+// nonChargees (20/11/2026) : session fermée, phrase affichée à la place de « Aucune commande »
+function DernieresCommandes({ resas, setTab, nonChargees = '' }) {
   const dernieres = resas.slice(0, 3)
   return (
     <section className={s.card}>
@@ -826,7 +883,12 @@ function DernieresCommandes({ resas, setTab }) {
           </button>
         )}
       </div>
-      {dernieres.length === 0 ? (
+      {dernieres.length === 0 && nonChargees ? (
+        <div className={s.noSlot}>
+          <b>Commandes non chargées</b>
+          <p>{nonChargees}</p>
+        </div>
+      ) : dernieres.length === 0 ? (
         <div className={s.noSlot}>
           <p>Aucune commande pour le moment.</p>
           <Button variant="secondary" size="sm" icon={ShoppingCart} onClick={() => setTab('commander')}>Faire ma première commande</Button>

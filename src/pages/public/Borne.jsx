@@ -167,6 +167,18 @@ export default function Borne() {
   const [carte, setCarte] = useState({ rayons: [], stands: [] })
   const [categories, setCategories] = useState([])
 
+  // ─── Session de la borne perdue (20/11/2026) ──────────────────────────
+  // Quand un administrateur renouvelle le lien de la borne, la session de cette tablette est
+  // révoquée : ses lectures protégées sont alors refusées par la base. On retient ce refus
+  // (jamais une panne de réseau, jamais une lecture publique) pour afficher l'écran
+  // « Borne momentanément indisponible » au lieu d'une carte vide.
+  const [sessionPerdue, setSessionPerdue] = useState(false)
+  // Une validation est en cours dans l'écran affiché (panier ou code) : signalée par cet écran
+  const [validationEnfant, setValidationEnfant] = useState(false)
+  const signalerErreurLecture = useCallback((e) => {
+    if (e?.code === 'permission-denied' || e?.code === 'unauthenticated') setSessionPerdue(true)
+  }, [])
+
   // ─── Initialisation : lecture des params URL ──────────────────────────
   // On lit l'eventId depuis l'URL et on l'installe dans le store/localStorage
   // pour que les appels service.js fonctionnent (getEventId() les utilise).
@@ -203,9 +215,10 @@ export default function Borne() {
     const offCarte = watchCarte(ev, setCarte, e => console.warn('Borne carte:', e.message))
     const offCats = onSnapshot(collection(db, 'events', ev, 'categories'),
       snap => setCategories(snap.docs.map(d => ({ ...d.data(), id: d.id }))),
-      e => console.warn('Borne catégories:', e.message))
+      // Lecture réservée à la session de la borne : un refus signale la session perdue (20/11/2026)
+      e => { console.warn('Borne catégories:', e.message); signalerErreurLecture(e) })
     return () => { offCarte(); offCats() }
-  }, [eventReady])
+  }, [eventReady, signalerErreurLecture])
 
   // ─── Ouverture d'un compte spectateur (20/11/2026) ─────────────────────
   // On ne paie plus avec le code « FY-… » : le serveur vérifie le QR tournant de l'espace (ou le
@@ -313,7 +326,8 @@ export default function Borne() {
   // ─── Lecteur de QR (USB ou Bluetooth, mode clavier) ────────────────────
   // Actif sur l'accueil et l'identification : présenter son QR suffit, même sans toucher l'écran.
   // Ignoré pendant la commande, pour qu'un QR présenté par erreur ne change pas de client.
-  const scanActive = eventReady && !loading && (step === STEP.ACCUEIL || step === STEP.IDENTIFICATION)
+  // Session perdue (20/11/2026) : le lecteur est ignoré, l'écran d'indisponibilité reste affiché.
+  const scanActive = eventReady && !loading && !sessionPerdue && (step === STEP.ACCUEIL || step === STEP.IDENTIFICATION)
   const validateRef = useRef(validateSpec)
   validateRef.current = validateSpec
   const benevRef = useRef(ouvrirBenevole)
@@ -354,6 +368,17 @@ export default function Borne() {
     setStep(STEP.ACCUEIL)
   }, [])
 
+  // ─── Écran « Borne momentanément indisponible » (20/11/2026) ──────────
+  // Règle de sécurité : jamais pendant une validation (identification, commande, code) ni pendant
+  // l'écran du ticket (affichage ou impression). Dans ces cas le parcours se termine normalement ;
+  // l'écran n'apparaît qu'ensuite, au retour à l'accueil ou dès que la validation est finie.
+  const validationEnCours = loading || benevBusy || validationEnfant
+  const ecranSessionPerdue = sessionPerdue && !validationEnCours && step !== STEP.TICKET
+  // L'écran remplace l'étape en cours : on efface aussi le compte et le panier gardés en mémoire
+  useEffect(() => {
+    if (ecranSessionPerdue) resetSession()
+  }, [ecranSessionPerdue, resetSession])
+
   // ─── Rendu selon l'étape ──────────────────────────────────────────────
   // Container plein écran avec couleurs marine/coral identité Maison Ylla
   return (
@@ -369,6 +394,8 @@ export default function Borne() {
     }}>
       {!eventReady ? (
         <ConfigError error={error}/>
+      ) : ecranSessionPerdue ? (
+        <SessionPerdue/>
       ) : step === STEP.ACCUEIL ? (
         <Accueil onStart={() => setStep(STEP.IDENTIFICATION)} onCode={() => setStep(STEP.CODE)} logoUrl={logoUrl} festival={festNom}/>
       ) : step === STEP.CODE ? (
@@ -376,6 +403,7 @@ export default function Borne() {
           onBenevoleCode={(code) => commanderBenevole({ code })}
           onCancel={resetSession}
           onTimeout={resetSession}
+          onOccupe={setValidationEnfant}
           onConfirmed={(resa) => { setLastResa(resa); setStep(STEP.TICKET) }}/>
       ) : step === STEP.IDENTIFICATION ? (
         <Identification
@@ -398,7 +426,8 @@ export default function Borne() {
           benevErr={benevErr}
           onBenevoleCommande={(lignes) => commanderBenevole({ ...(benev.kind === 'artiste' ? { artiste: true } : {}), id: benev.id, cle: benev.cle, lignes }).catch(() => {})}
           carte={carte}
-          categories={categories}/>
+          categories={categories}
+          onErreurLecture={signalerErreurLecture}/>
       ) : step === STEP.PANIER ? (
         <Panier
           spec={spec}
@@ -409,6 +438,8 @@ export default function Borne() {
           onBack={() => setStep(STEP.MENU)}
           onTerminate={resetSession}
           stands={carte.stands}
+          onErreurLecture={signalerErreurLecture}
+          onOccupe={setValidationEnfant}
           onConfirmed={(resa) => {
             setLastResa(resa)
             setStep(STEP.TICKET)
@@ -441,6 +472,62 @@ function ConfigError({ error }) {
       </div>
       <div style={{ fontSize: 13, opacity: 0.5, marginTop: 40, fontFamily: 'monospace' }}>
         URL attendue : /borne?ev=&lt;eventId&gt;
+      </div>
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Écran « Borne momentanément indisponible » (20/11/2026)
+// ════════════════════════════════════════════════════════════════════
+// Affiché quand la session de la borne n'est plus valable (lien renouvelé par un administrateur).
+// Même style que l'accueil. « Réessayer » recharge la page : le lien est alors revérifié.
+function SessionPerdue() {
+  const recharger = () => window.location.reload()
+  return (
+    <div role="alert" style={{
+      height: '100%', display: 'flex',
+      flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: 40, textAlign: 'center', overflowY: 'auto',
+      background: `radial-gradient(60% 60% at 0% 0%, rgba(233,101,47,.22), transparent 70%), radial-gradient(70% 70% at 100% 100%, rgba(0,138,138,.22), transparent 72%), ${COLORS.bg}`,
+      color: COLORS.text,
+    }}>
+      <div aria-hidden="true" style={{
+        width: 96, height: 96, borderRadius: '50%', flexShrink: 0,
+        background: '#FAEED4', color: '#6B4500',
+        display: 'grid', placeItems: 'center', marginBottom: 20,
+        fontSize: 52, fontWeight: 700, lineHeight: 1,
+        fontFamily: "'Bricolage Grotesque', Inter, system-ui, sans-serif",
+      }}>!</div>
+      <div style={{
+        fontSize: 'clamp(30px, 5vw, 44px)',
+        fontWeight: 700, marginBottom: 16, lineHeight: 1.1, letterSpacing: '-.01em',
+        fontFamily: "'Bricolage Grotesque', Inter, system-ui, sans-serif",
+        color: COLORS.text,
+      }}>
+        Borne momentanément indisponible
+      </div>
+      <div style={{ fontSize: 'clamp(16px, 2.2vw, 20px)', color: COLORS.muted, maxWidth: 600, lineHeight: 1.45 }}>
+        Pour commander, adressez-vous au stand ou à la billetterie.
+      </div>
+      <div style={{
+        marginTop: 34, paddingTop: 16, borderTop: `1px solid ${COLORS.border}`,
+        fontSize: 15, color: COLORS.muted, maxWidth: 640, lineHeight: 1.5,
+      }}>
+        <b style={{ color: COLORS.text }}>Pour l'équipe :</b> le lien de cette borne n'est plus valable. Ouvrez le nouveau lien
+        depuis <b style={{ color: COLORS.text }}>Opérations › Borne self-service</b>, sur un téléphone d'administrateur, puis
+        scannez son QR avec cette tablette.
+        <div style={{ marginTop: 20 }}>
+          <button onClick={recharger}
+            style={{
+              minHeight: 48, padding: '0 28px', borderRadius: 99,
+              background: '#fff', color: COLORS.text, border: `1.5px solid ${COLORS.border}`,
+              fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+              WebkitTapHighlightColor: 'transparent',
+            }}>
+            Réessayer
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -736,10 +823,16 @@ function Identification({ onValidated, onCancel, loading, error, secours = false
 // ════════════════════════════════════════════════════════════════════
 // Le client tape son code, voit sa commande, puis touche « Mes tickets » :
 // la commande part déjà payée et le code ne peut plus servir (utiliserCode).
-function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleCode }) {
+function CodeScreen({ onCancel, onTimeout, onConfirmed, stands = [], onBenevoleCode, onOccupe }) {
   const [digits, setDigits] = useState('')
   const [found, setFound] = useState(null)     // contenu du code
   const [busy, setBusy] = useState(false)
+  // Prévient la borne qu'une lecture ou une validation de code est en cours (20/11/2026) :
+  // l'écran « Borne momentanément indisponible » ne doit jamais l'interrompre.
+  useEffect(() => {
+    onOccupe?.(busy)
+    return () => onOccupe?.(false)
+  }, [busy, onOccupe])
   const [error, setError] = useState('')
   const [showWarn, setShowWarn] = useState(false)
   const { idleSec, touchActivity } = useIdleWatcher({
@@ -1082,7 +1175,7 @@ function useIdleWatcher({ warnSec, timeoutSec, onWarn, onTimeout, enabled = true
 // Affiche le solde + les articles du menu, avec ajout/retrait au panier.
 // Filtres catégories. Compteur d'inactivité visible. Bouton Terminer
 // permanent en haut à droite.
-function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, categories, benev = null, benevBusy = false, benevErr = '', onBenevoleCommande }) {
+function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, categories, benev = null, benevBusy = false, benevErr = '', onBenevoleCommande, onErreurLecture }) {
   // Items du menu (chargés en live depuis Firestore)
   const [menu, setMenu] = useState([])
   // Rayon et catégorie affichés (null = le premier)
@@ -1098,9 +1191,13 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
     const unsub = watchMenu((items) => {
       // On filtre les articles désactivés ou hors-vente
       setMenu(items.filter(i => i.actif !== false))
+    }, undefined, (e) => {
+      // Lecture refusée : la session de la borne n'est plus valable (20/11/2026)
+      console.warn('Borne menu:', e.message)
+      onErreurLecture?.(e)
     })
     return () => unsub && unsub()
-  }, [])
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Watcher d'inactivité — déclenche warning à 50s, déconnexion à 60s
   const { idleSec, touchActivity } = useIdleWatcher({
@@ -1603,7 +1700,7 @@ function IdleWarning({ onContinue, secondsLeft }) {
 // La résa n'est PAS débitée du solde du spectateur ici — c'est fait par
 // validerRetrait quand la cuisine remet la commande. Comportement cohérent
 // avec l'espace spectateur existant.
-function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirmed, stands = [], onRefreshSolde }) {
+function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirmed, stands = [], onRefreshSolde, onErreurLecture, onOccupe }) {
   // « J'ai rechargé » : relit le solde du compte, sans recommencer la commande (20/11/2026)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState('')
@@ -1622,12 +1719,22 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
   const [submitting, setSubmitting] = useState(false)
   // Erreur affichée si validation échoue
   const [error, setError] = useState('')
+  // Prévient la borne qu'une validation est en cours (20/11/2026) : l'écran « Borne momentanément
+  // indisponible » ne doit jamais remplacer le panier pendant le paiement.
+  useEffect(() => {
+    onOccupe?.(submitting)
+    return () => onOccupe?.(false)
+  }, [submitting, onOccupe])
 
   // Watcher menu pour avoir les détails des articles (prix, nom)
   useEffect(() => {
-    const unsub = watchMenu(setMenu)
+    const unsub = watchMenu(setMenu, undefined, (e) => {
+      // Lecture refusée : la session de la borne n'est plus valable (20/11/2026)
+      console.warn('Borne menu (panier):', e.message)
+      onErreurLecture?.(e)
+    })
     return () => unsub && unsub()
-  }, [])
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Inactivité — même règle que sur le menu
   const { idleSec, touchActivity } = useIdleWatcher({

@@ -62,6 +62,8 @@
   display: grid;
   gap: var(--space-4);
 }
+/* Bandeau « session fermée » (20/11/2026) : enfant de la grille, ne doit pas l'élargir */
+.sessionBan { min-width: 0; }
 .loading { padding: var(--space-8) 0; text-align: center; color: var(--muted); }
 .hint { margin: -6px 0 0; text-align: center; font-size: var(--fs-12); color: var(--muted); }
 .footer { display: grid; gap: 2px; text-align: center; font-size: var(--fs-11); color: var(--muted); padding-top: var(--space-4); }
