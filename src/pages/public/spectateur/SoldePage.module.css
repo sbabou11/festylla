@@ -1,5 +1,5 @@
 /* Espace spectateur — mobile d'abord, colonne de 520px max, onglets en bas */
-.page { min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--text); font-family: var(--font); }
+.page { min-height: 100vh; min-height: 100dvh; background: var(--page, var(--bg)); color: var(--text); font-family: var(--font); }
 .srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .muted { color: var(--muted); font-size: var(--fs-12); }
 
@@ -9,7 +9,7 @@
   top: 0;
   z-index: 20;
   background: var(--glass, var(--bg));
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  background: color-mix(in srgb, var(--page, var(--bg)) 85%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
   padding-top: env(safe-area-inset-top, 0px);
@@ -125,15 +125,41 @@
 .walletLabel { font-size: var(--fs-11); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
 .walletRow { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-3); }
 .walletValue { font-family: var(--font-display); font-size: clamp(36px, 11vw, 46px); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+/* Refonte téléphone (20/11/2026) : solde et QR centrés, QR en grand, actions sous le QR */
+.wallet { justify-items: center; text-align: center; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-xl); box-shadow: var(--shadow-md); }
+.wallet::after { display: none; }
+.walletLabel { opacity: 1; color: var(--muted); letter-spacing: 0; text-transform: none; font-size: var(--fs-13); font-weight: 600; }
+.walletId { opacity: 1; color: var(--muted); }
+.walletBar { display: block; width: min(168px, 50vw); height: 4px; border-radius: 2px; background: var(--brand-light); overflow: hidden; }
+.walletBar i { display: block; height: 100%; background: var(--brand); transition: width 1s linear; }
+.walletBtns { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: var(--space-2); width: 100%; }
+.walletBtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; border: none; border-radius: 99px; background: var(--brand); color: var(--on-brand); font: 700 var(--fs-15) var(--font); cursor: pointer; }
+.walletBtn:active { transform: scale(.97); }
+.walletBtnGhost { background: transparent; color: var(--text); border: 1px solid var(--border2); }
+.headWho { display: grid; min-width: 0; line-height: 1.15; }
+.headWho b { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-18); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.headWho span { font-size: var(--fs-12); color: var(--muted); }
+.ops { display: grid; gap: var(--space-1); }
+.more { min-height: 44px; padding: 0 4px; border: none; background: none; color: var(--brand); font: 600 var(--fs-13) var(--font); cursor: pointer; }
+.groupTitle { font-size: var(--fs-11); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; }
+.rowBtn, .rowLine { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 56px; padding: 8px 0; border: none; background: none; color: var(--text); font: inherit; text-align: left; }
+button.rowBtn, button.rowLine { cursor: pointer; }
+.rowBtn { padding: 8px 14px; border: 1px solid var(--border2); border-radius: var(--radius-lg); }
+.rowLine + .rowLine { border-top: 1px solid var(--border); }
+.rowIcon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.rowText { flex: 1; min-width: 0; display: grid; }
+.rowText b { font-weight: 600; }
+.rowText span { font-size: var(--fs-12); color: var(--muted); }
+.rowBtn > svg, .rowLine > svg { color: var(--muted); flex-shrink: 0; }
 .walletQr {
   position: relative;
   z-index: 1;
-  width: 76px;
-  height: 76px;
+  width: min(184px, 52vw);
+  height: min(184px, 52vw);
   min-height: 0;
-  padding: 5px;
+  padding: 8px;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   background: #fff;
   cursor: pointer;
   flex-shrink: 0;
@@ -306,8 +332,8 @@
   bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  padding: 0 max(8px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(8px, env(safe-area-inset-left, 0px));
+  grid-template-columns: repeat(5, 1fr);
+  padding: 0 max(4px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(4px, env(safe-area-inset-left, 0px));
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--border);
@@ -329,7 +355,9 @@
 }
 .navOn { color: var(--brand-dark); font-weight: 800; }
 .navIcon { position: relative; display: grid; place-items: center; width: 52px; height: 28px; border-radius: 14px; transition: background var(--dur-base); }
-.navOn .navIcon { background: var(--brand-light); }
+.navOn .navIcon { background: var(--marine); color: var(--bg); }
+.navOn { color: var(--text); }
+.navIcon { width: 40px; height: 40px; border-radius: 13px; }
 .navBadge {
   position: absolute;
   top: -4px;

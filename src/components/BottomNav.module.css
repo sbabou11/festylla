@@ -30,7 +30,8 @@
   transition: color var(--dur-base);
 }
 .item:active .icon { transform: scale(.92); }
-.on { color: var(--brand-dark); }
+.on { color: var(--text); font-weight: 800; }
+.on .icon { color: var(--bg); }
 .icon { position: relative; display: grid; transition: transform var(--dur-base) var(--ease); }
 .on .icon { transform: translateY(-1px); }
 .label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
@@ -56,8 +57,16 @@
   top: 6px;
   left: 0;
   height: 52px;
-  border-radius: var(--radius-lg);
-  background: var(--brand-light);
+  border-radius: 13px;
+  background: var(--marine);
   transition: transform var(--dur-slow) var(--ease), width var(--dur-slow) var(--ease);
   pointer-events: none;
 }
+
+/* Refonte du 20/11/2026 (reperes Ylla Event Manager) : carre arrondi fonce derriere l'icone active, nom en gras */
+.pill { display: none; }
+.icon { width: 40px; height: 40px; place-items: center; border-radius: 13px; }
+.on .icon { background: var(--marine); color: var(--bg); transform: none; }
+.on { color: var(--text); }
+.badge { top: -2px; left: 24px; }
+.item { min-height: 58px; font-size: var(--fs-12); }

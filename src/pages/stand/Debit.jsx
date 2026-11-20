@@ -5,7 +5,7 @@
  * Lot 6 : thème « plein soleil » (préférence de l'appareil) et bandeau de connexion.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Zap, Volume2, VolumeX, Vibrate, Sun, AlertTriangle, RotateCcw, Undo2, CheckCircle2 } from 'lucide-react'
+import { Zap, Volume2, VolumeX, Vibrate, Sun, AlertTriangle, RotateCcw, Undo2, CheckCircle2, ScanLine, ReceiptText } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
@@ -281,7 +281,7 @@ export default function Debit() {
           </div>
         ))}
 
-        <div className={s.layout}>
+        <div className={clsx(s.layout, !prefs.rush && s.layoutArticlesFirst)}>
           <section className={s.catalog} aria-label="Articles">
             {!prefs.rush && cats.length > 1 && (
               <div className={s.cats} role="tablist" aria-label="Catégories">
@@ -307,11 +307,27 @@ export default function Debit() {
         </div>
 
         {/* Mobile : total + encaisser toujours visibles */}
+        {/* Refonte téléphone (20/11/2026) : le bouton du bas suit l'étape de la vente.
+            Le caissier scanne avant ou après avoir choisi les articles, comme avant. */}
         <div className={s.mobileBar}>
-          <div><span>{lines.reduce((a, l) => a + l.qty, 0)} article(s)</span><b>{fmt(total)}</b></div>
-          <button type="button" onClick={() => ticketRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} disabled={!lines.length}>
-            Voir le ticket
-          </button>
+          <div>
+            <span>{client ? `${client.nom || client.id} · ${lines.reduce((a, l) => a + l.qty, 0)} article(s)` : `${lines.reduce((a, l) => a + l.qty, 0)} article(s)`}</span>
+            <b>{fmt(total)}</b>
+          </div>
+          {client && lines.length ? (
+            <button type="button" className={s.mobilePay} onClick={pay}>Encaisser</button>
+          ) : client ? (
+            <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>Choisir les articles</button>
+          ) : (
+            <button type="button" onClick={() => document.querySelector('.' + s.scanCard)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+              <ScanLine size={16} aria-hidden="true" /> Scanner le client
+            </button>
+          )}
+          {lines.length > 0 && (
+            <button type="button" className={s.mobileTicket} onClick={() => ticketRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} aria-label="Voir le ticket">
+              <ReceiptText size={18} aria-hidden="true" />
+            </button>
+          )}
         </div>
       </>)}
 

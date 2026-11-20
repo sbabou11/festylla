@@ -1,7 +1,7 @@
 /* Shell staff : rail à gauche, barre du haut, contenu qui défile seul */
-.app { font-family: var(--font); height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
+.app { font-family: var(--font); height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--page, var(--bg)); }
 .shell { flex: 1; min-height: 0; display: flex; position: relative; }
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--page, var(--bg)); }
 .content { flex: 1; overflow-y: auto; padding: var(--space-4); view-transition-name: page; }
 /* Téléphone : la barre du bas (--bottom-nav) ne doit rien cacher en fin de page */
 @media (max-width: 640px) { .content { padding: var(--space-3) 10px calc(var(--space-4) + var(--bottom-nav, 0px)); } }

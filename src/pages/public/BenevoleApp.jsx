@@ -478,16 +478,26 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       <header className={s.head}>
         <div className={s.headInner}>
           <div className={s.logo}><img src="/logo.png" alt="" onError={e => { e.currentTarget.style.display = 'none' }} /></div>
-          <span className={s.brandName}>YllaCash</span>
-          {eventMeta?.nom && (
-            <span className={s.event}>
-              {eventMeta.logoSrc ? <img src={eventMeta.logoSrc} alt="" /> : <span>{eventMeta.emoji || '🎵'}</span>}
-              {eventMeta.nom}
-            </span>
-          )}
+          {/* Refonte téléphone (20/11/2026) : l'en-tête salue le bénévole et porte le bouton « Mon QR » */}
+          {benev ? (
+            <div className={s.headWho}>
+              <b>Bonjour {benev.prenom || benev.nom}</b>
+              <span>Bénévole{eventMeta?.nom ? ` · ${eventMeta.nom}` : ''}</span>
+            </div>
+          ) : (<>
+            <span className={s.brandName}>YllaCash</span>
+            {eventMeta?.nom && (
+              <span className={s.event}>
+                {eventMeta.logoSrc ? <img src={eventMeta.logoSrc} alt="" /> : <span>{eventMeta.emoji || '🎵'}</span>}
+                {eventMeta.nom}
+              </span>
+            )}
+          </>)}
           <div className={s.headActions}>
             <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}/>
-            <ThemeToggle variant="light" style={{ width: 36, height: 36, minHeight: 0 }}/>
+            {benev
+              ? <button type="button" className={s.headQr} onClick={openQr} aria-label="Afficher mon QR code"><QrCode size={18}/> Mon QR</button>
+              : <ThemeToggle variant="light" style={{ width: 36, height: 36, minHeight: 0 }}/>}
             {onSwitchToStaff && (
               <button type="button" className={s.headBtn} onClick={onSwitchToStaff} title="Basculer vers l'espace staff" aria-label="Basculer vers l'espace staff">
                 <Store size={16}/>
@@ -508,62 +518,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         {tab === 'accueil' && (
           benev ? (
             <>
-              {/* Bonjour + QR */}
-              <section className={s.hello}>
-                <div className={s.helloText}>
-                  <span>Bénévole{em ? ` · ${dayLabel(jour)}` : benev.poste ? ` · ${benev.poste}` : ''}</span>
-                  <h1>Bonjour {benev.prenom || benev.nom}</h1>
-                  <small className={s.helloId}>BNV-{docId?.slice(-6)}</small>
-                </div>
-                <button type="button" className={s.avatar} onClick={openQr} aria-label="Afficher mon QR code">
-                  {initialsOf(benev)}
-                  <span className={s.avatarQr}><QrCode size={12}/></span>
-                </button>
-              </section>
-
-              {/* Commande prête */}
-              {readyResas.length > 0 && (
-                <button type="button" className={s.ready} onClick={() => setTab('mes-resas')}>
-                  <BellRing size={18}/>
-                  <span>
-                    <b>{readyResas.length > 1 ? `${readyResas.length} commandes prêtes` : 'Votre commande est prête'}</b>
-                    <span>Code #{readyResas[0].code} · présentez-vous au stand</span>
-                  </span>
-                  <ChevronRight size={18}/>
-                </button>
-              )}
-
-              {/* Contrôle des billets aujourd'hui (Event Manager) */}
-              {em && canControl && (
-                <button type="button" className={s.ready} onClick={() => setTab('entree')}>
-                  <Ticket size={18}/>
-                  <span>
-                    <b>Vous contrôlez les billets aujourd'hui</b>
-                    <span>Ouvrez l'onglet Entrée pour scanner les billets</span>
-                  </span>
-                  <ChevronRight size={18}/>
-                </button>
-              )}
-
-              {/* Quotas en bocaux */}
-              <section className={s.card}>
-                <div className={s.cardHead}>
-                  <h2>{em ? 'Mes quotas du jour' : 'Mes quotas'}</h2>
-                  <span className={s.muted}>Ce qu'il vous reste</span>
-                </div>
-                <div className={s.jars}>
-                  {Object.entries(TYPE_CFG).map(([type, cfg]) => (
-                    <Jar key={type}
-                      value={quotaRestant(type)}
-                      max={quotas.droits[type] || 0}
-                      label={cfg.label} color={cfg.tone} icon={cfg.icon}/>
-                  ))}
-                </div>
-                {em && !(quotas.droits.repas || quotas.droits.boisson || quotas.droits.eau) && (
-                  <p className={s.muted}>Pas de repas ni de boissons prévus aujourd'hui.</p>
-                )}
-                {em && <p className={s.hint}>Valables jusqu'à 6 h du matin. Ce qui n'est pas utilisé ne passe pas au lendemain.</p>}
-              </section>
+              <p className={s.helloLine}>
+                {em ? dayLabel(jour) : benev.poste ? benev.poste : 'Bénévole'} · <span className={s.helloId}>BNV-{docId?.slice(-6)}</span>
+              </p>
 
               {!em && (<>
               {/* Mon créneau sur le ruban horaire */}
@@ -622,6 +579,56 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
               </>)}
 
+              {/* Commande prête */}
+              {readyResas.length > 0 && (
+                <button type="button" className={s.ready} onClick={() => setTab('mes-resas')}>
+                  <BellRing size={18}/>
+                  <span>
+                    <b>{readyResas.length > 1 ? `${readyResas.length} commandes prêtes` : 'Votre commande est prête'}</b>
+                    <span>Code #{readyResas[0].code} · présentez-vous au stand</span>
+                  </span>
+                  <ChevronRight size={18}/>
+                </button>
+              )}
+
+              {/* Contrôle des billets aujourd'hui (Event Manager) */}
+              {em && canControl && (
+                <button type="button" className={s.ready} onClick={() => setTab('entree')}>
+                  <Ticket size={18}/>
+                  <span>
+                    <b>Vous contrôlez les billets aujourd'hui</b>
+                    <span>Ouvrez l'onglet Entrée pour scanner les billets</span>
+                  </span>
+                  <ChevronRight size={18}/>
+                </button>
+              )}
+
+              {/* Quotas en bocaux */}
+              <section className={s.card}>
+                <div className={s.cardHead}>
+                  <h2>{em ? 'Mes quotas du jour' : 'Mes quotas'}</h2>
+                  <span className={s.muted}>Ce qu'il vous reste</span>
+                </div>
+                <div className={s.bars}>
+                  {Object.entries(TYPE_CFG).map(([type, cfg]) => {
+                    const max = quotas.droits[type] || 0
+                    const v = quotaRestant(type)
+                    return (
+                      <div key={type} className={s.barRow}>
+                        <span className={s.barName}>{cfg.label}</span>
+                        <span className={s.barTrack}><i style={{ width: max ? `${Math.round(v / max * 100)}%` : 0 }}/></span>
+                        <b className={v ? s.barVal : s.barOut}>{max ? (v ? `${v} sur ${max}` : 'Épuisé') : '—'}</b>
+                      </div>
+                    )
+                  })}
+                </div>
+                {em && !(quotas.droits.repas || quotas.droits.boisson || quotas.droits.eau) && (
+                  <p className={s.muted}>Pas de repas ni de boissons prévus aujourd'hui.</p>
+                )}
+                {em && <p className={s.hint}>Valables jusqu'à 6 h du matin. Ce qui n'est pas utilisé ne passe pas au lendemain.</p>}
+              </section>
+
+
               {em && (
                 <section className={s.card}>
                   <div className={s.cardHead}>
@@ -636,10 +643,12 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                 </section>
               )}
 
+              <Button variant="secondary" size="lg" block icon={UtensilsCrossed} onClick={() => setTab('commander')}>Commander mon repas</Button>
+              <p className={s.hint}>Présentez votre QR code à la borne pour commander. Le bouton « Mon QR », en haut, l'agrandit.</p>
+
               <DernieresCommandes resas={resas} setTab={setTab}/>
 
-              <Button size="lg" block icon={UtensilsCrossed} onClick={() => setTab('commander')}>Commander mon repas</Button>
-              <p className={s.hint}>Présentez votre QR code à la borne pour commander. Touchez votre pastille en haut à droite pour l'agrandir.</p>
+              <div className={s.themeRow}><span>Thème clair ou sombre</span><ThemeToggle variant="light" style={{ width: 44, height: 44, minHeight: 0 }}/></div>
             </>
           ) : (
             <div className={s.loading}>Chargement…</div>

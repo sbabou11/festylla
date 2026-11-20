@@ -60,8 +60,14 @@
   transition: border-color var(--dur-base) var(--ease), box-shadow var(--dur-base) var(--ease), transform var(--dur-fast) var(--ease);
   -webkit-tap-highlight-color: transparent;
 }
-.tile:hover { border-color: var(--border2); box-shadow: var(--shadow-md); }
-.tile:active { transform: scale(.98); }
+/* Refonte téléphone (20/11/2026) : actions rapides en deux colonnes, à portée du pouce */
+@media (max-width: 640px) {
+  .tilesQuick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tilesQuick .tile { flex-direction: column; align-items: flex-start; gap: var(--space-2); min-height: 96px; padding: var(--space-3); }
+  .tilesQuick .tileText b { white-space: normal; }
+  .tilesQuick .chev { display: none; }
+}
+@media (hover: hover) { .tile:hover { border-color: var(--border2); box-shadow: var(--shadow-md); } }.tile:active { transform: scale(.98); }
 .tile:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .tileIcon { width: 40px; height: 40px; border-radius: var(--radius-md); display: grid; place-items: center; flex-shrink: 0; }
 .tileText { flex: 1; min-width: 0; display: grid; gap: 1px; }

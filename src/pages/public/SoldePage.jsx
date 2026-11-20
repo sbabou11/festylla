@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
   Search, Wallet, Clock, Bookmark, LayoutList, BarChart2, CalendarDays, UtensilsCrossed,
-  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote, Heart,
+  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote, Heart, UserRound,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
@@ -624,8 +624,9 @@ export default function SoldePage({ demo = null }) {
   const NAV = [
     { id: 'accueil',      label: 'Solde',     icon: Wallet,          match: ['accueil', 'historique', 'recharger', 'rembourser'] },
     { id: 'reserver',     label: 'Commander', icon: UtensilsCrossed, match: ['reserver'] },
-    { id: 'reservations', label: 'Mes résas', icon: Bookmark,        match: ['reservations'], badge: activeResas.length + codesAttente.length },
+    { id: 'reservations', label: 'Résas',     icon: Bookmark,        match: ['reservations'], badge: activeResas.length + codesAttente.length },
     { id: 'programme',    label: 'Programme', icon: CalendarDays,    match: ['programme'], badge: nonLuPlanning },
+    { id: 'compte',       label: 'Compte',    icon: UserRound,       match: ['compte'] },
   ]
 
   return (
@@ -634,13 +635,21 @@ export default function SoldePage({ demo = null }) {
       <header className={sp.head}>
         <div className={sp.headInner}>
           <div className={sp.logo}><img src="/logo.png" alt="" onError={e => { e.currentTarget.style.display = 'none' }} /></div>
-          <span className={sp.brandName}>YllaCash</span>
-          {eventMeta && (
-            <span className={sp.event}>
-              {eventMeta.logoSrc && <img src={eventMeta.logoSrc} alt="" />}
-              {eventMeta.nom}
-            </span>
-          )}
+          {/* Refonte téléphone (20/11/2026) : une fois le compte ouvert, l'en-tête salue le spectateur */}
+          {spec ? (
+            <div className={sp.headWho}>
+              <b>Salut {(spec.nom || '').split(' ')[0] || 'à toi'}</b>
+              <span>{eventMeta?.nom || 'Festival'}</span>
+            </div>
+          ) : (<>
+            <span className={sp.brandName}>YllaCash</span>
+            {eventMeta && (
+              <span className={sp.event}>
+                {eventMeta.logoSrc && <img src={eventMeta.logoSrc} alt="" />}
+                {eventMeta.nom}
+              </span>
+            )}
+          </>)}
           <div className={sp.headActions}>
             {fromArtiste && artisteCreneauId && eventId && (
               <button type="button" className={sp.headBtn} title="Retour à mon espace artiste" aria-label="Retour à mon espace artiste"
@@ -649,7 +658,7 @@ export default function SoldePage({ demo = null }) {
               </button>
             )}
             {spec && <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu} />}
-            <ThemeToggle variant="light" style={{ width: 36, height: 36, minHeight: 0 }} />
+            {!spec && <ThemeToggle variant="light" style={{ width: 36, height: 36, minHeight: 0 }} />}
           </div>
         </div>
       </header>
@@ -672,34 +681,33 @@ export default function SoldePage({ demo = null }) {
           {/* ── SOLDE ── */}
           {tab === 'accueil' && (
             <div className={sp.stack}>
-              <div className={sp.hello}>
-                <div>
-                  <span>{eventMeta?.nom || 'Festival'}</span>
-                  <h1>Salut {(spec.nom || '').split(' ')[0] || 'à toi'}</h1>
-                </div>
-                <button type="button" className={sp.switch} onClick={logoutSpec}>Changer de compte</button>
-              </div>
-
+              {/* Refonte téléphone (20/11/2026) : le QR de paiement est l'élément central de l'accueil */}
               <section className={sp.wallet} aria-label="Mon solde">
                 <span className={sp.walletLabel}>Mon solde</span>
-                <div className={sp.walletRow}>
-                  <b className={sp.walletValue}><AnimatedNumber value={spec.solde || 0} format={fmt} /></b>
-                  {qrDataUrl && !billetAnnule && (
-                    <button type="button" className={sp.walletQr} onClick={openQr} aria-label="Agrandir mon QR code de paiement">
-                      <img src={qrDataUrl} alt="" />
-                      <Maximize2 size={12} className={sp.walletQrIcon} aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
+                <b className={sp.walletValue}><AnimatedNumber value={spec.solde || 0} format={fmt} /></b>
+                {qrDataUrl && !billetAnnule && (
+                  <button type="button" className={sp.walletQr} onClick={openQr} aria-label="Agrandir mon QR code de paiement">
+                    <img src={qrDataUrl} alt="" />
+                  </button>
+                )}
                 <span className={sp.walletId}>
                   {billetAnnule
                     ? 'Billet annulé : ce compte ne permet plus de payer.'
                     : qrDataUrl
-                      ? `QR de paiement · change dans ${qrReste} s · touchez-le pour l'agrandir à la borne`
+                      ? `Montrez ce QR pour payer · nouveau dans ${qrReste} s`
                       : 'Pour afficher votre QR de paiement, rouvrez votre espace avec le lien reçu par e-mail.'}
                 </span>
+                {qrDataUrl && !billetAnnule && (
+                  <span className={sp.walletBar} aria-hidden="true"><i style={{ width: `${Math.round(qrReste / 30 * 100)}%` }} /></span>
+                )}
                 {secours && !billetAnnule && (
                   <span className={sp.secours}>Scanner en panne ? Tapez ce code à la borne : <b>{secours.code}</b></span>
+                )}
+                {!billetAnnule && (
+                  <div className={sp.walletBtns}>
+                    <button type="button" className={sp.walletBtn} onClick={() => { setRechargeErr(''); go('recharger') }}><Plus size={16} aria-hidden="true" /> Recharger</button>
+                    {qrDataUrl && <button type="button" className={clsx(sp.walletBtn, sp.walletBtnGhost)} onClick={openQr}><Maximize2 size={16} aria-hidden="true" /> Agrandir le QR</button>}
+                  </div>
                 )}
               </section>
 
@@ -714,61 +722,65 @@ export default function SoldePage({ demo = null }) {
                 </button>
               ))}
 
-              <div className={sp.actions}>
-                <button type="button" className={sp.action} onClick={() => go('reserver')}>
-                  <span className={clsx(sp.actionIcon, sp.coral)}><UtensilsCrossed size={18} /></span>Commander
-                </button>
-                <button type="button" className={sp.action} onClick={() => go('reservations')}>
-                  <span className={clsx(sp.actionIcon, sp.warning)}><Bookmark size={18} /></span>Mes résas
-                </button>
-                <button type="button" className={sp.action} onClick={() => go('programme')}>
-                  <span className={clsx(sp.actionIcon, sp.brand)}><CalendarDays size={18} /></span>Programme
-                </button>
-              </div>
-              {billetAnnule ? (<>
+              {billetAnnule && (
                 <p className={sp.info}>Votre billet a été annulé. Ce compte ne peut plus être rechargé ni servir à payer.{(spec.solde || 0) > 0 ? ' Votre solde vous reste dû : demandez-en le remboursement.' : ''}</p>
-                {(demandeEnCours || (spec.solde || 0) > 0) && (
-                  <Button variant="coral" size="lg" block onClick={() => { setRembErr(''); go('rembourser') }}>
-                    {demandeEnCours ? 'Suivre ma demande de remboursement' : 'Me faire rembourser mon solde'}
-                  </Button>
-                )}
-                <Button size="lg" block icon={CreditCard} disabled>Recharger mon solde</Button>
-              </>) : (<>
-              {/* Recharge en ligne par Stripe (19/11/2026) */}
-              <Button variant="coral" size="lg" block icon={CreditCard} onClick={() => { setRechargeErr(''); go('recharger') }}>Recharger mon solde</Button>
-              <p className={sp.topup}><Ticket size={14} aria-hidden="true" /> Carte, Apple Pay ou Google Pay · ou à la billetterie</p>
-              </>)}
-              {!billetAnnule && (demandeEnCours || (spec.solde || 0) > 0) && (
-                <button type="button" className={sp.rembLink} onClick={() => { setRembErr(''); go('rembourser') }}>
-                  {demandeEnCours ? 'Suivre ma demande de remboursement' : 'Demander le remboursement de mon solde'}
-                </button>
               )}
 
-              <section className={sp.card}>
+              <section className={sp.ops}>
                 <header className={sp.cardHead}>
                   <h2>Dernières opérations</h2>
-                  <Tabs size="sm" label="Affichage" value={chartMode ? 'graph' : 'list'} onChange={v => setChartMode(v === 'graph')}
-                    items={[{ value: 'list', label: 'Liste' }, { value: 'graph', label: 'Graphe' }]} />
+                  {txTotal > 0 && <button type="button" className={sp.more} onClick={() => go('historique')}>Tout voir</button>}
                 </header>
-                <div className={sp.totals}>
-                  <span>Rechargé <b className={sp.successText}>{fmt(totalRecharge)}</b></span>
-                  <span>Dépensé <b className={sp.coralText}>{fmt(totalDepense)}</b></span>
-                  {totalRembourse > 0 && <span>Remboursé <b>{fmt(totalRembourse)}</b></span>}
-                  {totalDonne > 0 && <span>Donné <b>{fmt(totalDonne)}</b></span>}
-                </div>
                 {txs.length === 0 ? (
                   <Empty icon={Wallet} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
-                ) : chartMode ? (
-                  <SoldeChart timeline={timeline} maxBal={maxBal} hoverIdx={hoverIdx} setHoverIdx={setHoverIdx}
-                    zoom={chartZoom} setZoom={setChartZoom} fmt={fmt} />
                 ) : (
-                  <>
-                    <ul className={sp.txList}>{txTriees.slice(0, 5).map((t, i) => <TxRow key={i} t={t} />)}</ul>
-                    {txTotal > 5 && (
-                      <Button variant="secondary" block onClick={() => go('historique')}>Tout l'historique ({txTotal})</Button>
-                    )}
-                  </>
+                  <ul className={sp.txList}>{txTriees.slice(0, 3).map((t, i) => <TxRow key={i} t={t} />)}</ul>
                 )}
+              </section>
+
+              {/* Remboursement : gardé sur l'accueil à la demande de l'organisateur (20/11/2026) */}
+              {(demandeEnCours || (spec.solde || 0) > 0) && (
+                <button type="button" className={sp.rowBtn} onClick={() => { setRembErr(''); go('rembourser') }}>
+                  <span className={clsx(sp.rowIcon, sp.coral)}><Undo2 size={17} aria-hidden="true" /></span>
+                  <span className={sp.rowText}>
+                    <b>{demandeEnCours ? 'Suivre ma demande de remboursement' : 'Me faire rembourser mon solde'}</b>
+                    {limiteTxt && !rembClos && <span>Possible jusqu'au {limiteTxt}</span>}
+                  </span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── COMPTE (refonte téléphone, 20/11/2026) ── */}
+          {tab === 'compte' && (
+            <div className={sp.stack}>
+              <section>
+                <h2 className={sp.groupTitle}>Mon argent</h2>
+                <button type="button" className={sp.rowLine} onClick={() => go('historique')}>
+                  <span className={clsx(sp.rowIcon, sp.brand)}><Clock size={17} aria-hidden="true" /></span>
+                  <span className={sp.rowText}><b>Tout l'historique</b><span>{txTotal} opération{txTotal > 1 ? 's' : ''}</span></span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+                {!rembClos && !demandeEnCours && soldeDon >= DON_MIN && (
+                  <button type="button" className={sp.rowLine} onClick={() => { setRembErr(''); go('rembourser') }}>
+                    <span className={clsx(sp.rowIcon, sp.coral)}><Heart size={17} aria-hidden="true" /></span>
+                    <span className={sp.rowText}><b>Donner à l'ONG Ylla</b><span>Lutte contre le cancer du sein</span></span>
+                    <ChevronRight size={18} aria-hidden="true" />
+                  </button>
+                )}
+              </section>
+              <section>
+                <h2 className={sp.groupTitle}>Mon compte</h2>
+                <button type="button" className={sp.rowLine} onClick={logoutSpec}>
+                  <span className={clsx(sp.rowIcon, sp.brand)}><KeyRound size={17} aria-hidden="true" /></span>
+                  <span className={sp.rowText}><b>Changer de compte</b><span>Ce compte se rouvrira avec son lien</span></span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+                <div className={sp.rowLine}>
+                  <span className={sp.rowText}><b>Thème clair ou sombre</b></span>
+                  <ThemeToggle variant="light" style={{ width: 44, height: 44, minHeight: 0 }} />
+                </div>
               </section>
             </div>
           )}
@@ -778,10 +790,20 @@ export default function SoldePage({ demo = null }) {
             <section className={sp.card}>
               <header className={sp.cardHead}>
                 <h2>Historique</h2>
-                <span className={sp.muted}>{txTotal} opération{txTotal > 1 ? 's' : ''}</span>
+                <Tabs size="sm" label="Affichage" value={chartMode ? 'graph' : 'list'} onChange={v => setChartMode(v === 'graph')}
+                  items={[{ value: 'list', label: 'Liste' }, { value: 'graph', label: 'Graphe' }]} />
               </header>
+              <div className={sp.totals}>
+                <span>Rechargé <b className={sp.successText}>{fmt(totalRecharge)}</b></span>
+                <span>Dépensé <b className={sp.coralText}>{fmt(totalDepense)}</b></span>
+                {totalRembourse > 0 && <span>Remboursé <b>{fmt(totalRembourse)}</b></span>}
+                {totalDonne > 0 && <span>Donné <b>{fmt(totalDonne)}</b></span>}
+              </div>
               {txTotal === 0 ? (
                 <Empty icon={Clock} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
+              ) : chartMode ? (
+                <SoldeChart timeline={timeline} maxBal={maxBal} hoverIdx={hoverIdx} setHoverIdx={setHoverIdx}
+                  zoom={chartZoom} setZoom={setChartZoom} fmt={fmt} />
               ) : (
                 <>
                   <ul className={sp.txList}>{txSlice.map((t, i) => <TxRow key={i} t={t} />)}</ul>

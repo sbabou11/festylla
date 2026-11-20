@@ -1,5 +1,5 @@
 /* Espace bénévole — mobile d'abord, colonne de 520px max, onglets en bas (même ossature que l'espace spectateur) */
-.page { min-height: 100vh; min-height: 100dvh; background: var(--bg2); color: var(--text); font-family: var(--font); }
+.page { min-height: 100vh; min-height: 100dvh; background: var(--page, var(--bg2)); color: var(--text); font-family: var(--font); }
 .muted { margin: 0; color: var(--muted); font-size: var(--fs-12); line-height: 1.5; }
 
 /* En-tête */
@@ -293,3 +293,28 @@
 .resaText { min-width: 0; display: grid; gap: 1px; }
 .resaText b { font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .resaText span { font-size: var(--fs-11); color: var(--muted); }
+
+/* Refonte téléphone du 20/11/2026 (maquette validée, repères Ylla Event Manager) */
+.headWho { display: grid; min-width: 0; line-height: 1.15; }
+.headWho b { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-18); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.headWho span { font-size: var(--fs-12); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.headQr { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 99px; background: var(--bg); color: var(--text); font: 700 var(--fs-13) var(--font); cursor: pointer; white-space: nowrap; }
+.helloLine { font-size: var(--fs-12); color: var(--muted); margin: 0; }
+.bars { display: grid; gap: 2px; }
+.barRow { display: flex; align-items: center; gap: var(--space-3); min-height: 40px; }
+.barName { width: 72px; font-weight: 600; }
+.barTrack { flex: 1; height: 12px; border-radius: 6px; background: var(--brand-light); overflow: hidden; }
+.barTrack i { display: block; height: 100%; border-radius: 6px; background: var(--brand); transition: width var(--dur-slow) var(--ease); }
+.barVal, .barOut { width: 78px; text-align: right; font-variant-numeric: tabular-nums; }
+.barOut { color: var(--muted); font-weight: 600; }
+.themeRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 56px; color: var(--muted); font-size: var(--fs-13); }
+.scanAction { background: var(--brand); border-color: transparent; color: var(--on-brand); border-radius: var(--radius-lg); }
+.scanAction b, .scanAction span, .scanAction .chev { color: inherit; }
+.scanAction .scanIcon { background: rgba(255,255,255,.18); color: inherit; }
+.scanAction:disabled { background: var(--bg3); color: var(--muted); }
+.navOn { color: var(--text); }
+.navOn .navIcon { background: var(--marine); color: var(--bg); }
+.navIcon { width: 40px; height: 40px; border-radius: 13px; }
+
+.scanAction span span { color: var(--on-brand); opacity: .9; }
+.helloLine .helloId { display: inline; }

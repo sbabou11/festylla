@@ -5,7 +5,8 @@
 
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
 @media (max-width: 1100px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 480px)  { .stats { grid-template-columns: 1fr; } }
+/* Refonte téléphone (20/11/2026) : les quatre chiffres restent sur deux colonnes */
+@media (max-width: 480px)  { .stats { gap: var(--space-2); } }
 
 .rowWide { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
 @media (max-width: 1000px) { .rowWide { grid-template-columns: 1fr; } }

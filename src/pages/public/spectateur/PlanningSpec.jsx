@@ -299,32 +299,6 @@ function PlanningSpec({ planning, eventId, specId, themeColor }) {
         )}
       </div>
 
-      {/* Sélecteur de mode d'affichage */}
-      <div style={{ display:'flex', gap:6, marginBottom:10, padding:4, background:'var(--bg2)', borderRadius:10, border:'1px solid var(--border)' }}>
-        {[
-          { v:'list',    l:'Liste',   icon:'☰' },
-          { v:'compact', l:'Compact', icon:'≡' },
-          { v:'grid',    l:'Grille',  icon:'▦' },
-        ].map(m => {
-          const active = viewMode === m.v
-          return (
-            <button key={m.v} onClick={() => setViewMode(m.v)} aria-pressed={active}
-              style={{
-                flex:1, padding:'8px 4px', minHeight:36,
-                background: active ? 'var(--brand)' : 'transparent',
-                color: active ? 'var(--on-brand)' : 'var(--muted)',
-                border:'none', borderRadius:8,
-                fontSize:12, fontWeight:700,
-                cursor:'pointer', fontFamily:'inherit',
-                display:'flex', alignItems:'center', justifyContent:'center', gap:6,
-                WebkitTapHighlightColor:'transparent',
-              }}>
-              <span style={{ fontSize:14 }}>{m.icon}</span> {m.l}
-            </button>
-          )
-        })}
-      </div>
-
       {/* Barre de recherche */}
       <div style={{ position:'relative', marginBottom:10 }}>
         <span style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', fontSize:16, pointerEvents:'none' }}>🔍</span>
@@ -342,27 +316,29 @@ function PlanningSpec({ planning, eventId, specId, themeColor }) {
         )}
       </div>
 
-      {/* Filtres */}
-      <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:14, overflowX:'auto', paddingBottom:2 }}>
-        {FILTERS.map(f => (
-          <button key={f.value} onClick={() => setFilterType(f.value)}
-            style={{ padding:'5px 12px', borderRadius:20, border:'1px solid var(--border)', background: filterType===f.value ? (f.value==='favoris'?'#e11d48':'var(--brand)') : 'var(--bg)', color: filterType===f.value ? '#fff' : 'var(--muted)', fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'system-ui', whiteSpace:'nowrap', flexShrink:0, display:'flex', alignItems:'center', gap:4 }}>
-            {f.icon} {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Filtre par scène (uniquement si plusieurs scènes) */}
-      {scenes.length > 1 && (
-        <div style={{ display:'flex', gap:6, marginBottom:12, alignItems:'center', flexWrap:'wrap' }}>
-          <span style={{ fontSize:11, color:'var(--muted)', fontWeight:600 }}>📍 Scène :</span>
-          <select value={filterScene} onChange={e => setFilterScene(e.target.value)}
-            style={{ flex:'1 1 140px', minWidth:0, boxSizing:'border-box', minHeight:32, padding:'0 8px', border:'1px solid var(--border)', borderRadius:8, fontSize:12, color:'var(--text)', background:'var(--bg)', fontFamily:'system-ui', cursor:'pointer', outline:'none' }}>
-            <option value="tous">Toutes les scènes</option>
-            {scenes.map(s => <option key={s} value={s}>{s}</option>)}
+      {/* Refonte téléphone (20/11/2026) : genre, scène et affichage en listes déroulantes */}
+      <div style={{ display:'grid', gridTemplateColumns:`repeat(${scenes.length > 1 ? 3 : 2}, minmax(0, 1fr))`, gap:8, marginBottom:14 }}>
+        <label style={{ display:'grid', gap:3, fontSize:12, fontWeight:650, color:'var(--muted)', minWidth:0 }}>Genre
+          <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ width:'100%', height:44, borderRadius:12, border:'1px solid var(--border2)', background:'var(--bg)', color:'var(--text)', fontSize:16, fontWeight:600, padding:'0 6px', fontFamily:'var(--font)' }}>
+            {FILTERS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
           </select>
-        </div>
-      )}
+        </label>
+        {scenes.length > 1 && (
+          <label style={{ display:'grid', gap:3, fontSize:12, fontWeight:650, color:'var(--muted)', minWidth:0 }}>Scène
+            <select value={filterScene} onChange={e => setFilterScene(e.target.value)} style={{ width:'100%', height:44, borderRadius:12, border:'1px solid var(--border2)', background:'var(--bg)', color:'var(--text)', fontSize:16, fontWeight:600, padding:'0 6px', fontFamily:'var(--font)' }}>
+              <option value="tous">Toutes</option>
+              {scenes.map(sc => <option key={sc} value={sc}>{sc}</option>)}
+            </select>
+          </label>
+        )}
+        <label style={{ display:'grid', gap:3, fontSize:12, fontWeight:650, color:'var(--muted)', minWidth:0 }}>Affichage
+          <select value={viewMode} onChange={e => setViewMode(e.target.value)} style={{ width:'100%', height:44, borderRadius:12, border:'1px solid var(--border2)', background:'var(--bg)', color:'var(--text)', fontSize:16, fontWeight:600, padding:'0 6px', fontFamily:'var(--font)' }}>
+            <option value="list">Liste</option>
+            <option value="compact">Compact</option>
+            <option value="grid">Grille</option>
+          </select>
+        </label>
+      </div>
 
       {/* Résultats */}
       {filtered.length === 0 ? (

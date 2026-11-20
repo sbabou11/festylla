@@ -4,7 +4,7 @@
  * Tablette   : toujours en rail.
  * Mobile     : tiroir qui glisse depuis la gauche.
  */
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Home, Bookmark, Users, List, UtensilsCrossed, BadgeCheck, Calendar, CalendarDays,
   Settings, PlusCircle, QrCode, Ticket, ShoppingCart, ShoppingBag, Wallet, User,
@@ -167,6 +167,14 @@ export default function Sidebar({
     return next
   })
 
+  // Refonte téléphone (20/11/2026) : dans le menu « Plus », recherche d'une page et rubriques toutes dépliées
+  const [q, setQ] = useState('')
+  useEffect(() => { if (!mobileOpen) setQ('') }, [mobileOpen])
+  const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  const found = isMobile && q.trim()
+    ? [...new Map(pages.flatMap(p => [p, ...childrenOf(p.id)]).map(p => [p.id, p])).values()].filter(p => norm(p.label).includes(norm(q.trim())))
+    : null
+
   // Bouton du rail : icône + libellé (masqué replié, affiché en infobulle au survol)
   const Item = ({ icon: Icon, label, active, onClick, count = 0, alert = false, danger = false }) => (
     <button
@@ -214,7 +222,15 @@ export default function Sidebar({
         {collapsed && !online && <span className={s.offlineDot} data-tip="Hors ligne" />}
 
         <nav className={s.nav} aria-label="Navigation">
-          {pages.map(p => {
+          {isMobile && (
+            <input type="search" className={s.search} value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Créditer, planning, bénévoles" aria-label="Chercher une page" />
+          )}
+          {found && found.length === 0 && <p className={s.searchEmpty}>Aucune page ne correspond. Essayez un autre mot.</p>}
+          {found && found.map(p => (
+            <Item key={p.id} icon={p.icon} label={p.label} active={currentPage === p.id} onClick={() => go(p.id)} />
+          ))}
+          {!found && pages.map(p => {
             const count = p.badge === 'alertes' ? alertCount : p.badge ? pendingCount : 0
             const kids = collapsed ? [] : childrenOf(p.id)
             const item = (
@@ -230,7 +246,7 @@ export default function Sidebar({
             )
             if (!kids.length) return item
             const childActive = kids.some(k => k.id === currentPage)
-            const open = openHubs.includes(p.id) || childActive
+            const open = isMobile || openHubs.includes(p.id) || childActive
             return (
               <div key={p.id} className={clsx(s.hub, childActive && s.hubActive)}>
                 <div className={s.hubRow}>

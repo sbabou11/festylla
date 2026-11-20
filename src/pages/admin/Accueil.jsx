@@ -24,6 +24,7 @@ import useEventStore from '../../store/useEventStore'
 import { pageRetiree } from '../../em/pages'
 import useActionUsage from '../../hooks/useActionUsage'
 import useHomeLayout from '../../hooks/useHomeLayout'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { fmt } from '../../utils/helpers'
 import { computeKPIs } from '../../utils/kpis'
 import { getTs } from '../../utils/dailyKpis'
@@ -281,7 +282,13 @@ export default function Accueil({ onNavigate, view }) {
   const [draft, setDraft] = useState(null)
   const [saving, setSaving] = useState(false)
   const prefs = draft || home.prefs
-  const shown = prefs.order.filter(id => allowed[id] && !prefs.hidden.includes(id))
+  // Refonte téléphone (20/11/2026) : sur téléphone, les actions rapides passent avant les chiffres,
+  // tant que l'ordre n'a pas été personnalisé (un ordre choisi par l'utilisateur est respecté)
+  const { isMobile } = useBreakpoint()
+  const shownBase = prefs.order.filter(id => allowed[id] && !prefs.hidden.includes(id))
+  const ordreParDefaut = prefs.order.join() === DEFAULTS.order.join()
+  const shown = isMobile && ordreParDefaut && shownBase.includes('actions')
+    ? ['actions', ...shownBase.filter(id => id !== 'actions')] : shownBase
   const editable = prefs.order.filter(id => allowed[id])
   const page  = useFlip(shown.join(','))
   const sheet = useFlip(editable.join(','))
@@ -385,7 +392,7 @@ export default function Accueil({ onNavigate, view }) {
       case 'actions': return (
         <section className={s.section} aria-labelledby="acc-actions">
           <h2 id="acc-actions" className={s.sectionTitle}>Actions rapides</h2>
-          <div className={s.tiles}>
+          <div className={clsx(s.tiles, s.tilesQuick)}>
             {actions.map(a => (
               <Tile key={a.key} icon={a.icon} tone={a.tone} title={a.label} desc={a.desc}
                 onClick={() => { if (isAdmin) actionUsage.recordUse(a.key); go(a.key) }} />

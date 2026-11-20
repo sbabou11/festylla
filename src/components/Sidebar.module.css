@@ -76,6 +76,10 @@
   margin-bottom: var(--space-2);
 }
 
+/* Refonte téléphone (20/11/2026) : recherche dans le menu « Plus » */
+.search { width: 100%; height: 44px; margin-bottom: var(--space-2); padding: 0 var(--space-3); border: 1px solid var(--border2); border-radius: var(--radius); background: var(--bg); color: var(--text); font: 400 16px var(--font); /* 16 px : en dessous, l'iPhone zoome sur le champ */ }
+.search:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.searchEmpty { padding: var(--space-4) var(--space-2); color: var(--muted); font-size: var(--fs-13); }
 .nav {
   flex: 1;
   overflow-y: auto;

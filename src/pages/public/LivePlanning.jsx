@@ -11,6 +11,7 @@ import { MapPin, Clock, ChevronRight, X, Search, Rows3, Image as ImageIcon, GitC
 import { TimeRibbon } from '../../ui'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
 
 const BRAND  = '#1a6b7a'
@@ -472,6 +473,7 @@ export default function LivePlanning({ demo = null } = {}) {
   const [now, setNow]               = useState(Date.now())
   const [carteOpen, setCarteOpen]   = useState(null)
   const [filterType, setFilterType] = useState('tous')
+  const [jour, setJour]             = useState('tous')   // filtre par jour, sur téléphone (20/11/2026)
   const [search, setSearch]         = useState('')
   const [eventMeta, setEventMeta]   = useState(demo?.eventMeta || null)
   const [viewMode, setViewMode]     = useState(() => {
@@ -483,6 +485,11 @@ export default function LivePlanning({ demo = null } = {}) {
     return 'ruban'
   })
   const listRef  = React.useRef(null)
+  // Refonte téléphone (20/11/2026) : sur téléphone, trois vues seulement (Timeline, Photo, Ticket),
+  // choisies par l'organisateur. Le choix fait sur grand écran est conservé pour le grand écran.
+  const { isMobile } = useBreakpoint()
+  const VUES_TEL = ['timeline', 'photo', 'ticket']
+  const vue = isMobile && !VUES_TEL.includes(viewMode) ? 'timeline' : viewMode
 
   // Persiste le choix de vue
   useEffect(() => {
@@ -536,7 +543,10 @@ export default function LivePlanning({ demo = null } = {}) {
   const allTypes = [...new Set(planning.map(p => p.type).filter(Boolean))]
 
   // Filtre type
-  const baseFiltered = filterType === 'tous' ? planning : planning.filter(p => p.type === filterType)
+  const parType = filterType === 'tous' ? planning : planning.filter(p => p.type === filterType)
+  // Téléphone (20/11/2026) : filtres et vues en listes déroulantes, dont le jour
+  const joursDispo = [...new Set(planning.map(cr => festDayKey(cr.debut)).filter(Boolean))].sort()
+  const baseFiltered = isMobile && jour !== 'tous' && joursDispo.includes(jour) ? parType.filter(cr => festDayKey(cr.debut) === jour) : parType
 
   // Filtre recherche : normalise (lowercase + sans accents) et cherche dans plusieurs champs
   const normalize = (s) => (s || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -676,8 +686,31 @@ export default function LivePlanning({ demo = null } = {}) {
         )}
 
         {/* Filtres type + sélecteur de vue (même rangée si possible) */}
-        {(allTypes.length > 1 || planning.length > 0) && (
-          <div style={{ display:'flex', gap:8, marginBottom:12, alignItems:'center', flexWrap:'wrap' }}>
+        {(allTypes.length > 1 || planning.length > 0) && (<>
+          {isMobile && (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3, minmax(0, 1fr))', gap:8, marginBottom:12 }}>
+              <label style={{ display:'grid', gap:3, fontSize:12, fontWeight:650, color:'var(--muted)', minWidth:0 }}>Jour
+                <select value={jour} onChange={e => setJour(e.target.value)} style={{ width:'100%', height:44, borderRadius:12, border:'1px solid var(--border2)', background:'var(--bg)', color:'var(--text)', fontSize:16, fontWeight:600, padding:'0 6px', fontFamily:'var(--font)' }}>
+                  <option value="tous">Tous</option>
+                  {joursDispo.map(k => <option key={k} value={k}>{fmtDayChip(k)}</option>)}
+                </select>
+              </label>
+              <label style={{ display:'grid', gap:3, fontSize:12, fontWeight:650, color:'var(--muted)', minWidth:0 }}>Genre
+                <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ width:'100%', height:44, borderRadius:12, border:'1px solid var(--border2)', background:'var(--bg)', color:'var(--text)', fontSize:16, fontWeight:600, padding:'0 6px', fontFamily:'var(--font)' }}>
+                  <option value="tous">Tous</option>
+                  {allTypes.map(t => <option key={t} value={t}>{TYPES[t]?.label || t}</option>)}
+                </select>
+              </label>
+              <label style={{ display:'grid', gap:3, fontSize:12, fontWeight:650, color:'var(--muted)', minWidth:0 }}>Affichage
+                <select value={vue} onChange={e => setViewMode(e.target.value)} style={{ width:'100%', height:44, borderRadius:12, border:'1px solid var(--border2)', background:'var(--bg)', color:'var(--text)', fontSize:16, fontWeight:600, padding:'0 6px', fontFamily:'var(--font)' }}>
+                  <option value="timeline">Timeline</option>
+                  <option value="photo">Photo</option>
+                  <option value="ticket">Ticket</option>
+                </select>
+              </label>
+            </div>
+          )}
+          <div style={{ display: isMobile ? 'none' : 'flex', gap:8, marginBottom:12, alignItems:'center', flexWrap:'wrap' }}>
             {allTypes.length > 1 && (
               <div style={{ display:'flex', gap:6, flexWrap:'wrap', flex:'1 1 auto' }}>
                 {[{ value:'tous', label:'Tous', icon:'🎭' }, ...allTypes.map(t => ({ value: t, label: TYPES[t]?.label || t, icon: TYPES[t]?.icon || '🎭' }))].map(t => (
@@ -690,7 +723,7 @@ export default function LivePlanning({ demo = null } = {}) {
             )}
             {planning.length > 0 && (
               <div role="radiogroup" aria-label="Choisir la vue"
-                style={{ display:'flex', gap:2, padding:2, background:'var(--bg2)', borderRadius:8, border:'1px solid var(--border)', flexShrink:0, marginLeft:allTypes.length > 1 ? 'auto' : 0 }}>
+                style={{ display:'flex', gap:2, padding:2, background:'var(--bg2)', borderRadius:8, border:'1px solid var(--border)', flexShrink:0, marginLeft:allTypes.length > 1 && !isMobile ? 'auto' : 0, width: isMobile ? '100%' : 'auto', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
                 {[
                   { id:'ruban',    Icon: GanttChart,         label:'Ruban' },
                   { id:'compact',  Icon: Rows3,              label:'Compact' },
@@ -698,9 +731,11 @@ export default function LivePlanning({ demo = null } = {}) {
                   { id:'timeline', Icon: GitCommitVertical,  label:'Timeline' },
                   { id:'ticket',   Icon: Ticket,             label:'Ticket' },
                   { id:'grid',     Icon: LayoutGrid,         label:'Grille' },
-                ].map(v => {
+                ].filter(v => !isMobile || VUES_TEL.includes(v.id))
+                  .sort((a, b) => isMobile ? VUES_TEL.indexOf(a.id) - VUES_TEL.indexOf(b.id) : 0)
+                  .map(v => {
                   const Icon = v.Icon
-                  const active = viewMode === v.id
+                  const active = vue === v.id
                   return (
                     <button key={v.id}
                       onClick={() => setViewMode(v.id)}
@@ -708,7 +743,8 @@ export default function LivePlanning({ demo = null } = {}) {
                       title={v.label}
                       aria-label={'Vue ' + v.label}
                       style={{
-                        width:30, height:28, padding:0,
+                        width: isMobile ? 'auto' : 30, height: isMobile ? 40 : 28, padding: isMobile ? '0 12px' : 0, gap:6,
+                        fontSize:13, fontWeight:600, fontFamily:'var(--font)',
                         borderRadius:6, border:'none', cursor:'pointer',
                         background: active ? 'var(--bg)' : 'transparent',
                         color: active ? 'var(--brand)' : 'var(--muted)',
@@ -716,21 +752,21 @@ export default function LivePlanning({ demo = null } = {}) {
                         boxShadow: active ? '0 1px 2px rgba(0,48,72,0.10)' : 'none',
                         minHeight:'auto', transition:'background .12s, color .12s',
                       }}>
-                      <Icon size={15}/>
+                      <Icon size={15}/>{isMobile && v.label}
                     </button>
                   )
                 })}
               </div>
             )}
           </div>
-        )}
+        </>)}
 
         {/* Liste — change de layout selon viewMode */}
-        {viewMode === 'ruban' ? (
+        {vue === 'ruban' ? (
           <div ref={listRef}>
             <RibbonView items={filtered} now={now} onOpen={setCarteOpen}/>
           </div>
-        ) : viewMode === 'grid' ? (
+        ) : vue === 'grid' ? (
           /* Mode grille : 2 colonnes */
           <div ref={listRef} style={{ display:'grid', gridTemplateColumns:'repeat(2, minmax(0,1fr))', gap:8 }}>
             {filtered.map(cr => {
@@ -740,7 +776,7 @@ export default function LivePlanning({ demo = null } = {}) {
               return <CardGrid key={cr.id} cr={cr} st={st} dim={dim} ti={ti} onOpen={() => setCarteOpen(cr)}/>
             })}
           </div>
-        ) : viewMode === 'timeline' ? (
+        ) : vue === 'timeline' ? (
           /* Mode timeline : ligne verticale continue, groupé par jour */
           <div ref={listRef}>
             {(() => {
@@ -772,14 +808,14 @@ export default function LivePlanning({ demo = null } = {}) {
           </div>
         ) : (
           /* Modes compact / photo / ticket : liste verticale standard */
-          <div ref={listRef} style={{ display:'flex', flexDirection:'column', gap: viewMode === 'photo' ? 12 : 8 }}>
+          <div ref={listRef} style={{ display:'flex', flexDirection:'column', gap: vue === 'photo' ? 12 : 8 }}>
             {filtered.map(cr => {
               const ti  = TYPES[cr.type] || TYPES.autre
               const st  = autoStatut(cr)
               const dim = st === 'termine' || cr.statut === 'annule'
               const props = { cr, st, dim, ti, onOpen: () => setCarteOpen(cr) }
-              if (viewMode === 'compact') return <CardCompact key={cr.id} {...props}/>
-              if (viewMode === 'ticket')  return <CardTicket  key={cr.id} {...props}/>
+              if (vue === 'compact') return <CardCompact key={cr.id} {...props}/>
+              if (vue === 'ticket')  return <CardTicket  key={cr.id} {...props}/>
               return <CardPhoto key={cr.id} {...props}/>
             })}
           </div>
