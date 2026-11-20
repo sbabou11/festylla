@@ -2987,12 +2987,13 @@ export const cancelCommande = async (commandeId, staff, reason, evId = null) => 
  * @param {string} staff    - Nom du staff
  * @param {string|null} evId - ID de l'événement (défaut = courant)
  */
-export const rembourserSolde = async (specId, montant, motif, staff, evId = null) => {
+export const rembourserSolde = async (specId, montant, motif, staff, evId = null, { moyen = null } = {}) => {
   const eventId = evId || getEventId()
   if (!eventId) throw new Error('Aucun événement courant')
   if (!specId) throw new Error('Spectateur requis')
   const m = Math.round(Number(montant) || 0)
   if (m <= 0) throw new Error('Montant à rembourser invalide')
+  if (!['especes', 'cb'].includes(moyen)) throw new Error('Indiquez comment l\'argent est rendu : espèces ou carte.')
 
   const snap = await getDocs(
     query(collection(db, 'events', eventId, 'spectateurs'), where('id', '==', specId))
@@ -3016,6 +3017,9 @@ export const rembourserSolde = async (specId, montant, motif, staff, evId = null
       specId,
       specNom: specData.nom || '—',
       type: 'remboursement',
+      // Argent rendu au guichet (20/11/2026) : espèces du coffre ou carte sur le terminal.
+      // surPlace + moyen : la clôture le retire de ce que la caisse doit contenir.
+      ...(moyen ? { surPlace: true, moyen } : {}),
       label: motif || 'Remboursement de solde',
       montant: m,
       staff: staff || '—',
@@ -4402,4 +4406,93 @@ export const refuserDemande = async ({ demandeId, staff, motif }, evId = null) =
     txn.update(doc(db, 'events', eventId, 'spectateurs', dem.specDoc), { demandeRemboursement: null })
   })
   await audit('REMBOURSEMENT_DEMANDE_REFUS', { staff, label: `Demande de remboursement refusée${motif ? ` : ${motif}` : ''}` })
+}
+
+// ════════════════════════════════════════════════════════════════════
+// CORRECTIONS DE COMPTES PAR UN ADMINISTRATEUR (20/11/2026)
+// ════════════════════════════════════════════════════════════════════
+// Deux gestes qui ne laissaient aucune trace juste :
+//   - « Supprimer une transaction » effaçait toutes les lignes de même libellé et de même date,
+//     sans corriger le solde → annulerTransaction : une seule ligne, écriture inverse, solde corrigé ;
+//   - « Modifier le solde » d'un spectateur l'écrasait sans transaction ni audit → corrigerSolde :
+//     ajout ou retrait avec motif obligatoire, transaction et audit.
+
+/**
+ * Annule une transaction précise (identifiant du document). L'originale reste, marquée « Annulée ».
+ * L'écriture inverse est rattachée au bénévole d'origine, pour que sa caisse retombe juste.
+ */
+export const annulerTransaction = async ({ txDocId, motif, staff }, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) throw new Error('Aucun événement courant')
+  if (!txDocId) throw new Error('Transaction introuvable.')
+  if (!motif || !motif.trim()) throw new Error('Indiquez le motif de l\'annulation.')
+  const { planAnnulation } = await import('../utils/annulationTx')
+  const txRef = doc(db, 'events', eventId, 'transactions', txDocId)
+  const avant = await getDoc(txRef)
+  if (!avant.exists()) throw new Error('Cette transaction n\'existe plus.')
+  const specSnap = await getDocs(query(collection(db, 'events', eventId, 'spectateurs'), where('id', '==', avant.data().specId || '')))
+  if (specSnap.empty) throw new Error('Compte du spectateur introuvable.')
+  const specRef = specSnap.docs[0].ref
+  const now = new Date()
+  const contreRef = doc(collection(db, 'events', eventId, 'transactions'))
+
+  const r = await runTransaction(db, async (txn) => {
+    const t = await txn.get(txRef)
+    const tx = t.data()
+    const plan = planAnnulation(tx)
+    const spec = await txn.get(specRef)
+    const soldeBefore = spec.data().solde || 0
+    const soldeAfter = soldeBefore + plan.delta
+    if (soldeAfter < 0) {
+      throw new Error(`Le solde actuel (${(soldeBefore / 100).toFixed(2)} €) ne suffit pas : le spectateur a déjà dépensé une partie de cette somme.`)
+    }
+    txn.update(specRef, { solde: increment(plan.delta) })
+    txn.set(contreRef, {
+      specId: tx.specId, specNom: tx.specNom || spec.data().nom || '—',
+      ...plan.contre, montant: tx.montant,
+      staff: tx.staff || '—',                       // caisse du bénévole d'origine
+      annuleTx: txDocId, annulePar: staff || '—', motif: motif.trim(),
+      soldeBefore, soldeAfter,
+      date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'), createdAt: serverTimestamp(),
+    })
+    txn.update(txRef, { annulee: true, annuleePar: staff || '—', annuleeLe: now.toISOString(), annuleeMotif: motif.trim(), annulationId: contreRef.id })
+    return { montant: tx.montant, soldeAfter, specId: tx.specId, label: tx.label || '' }
+  })
+  await audit('ANNULATION_TRANSACTION', {
+    specId: r.specId, montant: r.montant, staff, userType: 'admin',
+    label: `Transaction annulée : ${r.label} (${(r.montant / 100).toFixed(2)} €) — ${motif.trim()}`,
+  })
+  return r
+}
+
+/** Ajoute (delta > 0) ou retire (delta < 0) un montant au solde, avec motif, transaction et audit */
+export const corrigerSolde = async ({ specDocId, delta, motif, staff }, evId = null) => {
+  const eventId = evId || getEventId()
+  if (!eventId) throw new Error('Aucun événement courant')
+  const d = Math.round(Number(delta) || 0)
+  if (!d) throw new Error('Indiquez un montant à ajouter ou à retirer.')
+  if (!motif || !motif.trim()) throw new Error('Le motif est obligatoire pour corriger un solde.')
+  const specRef = doc(db, 'events', eventId, 'spectateurs', specDocId)
+  const now = new Date()
+  const r = await runTransaction(db, async (txn) => {
+    const spec = await txn.get(specRef)
+    if (!spec.exists()) throw new Error('Spectateur introuvable')
+    const soldeBefore = spec.data().solde || 0
+    const soldeAfter = soldeBefore + d
+    if (soldeAfter < 0) throw new Error(`On ne peut pas retirer plus que le solde (${(soldeBefore / 100).toFixed(2)} €).`)
+    txn.update(specRef, { solde: increment(d) })
+    txn.set(doc(collection(db, 'events', eventId, 'transactions')), {
+      specId: spec.data().id, specNom: spec.data().nom || '—',
+      type: d > 0 ? 'credit_correction' : 'debit_correction',
+      label: `Correction de solde — ${motif.trim()}`, motif: motif.trim(),
+      montant: Math.abs(d), staff: staff || '—', soldeBefore, soldeAfter,
+      date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'), createdAt: serverTimestamp(),
+    })
+    return { specId: spec.data().id, soldeAfter }
+  })
+  await audit('CORRECTION_SOLDE', {
+    specId: r.specId, montant: Math.abs(d), staff, userType: 'admin',
+    label: `Solde corrigé de ${d > 0 ? '+' : '−'}${(Math.abs(d) / 100).toFixed(2)} € — ${motif.trim()}`,
+  })
+  return r
 }

@@ -33,6 +33,7 @@ import { useTheme } from '../../hooks/useTheme'
 import { friendlyError } from '../../utils/errors'
 import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, HoldButton, focusFirstInvalid } from '../../ui'
 import { planRemboursement } from '../../utils/remboursementPlan'
+import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../../utils/historiqueSpec'
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
 import sp from './spectateur/SoldePage.module.css'
@@ -48,7 +49,11 @@ const TX_LOOK = {
   credit:      { icon: Plus,        tone: 'success', sign: '+' },
   debit:       { icon: Minus,       tone: 'coral',   sign: '−' },
   reservation: { icon: Clock,       tone: 'warning', sign: ''  },
-  annulation:  { icon: Undo2,       tone: 'neutral', sign: ''  },
+  annulation:  { icon: Undo2,       tone: 'success', sign: ''  },
+  // Remboursements et corrections (20/11/2026) : le signe vient de l'effet sur le solde (utils/historiqueSpec)
+  remboursement:     { icon: Undo2, tone: 'neutral', sign: '' },
+  credit_correction: { icon: Plus,  tone: 'success', sign: '' },
+  debit_correction:  { icon: Minus, tone: 'coral',   sign: '' },
 }
 const txLook = (type) => TX_LOOK[type] || { icon: Wallet, tone: 'brand', sign: '' }
 
@@ -474,8 +479,7 @@ export default function SoldePage({ demo = null }) {
   }
 
   // ── Calculs dérivés ────────────────────────────────────────────
-  const totalRecharge  = txs.filter(t=>t.type==='credit').reduce((a,t)=>a+(t.montant||0),0)
-  const totalDepense   = txs.filter(t=>['debit','reservation'].includes(t.type)).reduce((a,t)=>a+(t.montant||0),0)
+  const { recharge: totalRecharge, depense: totalDepense, rembourse: totalRembourse } = totauxCompte(txs)
   const nbResas        = resas.length
   const activeResas    = resas.filter(r=>r.status!=='collected'&&r.status!=='cancelled')
   const codesEnLigne   = codes.filter(c => c.origine === 'en-ligne')
@@ -509,8 +513,7 @@ export default function SoldePage({ demo = null }) {
     const withBalance = txTriees.map(t => {
       const soldeApres = bal
       // Annuler la transaction pour trouver le solde avant
-      if (t.type === 'credit')                                    bal -= (t.montant||0)
-      else if (['debit','reservation'].includes(t.type))          bal += (t.montant||0)
+      bal -= effetSolde(t)   // remboursements, tickets remboursés et corrections compris
       return { ...t, balanceAfter: soldeApres }
     })
     // Remettre dans l'ordre chronologique (plus ancien en premier)
@@ -564,16 +567,17 @@ export default function SoldePage({ demo = null }) {
   const TxRow = ({ t }) => {
     const look = txLook(t.type)
     const Icon = look.icon
-    const isAnnul = t.type === 'annulation'
+    const sansEffet = effetSolde(t) === 0 && t.type !== 'reservation'
+    const dest = destinationRemboursement(t)
     return (
       <li className={sp.tx}>
         <span className={clsx(sp.txIcon, sp[look.tone])}><Icon size={15} aria-hidden="true" /></span>
         <span className={sp.txText}>
           <b>{t.label || t.type}</b>
-          <span>{t.date}{t.heure ? ` · ${t.heure}` : ''}</span>
+          <span>{t.date}{t.heure ? ` · ${t.heure}` : ''}{dest ? ` · ${dest}` : ''}</span>
         </span>
         <span className={clsx(sp.txAmount, sp[`${look.tone}Text`])}>
-          {isAnnul ? '—' : `${look.sign}${fmt(t.montant || 0)}`}
+          {sansEffet ? '—' : `${signeDe(t) || look.sign}${fmt(t.montant || 0)}`}
         </span>
       </li>
     )
@@ -711,6 +715,7 @@ export default function SoldePage({ demo = null }) {
                 <div className={sp.totals}>
                   <span>Rechargé <b className={sp.successText}>{fmt(totalRecharge)}</b></span>
                   <span>Dépensé <b className={sp.coralText}>{fmt(totalDepense)}</b></span>
+                  {totalRembourse > 0 && <span>Remboursé <b>{fmt(totalRembourse)}</b></span>}
                 </div>
                 {txs.length === 0 ? (
                   <Empty icon={Wallet} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>

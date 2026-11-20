@@ -10,9 +10,10 @@ import useAppStore from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt } from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
-import { Trash2, Receipt, ArrowUp, ArrowDown, Search, SearchX, X } from 'lucide-react'
+import { Undo2, Receipt, ArrowUp, ArrowDown, Search, SearchX, X } from 'lucide-react'
+import { annulerTransaction } from '../../firebase/service'
+import { planAnnulation } from '../../utils/annulationTx'
 import { db } from '../../firebase/config'
-import { collection, query, where, getDocs, deleteDoc } from 'firebase/firestore'
 import useEventStore from '../../store/useEventStore'
 import { Button, Badge, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
 import s from './transactions/transactions.module.css'
@@ -41,7 +42,8 @@ export default function Transactions({ onNavigate }) {
 
   const [deleting, setDeleting] = useState(null)
   const [visible,  setVisible]  = useState(50)
-  const [pending,  setPending]  = useState(null)   // transaction à supprimer (remplace window.confirm)
+  const [pending,  setPending]  = useState(null)   // transaction à annuler
+  const [motifAnnul, setMotifAnnul] = useState('')
   // Filtres & tri
   const [searchDetail, setSearchDetail] = useState('')
   const [filterType, setFilterType]     = useState('')
@@ -113,24 +115,28 @@ export default function Transactions({ onNavigate }) {
   const resetFilters = () => { setSearchDetail(''); setFilterType(''); setFilterStaff('') }
   const hasFilters = searchDetail || filterType || filterStaff
 
-  const handleDelete = async (tx) => {
+  // Annulation d'une transaction (20/11/2026) : une seule ligne, désignée par son document ;
+  // écriture inverse, solde corrigé, motif obligatoire. L'originale reste, marquée « Annulée ».
+  const handleAnnul = async (tx) => {
+    const motif = motifAnnul.trim()
+    if (!motif) return
     setPending(null)
-    setDeleting(tx._docId || tx.id)
+    setDeleting(tx._docId)
     try {
-      // Chercher le document par specId + date (Firebase n'expose pas le docId dans les logs)
-      const txCollection = currentEventId
-        ? collection(db, 'events', currentEventId, 'transactions')
-        : collection(db, 'transactions')
-      // Chercher par label + date (identifiants uniques fiables)
-      const q = query(txCollection, where('label', '==', tx.label), where('date', '==', tx.date))
-      const snap = await getDocs(q)
-      if (snap.empty) throw new Error('Cette transaction a déjà été supprimée.')
-      for (const d of snap.docs) await deleteDoc(d.ref)
-      toast.success('Transaction supprimée')
+      await annulerTransaction({ txDocId: tx._docId, motif, staff: user?.nom || 'Administrateur' }, currentEventId)
+      toast.success('Transaction annulée, solde corrigé')
     } catch (e) {
-      toast.error(friendlyError(e, "La transaction n'a pas été supprimée."), { action: { label: 'Réessayer', onClick: () => handleDelete(tx) } })
+      toast.error(friendlyError(e, "La transaction n'a pas été annulée."))
     }
-    finally { setDeleting(null) }
+    finally { setDeleting(null); setMotifAnnul('') }
+  }
+  // Ce que l'annulation fera (ou pourquoi elle est impossible), pour la fenêtre de confirmation
+  const apercuAnnul = (tx) => {
+    try {
+      const plan = planAnnulation(tx)
+      const sp = spectateurs.find(x => x.id === tx.specId)
+      return { plan, solde: sp ? (sp.solde || 0) : null }
+    } catch (e) { return { erreur: e.message } }
   }
 
   if (!allTx.length) {
@@ -156,7 +162,10 @@ export default function Transactions({ onNavigate }) {
       <span className={clsx(s.amount, s[`amt_${TYPE_TONE[t.type] || 'neutral'}`])}>{sign(t)}{fmt(t.montant || 0)}</span>
     ) },
     { key: 'date',  label: 'Date', sortKey: 'date', render: t => <span className={s.date}>{t.date}</span> },
-    { key: 'type',  label: 'Type', sortKey: 'type', render: t => <Badge tone={TYPE_TONE[t.type] || 'neutral'}>{TYPE_LABEL[t.type] || t.type}</Badge> },
+    { key: 'type',  label: 'Type', sortKey: 'type', render: t => (<>
+      <Badge tone={TYPE_TONE[t.type] || 'neutral'}>{TYPE_LABEL[t.type] || (t.type === 'debit_correction' ? 'Correction −' : t.type === 'credit_correction' ? 'Correction +' : t.type)}</Badge>
+      {t.annulee && <> <Badge tone="neutral">Annulée</Badge></>}
+    </>) },
     // Détail complet au survol, épinglé au clic (lecture au doigt sur mobile)
     { key: 'label', label: 'Détail', sortKey: 'label', render: t => (
       <button type="button" className={clsx(s.ellipsis, s.detail)} title={t.label || ''}
@@ -169,9 +178,11 @@ export default function Transactions({ onNavigate }) {
     ) },
     { key: 'staff', label: 'Staff', sortKey: 'staff', render: t => <span className={s.muted}>{t.staff || '—'}</span> },
     isAdmin && { key: 'del', label: '', align: 'right', render: t => (
-      <Button variant="danger" size="sm" icon={Trash2} iconOnly aria-label={`Supprimer la transaction ${t.label}`}
-        loading={deleting === (t._docId || t.id)} disabled={!!deleting}
-        className={s.delBtn} onClick={() => setPending(t)}/>
+      t.annulee || t.annuleTx ? null : (
+      <Button variant="danger" size="sm" icon={Undo2} iconOnly aria-label={`Annuler la transaction ${t.label}`}
+        loading={deleting === t._docId} disabled={!!deleting || !t._docId}
+        className={s.delBtn} onClick={() => { setMotifAnnul(''); setPending(t) }}/>
+      )
     ) },
   ]
 
@@ -242,17 +253,39 @@ export default function Transactions({ onNavigate }) {
       )}
 
       {/* Confirmation de suppression (irréversible) */}
-      <Dialog open={!!pending} onClose={() => setPending(null)} title="Supprimer cette transaction ?"
+      <Dialog open={!!pending} onClose={() => setPending(null)} title="Annuler cette transaction ?"
         footer={<>
-          <Button variant="secondary" onClick={() => setPending(null)}>Annuler</Button>
-          <HoldButton tone="danger" icon={Trash2} onConfirm={() => handleDelete(pending)}>Maintenir pour supprimer</HoldButton>
+          <Button variant="secondary" onClick={() => setPending(null)}>Garder</Button>
+          {pending && !apercuAnnul(pending).erreur && (
+            <HoldButton tone="danger" icon={Undo2} disabled={!motifAnnul.trim()} onConfirm={() => handleAnnul(pending)}>Maintenir pour annuler</HoldButton>
+          )}
         </>}>
-        {pending && (
-          <div className={s.dialogStack}>
-            <p className={s.dialogText}><b>{pending.label}</b> — {fmt(pending.montant || 0)}</p>
-            <p className={s.muted}>{pending.snom} · {pending.date}. Cette action est irréversible.</p>
-          </div>
-        )}
+        {pending && (() => {
+          const a = apercuAnnul(pending)
+          const moyenTxt = { especes: 'en espèces', cb: 'par carte' }
+          return (
+            <div className={s.dialogStack}>
+              <p className={s.dialogText}><b>{pending.label}</b> — {fmt(pending.montant || 0)}</p>
+              <p className={s.muted}>{pending.snom} · {pending.date}{pending.heure ? ` à ${String(pending.heure).slice(0, 5)}` : ''}{pending.moyen ? ` · ${pending.moyen}` : ''}{pending.staff ? ` · par ${pending.staff}` : ''}</p>
+              {a.erreur ? (
+                <p className={s.annulNote} role="alert">{a.erreur}</p>
+              ) : (<>
+                <p className={s.annulNote}>
+                  <b>{a.solde != null
+                    ? `Le solde de ${pending.snom} passera de ${fmt(a.solde)} à ${fmt(a.solde + a.plan.delta)}.`
+                    : `Le solde de ${pending.snom} ${a.plan.delta > 0 ? 'augmentera' : 'baissera'} de ${fmt(Math.abs(a.plan.delta))}.`}</b>
+                  {a.plan.caisse && ` La caisse de ${pending.staff || 'ce bénévole'} attendra ${fmt(pending.montant || 0)} de ${a.plan.caisse.sens === 'moins' ? 'moins' : 'plus'} ${moyenTxt[a.plan.caisse.moyen]}.`}
+                </p>
+                <p className={s.muted}>La transaction reste dans la liste, marquée « Annulée », avec votre nom. Seule cette ligne est concernée.</p>
+                <label className={s.annulField}>
+                  <span className={s.annulLabel}>Motif (obligatoire)</span>
+                  <input className={s.annulInput} value={motifAnnul} maxLength={120} autoFocus
+                    onChange={e => setMotifAnnul(e.target.value)} placeholder="ex : saisie en double"/>
+                </label>
+              </>)}
+            </div>
+          )
+        })()}
       </Dialog>
 
       {/* Infobulle détail complet (survol ou clic sur la colonne Détail) */}

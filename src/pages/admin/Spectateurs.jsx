@@ -14,7 +14,8 @@ import QrCode from '../../components/QrCode'
 import { Trash2, Pencil, Search, SearchX, X, Save, Plus, Minus, Users, Printer, Lock } from 'lucide-react'
 import { db } from '../../firebase/config'
 import { doc, deleteDoc, updateDoc } from 'firebase/firestore'
-import { Button, Badge, Stat, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
+import { Button, Badge, Stat, Table, Empty, Dialog, HoldButton, Tabs, toast } from '../../ui'
+import { corrigerSolde } from '../../firebase/service'
 import s from './spectateurs/spectateurs.module.css'
 import useEventStore from '../../store/useEventStore'
 import QRCode from 'qrcode'
@@ -42,7 +43,11 @@ export default function Spectateurs({ onNavigate }) {
   useEffect(() => { const q = params.get('q'); if (q !== null) setSearch(q) }, [params])
   const [editing, setEditing]   = useState(null)  // { _docId, id, nom, solde }
   const [editNom, setEditNom]   = useState('')
-  const [editSolde, setEditSolde] = useState(0)
+  // Correction du solde (20/11/2026) : on ajoute ou on retire un montant, avec un motif ;
+  // on ne tape plus un nouveau solde (aucune trace n'en restait)
+  const [corrSens, setCorrSens] = useState('plus')
+  const [corrMontant, setCorrMontant] = useState('')
+  const [corrMotif, setCorrMotif] = useState('')
   const [saving, setSaving]     = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [pendingDel, setPendingDel] = useState(null)  // spectateur à supprimer (remplace window.confirm)
@@ -56,10 +61,10 @@ export default function Spectateurs({ onNavigate }) {
   const startEdit = (s) => {
     setEditing(s)
     setEditNom(s.nom || '')
-    // Affiche en euros sans Math.round (sinon on perd les centimes : 2.50 → 3)
-    setEditSolde((s.solde || 0) / 100)
+    setCorrSens('plus'); setCorrMontant(''); setCorrMotif('')
   }
 
+  const corrCentimes = Math.round((parseFloat(String(corrMontant).replace(',', '.')) || 0) * 100)
   const saveEdit = async () => {
     if (!editing?._docId) return
     if (!currentEventId) { toast.error("Aucun événement sélectionné."); return }
@@ -73,14 +78,20 @@ export default function Spectateurs({ onNavigate }) {
     }
     setSaving(true)
     try {
-      // Reconvertit en centimes avec arrondi pour éviter les flottants
-      const soldeCentimes = Math.round((parseFloat(editSolde) || 0) * 100)
-      await updateDoc(doc(db, 'events', currentEventId, 'spectateurs', editing._docId), {
-        nom:   editNom.trim(),
-        solde: soldeCentimes,
-      })
+      if (corrCentimes > 0 && !corrMotif.trim()) { toast.error('Le motif est obligatoire pour corriger un solde.'); setSaving(false); return }
+      if (corrCentimes > 0 && corrSens === 'moins' && corrCentimes > (editing.solde || 0)) { toast.error('On ne peut pas retirer plus que le solde.'); setSaving(false); return }
+      if (editNom.trim() !== (editing.nom || '')) {
+        await updateDoc(doc(db, 'events', currentEventId, 'spectateurs', editing._docId), { nom: editNom.trim() })
+      }
+      // Le solde ne s'écrit plus directement : correction avec motif, transaction et audit
+      if (corrCentimes > 0) {
+        await corrigerSolde({
+          specDocId: editing._docId, delta: corrSens === 'plus' ? corrCentimes : -corrCentimes,
+          motif: corrMotif.trim(), staff: user?.nom || 'Administrateur',
+        }, currentEventId)
+      }
       setEditing(null)
-      toast.success('Spectateur mis à jour')
+      toast.success(corrCentimes > 0 ? 'Solde corrigé' : 'Spectateur mis à jour')
     } catch (e) {
       toast.error(friendlyError(e, "Les modifications du spectateur n'ont pas été enregistrées."), { action: { label: 'Réessayer', onClick: () => saveEdit() } })
     }
@@ -384,7 +395,7 @@ ${evHeader}
       <Dialog open={!!editing} onClose={() => { if (!saving) setEditing(null) }} title="Modifier le spectateur"
         footer={<>
           <Button variant="secondary" icon={X} onClick={() => setEditing(null)} disabled={saving}>Annuler</Button>
-          <Button icon={Save} onClick={saveEdit} loading={saving}>Sauvegarder</Button>
+          <Button icon={Save} onClick={saveEdit} loading={saving}>Enregistrer</Button>
         </>}>
         {editing && (
           <form className={s.form} onSubmit={e => { e.preventDefault(); saveEdit() }}>
@@ -394,16 +405,28 @@ ${evHeader}
               <input id="spec-edit-nom" className={s.input} value={editNom} autoFocus
                 onChange={e => setEditNom(e.target.value)}/>
             </div>
-            <div className={s.field}>
-              <label className={s.label} htmlFor="spec-edit-solde">Solde (€)</label>
-              <div className={s.stepper}>
-                <Button variant="secondary" icon={Minus} iconOnly aria-label="Retirer 10 €"
-                  onClick={() => setEditSolde(v => Math.max(0, v - 10))}/>
-                <input id="spec-edit-solde" type="number" step="0.01" inputMode="decimal" className={clsx(s.input, s.inputCenter)}
-                  value={editSolde} onChange={e => setEditSolde(Math.max(0, parseFloat(e.target.value) || 0))}/>
-                <Button variant="secondary" icon={Plus} iconOnly aria-label="Ajouter 10 €"
-                  onClick={() => setEditSolde(v => v + 10)}/>
+            <div className={s.soldeRow}>
+              <span className={s.label}>Solde</span>
+              <b className={s.soldeVal}>{fmt(editing.solde || 0)}</b>
+            </div>
+            <div className={s.corr}>
+              <span className={s.label}>Corriger le solde</span>
+              <Tabs label="Sens de la correction" value={corrSens} onChange={setCorrSens}
+                items={[{ value: 'plus', label: 'Ajouter' }, { value: 'moins', label: 'Retirer' }]}/>
+              <div className={s.corrMontant}>
+                <input id="spec-corr-montant" inputMode="decimal" className={clsx(s.input, s.inputCenter)} placeholder="0,00"
+                  aria-label="Montant de la correction en euros" value={corrMontant}
+                  onChange={e => setCorrMontant(e.target.value.replace(/[^0-9.,]/g, '').slice(0, 8))}/>
+                <b>€</b>
               </div>
+              <input className={s.input} value={corrMotif} maxLength={120} placeholder="Motif (obligatoire)"
+                aria-label="Motif de la correction" onChange={e => setCorrMotif(e.target.value)}/>
+              <p className={s.muted}>
+                {corrCentimes > 0
+                  ? <>Nouveau solde : <b>{fmt(Math.max(0, (editing.solde || 0) + (corrSens === 'plus' ? corrCentimes : -corrCentimes)))}</b>. </>
+                  : 'Laissez vide pour ne pas toucher au solde. '}
+                La correction apparaît dans les transactions et le journal d'audit.
+              </p>
             </div>
             <button type="submit" hidden/>
           </form>

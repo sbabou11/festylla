@@ -57,6 +57,8 @@ function RemboursementCompte() {
   const [spec, setSpec] = useState(null)
   const [montantEur, setMontantEur] = useState('')  // saisie en EUROS (string pour éviter parsing)
   const [motif, setMotif] = useState('')
+  // Remboursement du solde : comment l'argent est rendu (obligatoire, sert à la clôture)
+  const [moyen, setMoyen] = useState('')
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(null)
@@ -117,7 +119,8 @@ function RemboursementCompte() {
   const soldeInsuffisant = isSoldeMode && montantCentimes > soldeActuel
   // Pour le mode correction, on exige un motif
   const motifManquant = !isSoldeMode && !motif.trim()
-  const canSubmit = spec && montantCentimes > 0 && !soldeInsuffisant && !motifManquant && !loading
+  const moyenManquant = isSoldeMode && !moyen
+  const canSubmit = spec && montantCentimes > 0 && !soldeInsuffisant && !motifManquant && !moyenManquant && !loading
 
   // Soumission
   const doSubmit = async () => {
@@ -127,7 +130,7 @@ function RemboursementCompte() {
       const eventId = spec._eventId || currentEventId
       const staff = (user && user.nom) ? user.nom : 'Billetterie'
       if (isSoldeMode) {
-        await rembourserSolde(spec.id, montantCentimes, motif.trim() || 'Remboursement de solde', staff, eventId)
+        await rembourserSolde(spec.id, montantCentimes, motif.trim() || 'Remboursement de solde', staff, eventId, { moyen })
       } else {
         await crediterCorrection(spec.id, montantCentimes, motif.trim(), staff, eventId)
       }
@@ -139,7 +142,7 @@ function RemboursementCompte() {
         motif: motif.trim() || (isSoldeMode ? 'Remboursement de solde' : ''),
         soldeApres: isSoldeMode ? (soldeActuel - montantCentimes) : (soldeActuel + montantCentimes),
       })
-      setSpec(null); setMontantEur(''); setMotif('')
+      setSpec(null); setMontantEur(''); setMotif(''); setMoyen('')
     } catch(e) {
       setErr(e.message)
     } finally {
@@ -148,7 +151,7 @@ function RemboursementCompte() {
   }
 
   const reset = () => {
-    setDone(null); setSpec(null); setMontantEur(''); setMotif(''); setErr('')
+    setDone(null); setSpec(null); setMontantEur(''); setMotif(''); setMoyen(''); setErr('')
   }
 
   // ─── Écran de confirmation ───────────────────────────────────────
@@ -353,6 +356,22 @@ function RemboursementCompte() {
               </div>
             )}
           </div>
+
+          {/* ─── Rendu en espèces ou par carte (mode remboursement) ─── */}
+          {isSoldeMode && (
+            <div style={{ background: 'var(--bg)', border: '0.5px solid var(--border)', borderRadius: 14, padding: '16px', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                Rendu au spectateur en <span style={{ color: 'var(--red-dark)' }}>*</span>
+              </div>
+              <Tabs label="Moyen du remboursement" value={moyen} onChange={setMoyen} items={[
+                { value: 'especes', label: 'Espèces' },
+                { value: 'cb', label: 'Carte (terminal)' },
+              ]}/>
+              <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--muted)', lineHeight: 1.45 }}>
+                Sert à la clôture : les espèces sortent du coffre, la carte se rembourse aussi sur le terminal.
+              </p>
+            </div>
+          )}
 
           {/* ─── Champ Motif ─────────────────────────────────────── */}
           <div style={{

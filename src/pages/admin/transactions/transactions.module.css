@@ -104,3 +104,10 @@
 .tooltipLine { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; font-size: var(--fs-11); }
 .tooltipPrice { color: var(--muted); white-space: nowrap; }
 .tooltipId { font-size: var(--fs-11); color: var(--muted); }
+
+/* Annulation d'une transaction (20/11/2026) */
+.annulNote { margin: 0; padding: 10px 12px; border-radius: var(--radius); background: var(--gold-light); color: var(--gold-dark); font-size: var(--fs-13); line-height: 1.45; }
+.annulField { display: grid; gap: 6px; }
+.annulLabel { font-size: var(--fs-12); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.annulInput { width: 100%; min-height: 44px; padding: 0 12px; border: 1.5px solid var(--border2); border-radius: var(--radius-md); background: var(--bg); color: var(--text); font: 600 var(--fs-15) var(--font); outline: none; }
+.annulInput:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-light); }
