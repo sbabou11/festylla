@@ -1,0 +1,36 @@
+/* Carte ou ligne qui ouvre sa fenêtre de détail (23/11/2026, maquette validée) :
+   un vrai bouton sans habillage, qui garde la mise en page de la ligne.
+   button:where(.tap) pèse autant qu'un sélecteur d'élément : il efface l'habillage par défaut
+   du bouton, et la classe de mise en page de la ligne (padding, fond, police…) passe devant.
+   Le focus visible vient de la règle globale :focus-visible. */
+button:where(.tap) {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  min-width: 0;
+  /* hauteur : garde la cible tactile globale (var(--touch)) */
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Dans un bandeau dont les boutons sont habillés (ex. .notice button de la caisse) */
+.tap.plain {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+@media (hover: hover) { button:where(.tap):hover { opacity: .85; } }
+button:where(.tap):active { opacity: .7; }

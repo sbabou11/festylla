@@ -488,6 +488,8 @@ function StaffApp() {
 
             <div className={shell.actions}>
               <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu} />
+              {/* Discussion et talkie de l'équipe (23/11/2026, option A) : TeamChat y place ses deux boutons */}
+              <span id="tc-entete" style={{ display: 'contents' }} />
               {/* Téléphone (23/11/2026, demande du propriétaire) : bascule clair / sombre toujours dans la barre du haut,
                   à côté des notifications, sur toutes les pages. La ligne « Mode sombre » du menu reste. */}
               {isMobile && (
@@ -517,6 +519,8 @@ function StaffApp() {
               )}
             </div>
           </header>
+          {/* Bandeau du talkie (« Vous parlez », « X parle ») juste sous la barre du haut */}
+          <div id="tc-bandeau" />
 
           {/* Connexion expirée (20/11/2026) : la base ne répond plus aux écoutes de l'équipe */}
           {sessionExpiree && (
@@ -561,6 +565,9 @@ function StaffApp() {
             currentUser={{ uid: user.id, id: user.id, nom: user.nom, role: user.role }}
             brandColor={roleColor}
             isAdmin={isAdmin}
+            entete="tc-entete"
+            bandeau="tc-bandeau"
+            grand={!isMobile}
           />
         )}
 

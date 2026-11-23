@@ -12,6 +12,7 @@ import { KeyRound, Minus, Plus } from 'lucide-react'
 import { organiserCarte } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
+import CommandeDetail from '../../components/CommandeDetail'
 import s from './benevole/BenevoleCommander.module.css'
 
 const TYPES = ['repas', 'boisson', 'eau']
@@ -164,7 +165,12 @@ const CODE_STATUS = {
   utilise:    { label: 'Ticket imprimé',       cls: 'eau' },
   annule:     { label: 'Annulé',               cls: '' },
 }
+// Statut passé à CommandeDetail (tons de ui/Badge)
+const CODE_TON = { en_attente: 'warning', utilise: 'success', annule: 'neutral' }
+
 export function MesCodes({ codes, onCancel }) {
+  // Toucher un code ouvre son détail (23/11/2026, maquette validée) ; « Annuler » reste à côté
+  const [ouvert, setOuvert] = useState(null)
   if (!codes.length) return null
   return (
     <section className={s.card} style={{ marginBottom: 12 }}>
@@ -174,18 +180,24 @@ export function MesCodes({ codes, onCancel }) {
         const code = String(c.code)
         return (
           <div key={code} className={s.item} style={{ gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <b className={s.code} style={{ fontSize: 22 }}>{code.slice(0, 3)} {code.slice(3)}</b>
-              <span className={clsx(s.badge, st.cls && s[st.cls])}>{st.label}</span>
-            </div>
-            <span className={s.muted}>{(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(' · ')}</span>
+            <button type="button" onClick={() => setOuvert(c)} aria-haspopup="dialog"
+              aria-label={`Détail du code ${code.split('').join(' ')}, ${st.label}`}
+              style={{ display: 'grid', gap: 4, width: '100%', padding: 0, border: 0, background: 'none', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer', borderRadius: 8 }}>
+              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <b className={s.code} style={{ fontSize: 22 }}>{code.slice(0, 3)} {code.slice(3)}</b>
+                <span className={clsx(s.badge, st.cls && s[st.cls])}>{st.label}</span>
+              </span>
+              <span className={s.muted}>{(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(' · ')}</span>
+              {c.statut === 'utilise' && c.commandeNumero && <span className={s.muted}>Commande n° {c.commandeNumero}</span>}
+            </button>
             {c.statut === 'en_attente' && (
               <button type="button" className={s.btnSecondary} onClick={() => onCancel(code)}>Annuler (sans frais)</button>
             )}
-            {c.statut === 'utilise' && c.commandeNumero && <span className={s.muted}>Commande n° {c.commandeNumero}</span>}
           </div>
         )
       })}
+      <CommandeDetail commande={ouvert} benevole onClose={() => setOuvert(null)}
+        statut={ouvert ? { label: (CODE_STATUS[ouvert.statut] || CODE_STATUS.en_attente).label, tone: CODE_TON[ouvert.statut] || 'warning' } : null}/>
     </section>
   )
 }

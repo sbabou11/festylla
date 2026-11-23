@@ -6,13 +6,19 @@
  */
 import React, { useState, useEffect, useRef } from 'react'
 import clsx from 'clsx'
-import { Bell, X, CheckCheck } from 'lucide-react'
+import { Bell, X, CheckCheck, ChevronRight } from 'lucide-react'
 import { NOTIF_TYPES } from '../hooks/useNotifications'
 import { useBreakpoint } from '../hooks/useBreakpoint'
+import DetailSheet from './DetailSheet'
 import s from './NotifBell.module.css'
 
-export default function NotifBell({ notifications, nonLuCount, onMarkAllRead }) {
+// onOpenCommande (facultatif, 23/11/2026) : ouvre la commande liée à une notification
+// (reçoit la notification) ; sans lui, le détail n'affiche pas de bouton « Voir la commande ».
+export default function NotifBell({ notifications, nonLuCount, onMarkAllRead, onOpenCommande = null }) {
   const [open, setOpen]   = useState(false)
+  // Notification ouverte en détail (23/11/2026, maquette validée) : lecture seule. L'ouverture de la
+  // cloche marque déjà tout comme lu (logique existante), rien de plus n'est écrit ici.
+  const [ouverte, setOuverte] = useState(null)
   const [shake, setShake] = useState(false)
   const prevCount         = useRef(nonLuCount)
   const dropdownRef       = useRef(null)
@@ -103,15 +109,20 @@ export default function NotifBell({ notifications, nonLuCount, onMarkAllRead }) 
           {notifications.map((n) => {
             const cfg = NOTIF_TYPES[n.type] || { icon: '🔔', color: 'var(--muted)' }
             return (
-              <li key={n.id} className={clsx(s.item, !n.lu && s.unread)} style={{ '--notif': cfg.color }}>
-                <span className={s.icon} aria-hidden="true">{cfg.icon}</span>
-                <div className={s.text}>
-                  <b>{n.titre}</b>
-                  <p className={s.msg}>{n.message}</p>
-                  {n.resaCode && <span className={s.code}>Code : {n.resaCode}</span>}
-                  <span className={s.time}>{formatTime(n.timestamp)}</span>
-                </div>
-                {!n.lu && <span className={s.dot} aria-label="Non lue"/>}
+              <li key={n.id}>
+                <button type="button" className={clsx(s.item, s.itemBtn, !n.lu && s.unread)} style={{ '--notif': cfg.color }}
+                  onClick={() => { setOpen(false); setOuverte(n) }} aria-haspopup="dialog"
+                  aria-label={`${n.titre}${!n.lu ? ', non lue' : ''}. Voir le détail`}>
+                  <span className={s.icon} aria-hidden="true">{cfg.icon}</span>
+                  <span className={s.text}>
+                    <b>{n.titre}</b>
+                    <span className={s.msg}>{n.message}</span>
+                    {n.resaCode && <span className={s.code}>Code : {n.resaCode}</span>}
+                    <span className={s.time}>{formatTime(n.timestamp)}</span>
+                  </span>
+                  {!n.lu && <span className={s.dot} aria-hidden="true"/>}
+                  <ChevronRight size={16} className={s.chev} aria-hidden="true"/>
+                </button>
               </li>
             )
           })}
@@ -152,6 +163,32 @@ export default function NotifBell({ notifications, nonLuCount, onMarkAllRead }) 
           </div>
         )}
       </div>
+
+      {/* ── Détail d'une notification (23/11/2026) : message, ce à quoi elle est liée, quand ── */}
+      <DetailSheet open={!!ouverte} onClose={() => setOuverte(null)}
+        {...(ouverte ? (() => {
+          const n = ouverte
+          const cfg = NOTIF_TYPES[n.type] || { icon: '🔔', color: null }
+          const Emoji = () => <span style={{ fontSize: 22, lineHeight: 1 }}>{cfg.icon}</span>
+          let quand = ''
+          try { quand = n.timestamp ? new Date(n.timestamp).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '' } catch {}
+          const liee = !!(n.resaId || n.resaCode)
+          return {
+            title: n.titre || cfg.label || 'Notification',
+            icon: Emoji, color: cfg.color || undefined,
+            status: cfg.label ? { label: cfg.label, tone: 'neutral' } : null,
+            sections: [
+              n.message && { label: 'Message', content: <p className={s.detMsg}>{n.message}</p> },
+              { label: 'Détail', rows: [
+                ['Commande', n.resaCode ? `#${String(n.resaCode).replace(/^#/, '')}` : ''],
+                ['Reçue', quand || formatTime(n.timestamp)],
+              ] },
+            ],
+            actions: liee && onOpenCommande ? (
+              <button type="button" className="nv-btn nv-press" onClick={() => { setOuverte(null); onOpenCommande(n) }}>Voir la commande</button>
+            ) : null,
+          }
+        })() : {})} />
 
       {/* ── Mobile : feuille du bas avec fond ── */}
       {isMobile && open && (

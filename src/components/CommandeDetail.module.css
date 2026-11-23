@@ -17,3 +17,4 @@
 .kv > div + div { border-top: 1px solid var(--border); }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.acts { justify-self: stretch; display: grid; gap: 8px; margin-top: 18px; }

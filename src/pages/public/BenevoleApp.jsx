@@ -46,6 +46,7 @@ import BenevolePlanning from '../../components/BenevolePlanning'
 import QrScanner from '../../components/QrScanner'
 import EntreeControl from '../../components/EntreeControl'
 import CommandeDetail from '../../components/CommandeDetail'
+import DetailSheet from '../../components/DetailSheet'
 import { parisNow } from '../../billets/entree'
 import { festDay, quotasDuJour, isEmFiche, dayLabel, nextDay } from '../../em/jour'
 import useAuthStore from '../../store/useAuthStore'
@@ -117,6 +118,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const [pwdLoading,  setPwdLoading]  = useState(false)
   const [pwdMsg,      setPwdMsg]      = useState(null) // { ok, text }
   const [cancelAsk,   setCancelAsk]   = useState(null) // { id, code }
+  // Cartes de l'accueil cliquables (23/11/2026, maquette validée) : 'creneau' | 'sansCreneau' | 'quotas' | 'demain' | 'entree'
+  const [carteOuverte, setCarteOuverte] = useState(null)
+  const [cmdPrete,     setCmdPrete]     = useState(null) // commande prête ouverte en détail
   const [scanOpen,    setScanOpen]    = useState(false)
   const [pointage,    setPointage]    = useState({ state: 'idle' }) // idle | busy | done | error
   const [now,         setNow]         = useState(Date.now())
@@ -553,7 +557,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         <div className={s.topInner}>
           {benev ? (<>
             <span className={s.av} aria-hidden="true">{initialsOf(benev)}</span>
-            <div className={s.headWho}>
+            {/* 23/11/2026 (option 1 validée) : sur téléphone, le texte laisse la place à la discussion et
+                au talkie ; il reste lu par les lecteurs d'écran */}
+            <div className={`${s.headWho} ${s.headWhoMasque}`}>
               <b>Bonjour {benev.prenom || benev.nom}</b>
               <span>Bénévole{eventMeta?.nom ? ` · ${eventMeta.nom}` : ''}</span>
             </div>
@@ -565,7 +571,13 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             </div>
           </>)}
           <div className={s.headActions}>
-            <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}/>
+            <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}
+              onOpenCommande={(n) => {
+                const r = resas.find(x => (n.resaId && x.id === n.resaId) || (n.resaCode && String(x.code) === String(n.resaCode).replace(/^#/, '')))
+                if (r) setCmdPrete(r); else setTab('mes-resas')
+              }}/>
+            {/* Discussion et talkie de l'équipe (23/11/2026, option A) : TeamChat y place ses deux boutons */}
+            <span id="tc-entete-benev" style={{ display: 'contents' }} />
             <ThemeToggle style={{
               width: 44, height: 44, minHeight: 0, borderRadius: '50%',
               background: surDegrade ? 'var(--nv-glass)' : 'var(--nv-card2)',
@@ -578,6 +590,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             )}
           </div>
         </div>
+        {/* Bandeau du talkie (« Vous parlez », « X parle ») sous la barre du haut */}
+        <div id="tc-bandeau-benev" />
       </header>
 
       <main className={`nv-under-tabbar ${s.wrap}`}>
@@ -598,9 +612,13 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
               /* Mon créneau : carte de verre principale (nouveau style, 23/11/2026) */
                 slot && ribbon ? (
                   <section className={`nv-glass nv-pad ${s.slotCard}`}>
-                    <p className={s.slotKicker}>{slotKicker}</p>
-                    <h2 className={`nv-big ${s.slotTitle}`}>{postName(slot.postId)} · {fmtHour(slot.range.start)} – {fmtHour(slot.range.end)}</h2>
-                    <p className={s.slotDate}>{slotDate}{slot.shift.label ? ` · ${slot.shift.label}` : ''}</p>
+                    {/* Toucher le haut de la carte ouvre le détail du créneau ; frise et boutons restent dessous (23/11/2026) */}
+                    <button type="button" className={`nv-press ${s.cardOpen}`} onClick={() => setCarteOuverte('creneau')}
+                      aria-haspopup="dialog" aria-label={`${slotKicker} : ${postName(slot.postId)}, ${fmtHour(slot.range.start)} – ${fmtHour(slot.range.end)}. Voir le détail`}>
+                      <span className={s.slotKicker}>{slotKicker}</span>
+                      <span className={`nv-big ${s.slotTitle}`}>{postName(slot.postId)} · {fmtHour(slot.range.start)} – {fmtHour(slot.range.end)}</span>
+                      <span className={s.slotDate}>{slotDate}{slot.shift.label ? ` · ${slot.shift.label}` : ''}</span>
+                    </button>
                     {/* Frise horaire gardée dans la carte : en mode « tient dans la largeur », elle ne déborde pas */}
                     <div className={s.ribbon}>
                       <TimeRibbon start={ribbon.start} end={ribbon.end} items={ribbon.items} now={now}/>
@@ -622,9 +640,11 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                   </section>
                 ) : (
                   <section className={`nv-glass nv-pad ${s.card}`}>
-                    <div className={s.cardHead}><h2>Mon créneau</h2></div>
+                    <button type="button" className={`nv-press ${s.cardOpen}`} onClick={() => setCarteOuverte('sansCreneau')} aria-haspopup="dialog">
+                      <span className={s.cardHead}><span className={s.cardTitle}>Mon créneau</span><ChevronRight size={18} className={s.chev} aria-hidden="true"/></span>
+                      <span className={s.muted}>{shifts.length ? 'Aucun créneau à venir pour vous.' : "L'organisation n'a pas encore publié les créneaux."}</span>
+                    </button>
                   <div className={s.noSlot}>
-                    <p>{shifts.length ? 'Aucun créneau à venir pour vous.' : "L'organisation n'a pas encore publié les créneaux."}</p>
                     {shifts.length > 0 && <Button variant="secondary" size="sm" icon={CalendarDays} onClick={() => setTab('planning')}>Choisir un créneau</Button>}
                     {/* Anciennes disponibilités déclarées à l'inscription */}
                     {benev.creneaux && ['Vendredi','Samedi','Dimanche'].map(j => {
@@ -644,7 +664,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
               {/* Commande prête */}
               {readyResas.length > 0 && (
-                <button type="button" className={`nv-glass nv-press ${s.notice}`} onClick={() => setTab('mes-resas')}>
+                /* Une commande prête : son détail s'ouvre ; plusieurs : l'onglet Résas, qui les liste (23/11/2026) */
+                <button type="button" className={`nv-glass nv-press ${s.notice}`} aria-haspopup={readyResas.length === 1 ? 'dialog' : undefined}
+                  onClick={() => readyResas.length === 1 ? setCmdPrete(readyResas[0]) : setTab('mes-resas')}>
                   <span className={`nv-ic ${s.icReady}`}><BellRing size={20}/></span>
                   <span className={s.noticeText}>
                     <b>{readyResas.length > 1 ? `${readyResas.length} commandes prêtes` : 'Votre commande est prête'}</b>
@@ -656,7 +678,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
               {/* Contrôle des billets aujourd'hui (Event Manager) */}
               {em && canControl && (
-                <button type="button" className={`nv-glass nv-press ${s.notice}`} onClick={() => setTab('entree')}>
+                <button type="button" className={`nv-glass nv-press ${s.notice}`} onClick={() => setCarteOuverte('entree')} aria-haspopup="dialog">
                   <span className={`nv-ic ${s.icBillets}`}><Ticket size={20}/></span>
                   <span className={s.noticeText}>
                     <b>Vous contrôlez les billets aujourd'hui</b>
@@ -673,19 +695,21 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                   {em && <span className={s.muted}>{dayLabel(jour)}</span>}
                 </div>
                 {fermee ? quotasNonCharges : (<>
-                <div className={s.bars}>
+                {/* Toucher les barres ouvre le détail par type : droits, pris, restants (23/11/2026) */}
+                <button type="button" className={`nv-press ${s.cardOpen} ${s.bars}`} onClick={() => setCarteOuverte('quotas')}
+                  aria-haspopup="dialog" aria-label={`Ce qu'il me reste : ${Object.entries(TYPE_CFG).map(([t, c]) => `${c.label} ${quotaRestant(t)} sur ${quotas.droits[t] || 0}`).join(', ')}. Voir le détail`}>
                   {Object.entries(TYPE_CFG).map(([type, cfg]) => {
                     const max = quotas.droits[type] || 0
                     const v = quotaRestant(type)
                     return (
-                      <div key={type} className={s.barRow}>
+                      <span key={type} className={s.barRow}>
                         <span className={s.barName}>{cfg.label}</span>
                         <span className={s.barTrack}><i className="nv-grow-x" style={{ width: max ? `${Math.round(v / max * 100)}%` : 0 }}/></span>
                         <b className={v ? s.barVal : s.barOut}>{max ? (v ? `${v} sur ${max}` : 'Épuisé') : '—'}</b>
-                      </div>
+                      </span>
                     )
                   })}
-                </div>
+                </button>
                 {em && !(quotas.droits.repas || quotas.droits.boisson || quotas.droits.eau) && (
                   <p className={s.muted}>Pas de repas ni de boissons prévus aujourd'hui.</p>
                 )}
@@ -698,17 +722,18 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
               </section>
 
               {em && (
-                <section className={`nv-glass nv-pad ${s.card}`}>
-                  <div className={s.cardHead}>
-                    <h2>Demain</h2>
+                /* Carte « Demain » entière en bouton : ouvre le détail des droits du lendemain (23/11/2026) */
+                <button type="button" className={`nv-glass nv-pad nv-press ${s.card} ${s.cardBtn}`} onClick={() => setCarteOuverte('demain')} aria-haspopup="dialog">
+                  <span className={s.cardHead}>
+                    <span className={s.cardTitle}>Demain</span>
                     <span className={s.muted}>{dayLabel(nextDay(jour))}</span>
-                  </div>
-                  <p className={s.muted}>
+                  </span>
+                  <span className={s.muted}>
                     {demain && (demain.repas || demain.boisson || demain.eau)
                       ? `${demain.repas || 0} repas, ${demain.boisson || 0} boisson${(demain.boisson || 0) > 1 ? 's' : ''}, ${demain.eau || 0} eau${(benev.controleBillets || []).includes(nextDay(jour)) ? ' · contrôle des billets' : ''}`
                       : 'Rien de prévu.'}
-                  </p>
-                </section>
+                  </span>
+                </button>
               )}
 
               <DernieresCommandes resas={resas} setTab={setTab}
@@ -809,6 +834,104 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         })}
       </nav>
 
+      {/* ── Détails des cartes de l'accueil (23/11/2026, maquette validée) : lecture seule, rien que des
+          données déjà visibles par le bénévole (créneau, planning, droits, commandes) ── */}
+      <DetailSheet open={carteOuverte === 'creneau' && !!slot} onClose={() => setCarteOuverte(null)}
+        {...(slot ? (() => {
+          // Autres bénévoles du même poste sur ce créneau : noms déjà montrés dans le planning
+          const ids = slot.postId === '__free__' ? (slot.shift.libres || []) : (slot.shift.postes?.[slot.postId]?.assignments || [])
+          const annuaire = Object.fromEntries(benevoles.map(b => [b.id, b]))
+          const autres = ids.filter(id => id !== myId).map(id => annuaire[id]).filter(Boolean)
+          return {
+            title: slot.range.start.getTime() <= now ? 'Mon créneau' : 'Mon prochain créneau',
+            icon: CalendarDays, color: postsById[slot.postId]?.couleur || 'var(--brand)',
+            status: presence ? { label: 'Arrivée pointée', tone: 'success' } : checkInOpen ? { label: 'Pointage ouvert', tone: 'brand' } : { label: rel?.text || 'À venir', tone: 'neutral' },
+            value: `${fmtHour(slot.range.start)} – ${fmtHour(slot.range.end)}`,
+            sub: slotDate,
+            sections: [
+              { label: 'Poste', rows: [
+                ['Poste', `${postsById[slot.postId]?.emoji ? postsById[slot.postId].emoji + ' ' : ''}${postName(slot.postId)}`],
+                ['Créneau', slot.shift.label],
+                ['Quand', rel?.text],
+              ] },
+              autres.length > 0 && { label: `Avec vous (${autres.length})`, content: (
+                <ul className={s.detList}>{autres.map(b => <li key={b.id}><b>{[b.prenom, b.nom].filter(Boolean).join(' ')}</b>{b.poste && <span>{b.poste}</span>}</li>)}</ul>
+              ) },
+              { label: 'Pointage', rows: [
+                ['Arrivée', presence ? `pointée à ${fmtHour(new Date(presence.at))}` : 'pas encore pointée'],
+                ['Retard', presence?.retardMin > 0 ? `${presence.retardMin} min` : ''],
+                ['Ouverture', presence ? '' : checkInOpen ? 'ouvert : scannez le QR du poste' : `${CHECKIN_EARLY_MIN} min avant le début`],
+              ] },
+            ],
+            actions: (<>
+              {!presence && (
+                <button type="button" className="nv-btn nv-press" disabled={!checkInOpen} onClick={() => { setCarteOuverte(null); openScan() }}>
+                  <ScanLine size={20}/> Pointer mon arrivée
+                </button>
+              )}
+              <button type="button" className="nv-btn-sec nv-press" onClick={() => { setCarteOuverte(null); setTab('planning') }}>Voir tout mon planning</button>
+            </>),
+          }
+        })() : {})} />
+
+      <DetailSheet open={carteOuverte === 'sansCreneau'} onClose={() => setCarteOuverte(null)}
+        title="Mon créneau" icon={CalendarDays} color="var(--brand)"
+        status={{ label: shifts.length ? 'Aucun créneau à venir' : 'Créneaux pas encore publiés', tone: 'neutral' }}
+        sub={shifts.length ? 'Choisissez un créneau dans le planning.' : "L'organisation n'a pas encore publié les créneaux."}
+        sections={[(() => {
+          const rows = ['Vendredi', 'Samedi', 'Dimanche']
+            .map(j => [j, Object.entries(benev?.creneaux?.[j] || {}).filter(([, v]) => v).map(([c]) => c).join(', ')])
+            .filter(r => r[1])
+          return rows.length > 0 && { label: "Disponibilités déclarées à l'inscription", rows }
+        })()]}
+        actions={shifts.length > 0 && !em && (
+          <button type="button" className="nv-btn nv-press" onClick={() => { setCarteOuverte(null); setTab('planning') }}>Choisir un créneau</button>
+        )} />
+
+      <DetailSheet open={carteOuverte === 'quotas' && !!benev} onClose={() => setCarteOuverte(null)}
+        title="Ce qu'il me reste" icon={UtensilsCrossed} color="var(--brand)"
+        sub={em ? dayLabel(jour) : ''}
+        sections={[
+          ...Object.entries(TYPE_CFG).map(([type, cfg]) => {
+            const max = quotas.droits[type] || 0
+            return { label: cfg.label, rows: max
+              ? [['Droits', String(max)], ['Pris', String(quotas.conso[type] || 0)], ['Restants', quotaRestant(type) ? String(quotaRestant(type)) : 'Épuisé']]
+              : [['Droits', 'non prévu']] }
+          }),
+          (() => {
+            // Commandes du jour (hors annulées), déjà listées dans « Mes dernières commandes »
+            const msDe = (r) => r.createdAt?.seconds != null ? r.createdAt.seconds * 1000 : r.createdAt ? r.createdAt : null
+            const duJour = resas.filter(r => r.status !== 'cancelled' && msDe(r) != null && festDay(msDe(r)) === jour)
+            return duJour.length > 0 && { label: "Commandes d'aujourd'hui", content: (
+              <ul className={s.detList}>{duJour.map(r => (
+                <li key={r.id}><b>{(r.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ') || 'Commande'}</b><span>{fmtResaDate(r)}</span></li>
+              ))}</ul>
+            ) }
+          })(),
+          em && { label: 'Remise à zéro', content: <p className={s.muted}>Valables jusqu'à 6 h du matin. Ce qui n'est pas utilisé ne passe pas au lendemain.</p> },
+        ]}
+        actions={<button type="button" className="nv-btn nv-press" onClick={() => { setCarteOuverte(null); setTab('commander') }}><UtensilsCrossed size={20}/> Commander mon repas</button>} />
+
+      <DetailSheet open={carteOuverte === 'demain' && em} onClose={() => setCarteOuverte(null)}
+        title="Demain" icon={CalendarDays} color="var(--brand)"
+        sub={em ? dayLabel(nextDay(jour)) : ''}
+        status={demain && (demain.repas || demain.boisson || demain.eau) ? null : { label: 'Rien de prévu', tone: 'neutral' }}
+        sections={em ? [
+          { label: 'Mes droits', rows: [['Repas', String(demain?.repas || 0)], ['Boissons', String(demain?.boisson || 0)], ['Eau', String(demain?.eau || 0)]] },
+          (benev?.controleBillets || []).includes(nextDay(jour)) && { label: 'Mission', rows: [['Contrôle des billets', 'oui']] },
+          { label: 'Remise à zéro', content: <p className={s.muted}>Les droits de demain s'ouvrent à 6 h du matin.</p> },
+        ] : []} />
+
+      <DetailSheet open={carteOuverte === 'entree' && canControl} onClose={() => setCarteOuverte(null)}
+        title="Contrôle des billets" icon={Ticket} color="var(--brand)"
+        status={{ label: "Aujourd'hui", tone: 'brand' }}
+        sub={em ? dayLabel(jour) : ''}
+        sections={[{ content: <p className={s.muted}>Vous contrôlez les billets à l'entrée aujourd'hui. L'onglet Entrée ouvre le scanner des billets.</p> }]}
+        actions={<button type="button" className="nv-btn nv-press" onClick={() => { setCarteOuverte(null); setTab('entree') }}><Ticket size={20}/> Ouvrir l'onglet Entrée</button>} />
+
+      <CommandeDetail commande={cmdPrete} benevole onClose={() => setCmdPrete(null)}
+        statut={cmdPrete ? (RESA_STATUTS[cmdPrete.status] || RESA_STATUTS.pending) : null}/>
+
       {/* Pointage : scan du QR du poste */}
       <Sheet open={scanOpen} onClose={() => setScanOpen(false)} title="Pointer mon arrivée">
         {pointage.state === 'done' ? (
@@ -890,6 +1013,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           currentUser={{ uid: docId, id: docId, nom: benevNom || benev.nom || 'Bénévole', role: 'benevole' }}
           brandColor={themeColor}
           isAdmin={false}
+          entete="tc-entete-benev"
+          bandeau="tc-bandeau-benev"
         />
       )}
     </div>

@@ -1,9 +1,16 @@
 /**
  * components/TeamChat.jsx — v7 palier 2
  * Combine ChatFab + ChatModal + WalkieOverlay + hook useTeamChat + hook useWalkie.
+ *
+ * Entête (23/11/2026, option A validée) : si l'écran passe `entete` (id d'un emplacement dans sa
+ * barre du haut), la discussion et le talkie y deviennent deux boutons (TeamChatBoutons) au lieu de
+ * la bulle flottante ; `bandeau` (id d'un emplacement sous la barre) reçoit alors « Vous parlez » /
+ * « X parle ». `grand` : boutons carrés de la barre tablette / ordinateur.
  */
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import ChatFab       from './ChatFab'
+import TeamChatBoutons from './TeamChatBoutons'
 import ChatModal     from './ChatModal'
 import WalkieOverlay from './WalkieOverlay'
 import { useTeamChat } from '../hooks/useTeamChat'
@@ -29,8 +36,17 @@ function playBeep() {
 
 const MUTE_KEY = 'walkie-muted'
 
-export default function TeamChat({ eventId, currentUser, brandColor = '#1a6b7a', isAdmin = false }) {
+export default function TeamChat({ eventId, currentUser, brandColor = '#1a6b7a', isAdmin = false, entete = null, bandeau = null, grand = false }) {
   const enabled = !!(eventId && currentUser && (currentUser.uid || currentUser.id))
+
+  // Emplacements fournis par l'écran (rendus avant ce composant, trouvés après le premier affichage)
+  const [slots, setSlots] = useState({ entete: null, bandeau: null })
+  useEffect(() => {
+    setSlots({
+      entete: entete ? document.getElementById(entete) : null,
+      bandeau: bandeau ? document.getElementById(bandeau) : null,
+    })
+  }, [entete, bandeau, grand])
 
   // Mute walkie (persisté localStorage)
   const [walkieMuted, setWalkieMuted] = useState(() => {
@@ -107,7 +123,17 @@ export default function TeamChat({ eventId, currentUser, brandColor = '#1a6b7a',
 
   return (
     <>
-      <ChatFab
+      {slots.entete ? createPortal(
+        <TeamChatBoutons
+          grand={grand}
+          nonLuCount={chat.nonLuCount}
+          onOpenChat={() => chat.setOpen(true)}
+          onWalkieStart={walkie.startTalk}
+          onWalkieStop={walkie.stopTalk}
+          iAmTalking={walkie.iAmTalking}
+          someoneElseTalking={walkie.someoneElseTalking}
+          talkDuration={walkie.talkDuration}
+        />, slots.entete) : !entete && <ChatFab
         uid={currentUser.uid || currentUser.id}
         color={brandColor}
         nonLuCount={chat.nonLuCount}
@@ -117,7 +143,7 @@ export default function TeamChat({ eventId, currentUser, brandColor = '#1a6b7a',
         iAmTalking={walkie.iAmTalking}
         someoneElseTalking={walkie.someoneElseTalking}
         talkDuration={walkie.talkDuration}
-      />
+      />}
       <ChatModal
         open={chat.open}
         onClose={() => chat.setOpen(false)}
@@ -134,13 +160,20 @@ export default function TeamChat({ eventId, currentUser, brandColor = '#1a6b7a',
         walkieMuted={walkieMuted}
         onToggleWalkieMute={toggleMute}
       />
-      <WalkieOverlay
-        iAmTalking={walkie.iAmTalking}
-        someoneElseTalking={walkie.someoneElseTalking}
-        talkerName={walkie.floor?.holder?.nom || ''}
-        muted={walkieMuted}
-        onToggleMute={toggleMute}
-      />
+      {(() => {
+        const bandeauTalkie = (
+          <WalkieOverlay
+            iAmTalking={walkie.iAmTalking}
+            someoneElseTalking={walkie.someoneElseTalking}
+            talkerName={walkie.floor?.holder?.nom || ''}
+            muted={walkieMuted}
+            onToggleMute={toggleMute}
+            inline={!!slots.bandeau}
+            talkDuration={walkie.talkDuration}
+          />
+        )
+        return slots.bandeau ? createPortal(bandeauTalkie, slots.bandeau) : bandeauTalkie
+      })()}
     </>
   )
 }

@@ -32,6 +32,11 @@ import { watchCachets, watchFinances } from '../../firebase/service'
 import { APP_VERSION_LABEL } from '../../utils/buildInfo'
 import AnalysisTables from '../../components/analyse/AnalysisTables'
 import { Table2 } from 'lucide-react'
+import DetailSheet from '../../components/DetailSheet'
+import { Articles, Repartition, Note, grouper, nettoyer } from '../../components/detailContenus'
+
+// Modes de paiement des opérations (fenêtre de détail, 23/11/2026)
+const MODE_OP = { cash: 'Espèces', especes: 'Espèces', virement: 'Virement', cheque: 'Chèque', avantage: 'Avantage', compte: 'Compte YllaCash', cb: 'Carte' }
 
 // ═══════════════════════════════════════════════════════════════════════
 // Helpers
@@ -565,6 +570,7 @@ export default function Comptabilite() {
 
     return { recettes, depenses, solde, aPayer, soldesRestants }
   }, [operations, cachets, spectateurs])
+  const [kpiOpen, setKpiOpen] = useState(null) // carte indicateur ouverte (23/11/2026)
 
   // ─── Décomposition par catégorie (pour la synthèse) ──────────────────
   const parCategorie = useMemo(() => {
@@ -851,19 +857,59 @@ export default function Comptabilite() {
         gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
         gap: 8, marginBottom: 16,
       }}>
-        <KpiCard label="Recettes" value={fmtEShort(kpis.recettes)} color="var(--green)" icon={TrendingUp} isMobile={isMobile}/>
-        <KpiCard label="Dépenses" value={fmtEShort(kpis.depenses)} color="var(--coral)" icon={TrendingDown} isMobile={isMobile}/>
+        <KpiCard label="Recettes" value={fmtEShort(kpis.recettes)} color="var(--green)" icon={TrendingUp} isMobile={isMobile} onClick={() => setKpiOpen('recettes')}/>
+        <KpiCard label="Dépenses" value={fmtEShort(kpis.depenses)} color="var(--coral)" icon={TrendingDown} isMobile={isMobile} onClick={() => setKpiOpen('depenses')}/>
         <KpiCard label="Solde net" value={fmtEShort(kpis.solde)}
           color={kpis.solde >= 0 ? 'var(--marine)' : 'var(--red)'}
-          icon={Wallet} isMobile={isMobile}/>
+          icon={Wallet} isMobile={isMobile} onClick={() => setKpiOpen('solde')}/>
         <KpiCard
           label={vue === 'tresorerie' ? 'À payer' : 'Soldes spec.'}
           value={vue === 'tresorerie' ? fmtEShort(kpis.aPayer) : fmtEShort(kpis.soldesRestants)}
           color="var(--gold)"
           icon={AlertCircle} isMobile={isMobile}
           sub={vue === 'tresorerie' ? 'Cachets prévus' : 'Restant sur cartes'}
+          onClick={() => setKpiOpen('quatrieme')}
         />
       </div>
+      <style>{'.yc-compta-tap:focus-visible{outline:2px solid var(--brand);outline-offset:2px}'}</style>
+
+      {/* Décomposition des indicateurs (23/11/2026) : données déjà calculées sur la page */}
+      {kpiOpen && (() => {
+        const parCat = (sens) => parCategorie.filter(c => c.sens === sens)
+          .map(c => ({ label: c.categorie, value: c.total, count: c.count, display: fmtE(c.total) }))
+        const parOrigine = (sens) => grouper(operations.filter(o => o.sens === sens), o => o.origine)
+          .map(g => ({ ...g, display: fmtE(g.value) }))
+        const vueTxt = vue === 'tresorerie' ? 'Vue trésorerie : la caisse réelle.' : 'Vue résultat : lecture analytique.'
+        const conf = {
+          recettes: { title: 'Recettes', icon: TrendingUp, value: fmtE(kpis.recettes), sections: [
+            { label: 'Par catégorie', content: <Repartition rows={parCat('recette')} empty="Aucune recette."/> },
+            { label: 'Par origine', content: <Repartition rows={parOrigine('recette')} empty="Aucune recette."/> },
+            { label: 'Ce que compte ce chiffre', content: <Note>Toutes les recettes de l'événement, sans les filtres de la liste. {vueTxt}</Note> },
+          ] },
+          depenses: { title: 'Dépenses', icon: TrendingDown, value: fmtE(kpis.depenses), sections: [
+            { label: 'Par catégorie', content: <Repartition rows={parCat('depense')} empty="Aucune dépense."/> },
+            { label: 'Par origine', content: <Repartition rows={parOrigine('depense')} empty="Aucune dépense."/> },
+            { label: 'Ce que compte ce chiffre', content: <Note>Toutes les dépenses de l'événement, sans les filtres de la liste. {vueTxt}</Note> },
+          ] },
+          solde: { title: 'Solde net', icon: Wallet, value: fmtE(kpis.solde), sections: [
+            { label: 'Calcul', rows: [['Recettes', fmtE(kpis.recettes)], ['Dépenses', `- ${fmtE(kpis.depenses)}`], ['Solde net', fmtE(kpis.solde)]] },
+            { label: 'Ce que compte ce chiffre', content: <Note>{vueTxt}</Note> },
+          ] },
+          quatrieme: vue === 'tresorerie'
+            ? { title: 'À payer', icon: AlertCircle, value: fmtE(kpis.aPayer), sections: [
+              { label: 'Cachets prévus', rows: cachets.filter(c => c.statut === 'planifie').sort((a, b) => (Number(b.montant) || 0) - (Number(a.montant) || 0)).slice(0, 8).map(c => [c.artiste || 'Sans nom', fmtE(c.montant)]) },
+              { label: 'Ce que compte ce chiffre', content: <Note>Cachets artistes planifiés et pas encore payés.</Note> },
+            ] }
+            : { title: 'Soldes spectateurs', icon: AlertCircle, value: fmtE(kpis.soldesRestants), sections: [
+              { label: 'Comptes', rows: [
+                ['Comptes avec un solde', String((spectateurs || []).filter(sp => (Number(sp.solde) || 0) > 0).length)],
+                ['Comptes au total', String((spectateurs || []).length)],
+              ] },
+              { label: 'Ce que compte ce chiffre', content: <Note>Argent restant sur les cartes des spectateurs : la Maison Ylla le leur doit.</Note> },
+            ] },
+        }[kpiOpen]
+        return <DetailSheet open onClose={() => setKpiOpen(null)} {...conf} sections={nettoyer(conf.sections)}/>
+      })()}
 
       {/* ─── ONGLETS ────────────────────────────────────────────────── */}
       <div style={{
@@ -974,31 +1020,37 @@ export default function Comptabilite() {
 // Sous-composants
 // ═══════════════════════════════════════════════════════════════════════
 
-function KpiCard({ label, value, color, icon: Icon, sub, isMobile }) {
+// 23/11/2026 : avec onClick, la carte est un bouton qui ouvre la décomposition du chiffre
+function KpiCard({ label, value, color, icon: Icon, sub, isMobile, onClick }) {
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div style={{
-      background: 'var(--bg)', borderRadius: 10, padding: isMobile ? '10px 12px' : '14px 16px',
-      border: '1px solid var(--border)', minWidth: 0,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+    <Tag {...(onClick ? { type: 'button', onClick, className: 'yc-compta-tap', 'aria-haspopup': 'dialog', 'aria-label': `${label} : voir le détail` } : {})}
+      style={{
+        background: 'var(--bg)', borderRadius: 10, padding: isMobile ? '10px 12px' : '14px 16px',
+        border: '1px solid var(--border)', minWidth: 0,
+        ...(onClick ? { display: 'block', width: '100%', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer' } : {}),
+      }}>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <span style={{
           fontSize: isMobile ? 9 : 10, color: 'var(--muted)',
           textTransform: 'uppercase', letterSpacing: '0.05em',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{label}</span>
         {Icon && <Icon size={14} style={{ color, flexShrink: 0 }}/>}
-      </div>
-      <div style={{
+      </span>
+      <span style={{
+        display: 'block',
         fontSize: isMobile ? 17 : 22, fontWeight: 800, color,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-      }}>{value}</div>
+      }}>{value}</span>
       {sub && (
-        <div style={{
+        <span style={{
+          display: 'block',
           fontSize: isMobile ? 9 : 10, color: 'var(--muted)', marginTop: 2,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>{sub}</div>
+        }}>{sub}</span>
       )}
-    </div>
+    </Tag>
   )
 }
 
@@ -1319,6 +1371,9 @@ function FilterSelect({ label, value, onChange, options }) {
 
 // ─── Tableau des opérations ────────────────────────────────────────────
 function OperationsTable({ operations, isMobile, tab }) {
+  // Détail d'une opération (23/11/2026) : la ligne ouvre une feuille du bas
+  const [openId, setOpenId] = useState(null)
+  const openOp = openId ? operations.find(o => o.id === openId) || null : null
   if (operations.length === 0) {
     return (
       <div style={{
@@ -1355,7 +1410,26 @@ function OperationsTable({ operations, isMobile, tab }) {
       )}
 
       {/* Lignes */}
-      {operations.map(o => <OperationRow key={o.id} op={o} isMobile={isMobile}/>)}
+      {operations.map(o => <OperationRow key={o.id} op={o} isMobile={isMobile} onOpen={() => setOpenId(o.id)}/>)}
+      <style>{'.yc-compta-tap:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}.yc-compta-tap:hover{background:var(--bg2)}'}</style>
+      <DetailSheet open={!!openOp} onClose={() => setOpenId(null)}
+        title={openOp ? (openOp.sens === 'depense' ? 'Dépense' : 'Recette') : 'Opération'}
+        icon={openOp?.sens === 'depense' ? TrendingDown : TrendingUp}
+        color={openOp ? (openOp.sens === 'depense' ? 'var(--coral)' : 'var(--green)') : undefined}
+        status={openOp ? (openOp.statut === 'planifie' ? { label: 'Prévu', tone: 'warning' } : { label: openOp.categorie || 'Opération', tone: 'neutral' }) : null}
+        value={openOp ? `${openOp.sens === 'depense' ? '-' : '+'}${fmtE(openOp.montant)}` : null}
+        sub={openOp?.description || null}
+        sections={openOp ? nettoyer([
+          Array.isArray(openOp.items) && openOp.items.length > 0 && { label: 'Articles', content: <Articles items={openOp.items}/> },
+          { label: 'Opération', rows: [
+            ['Date', fmtDateTime(openOp.date || openOp.ts) || null],
+            ['Catégorie', openOp.categorie || null],
+            ['Origine', openOp.origine || null],
+            ['Mode', MODE_OP[openOp.mode] || openOp.mode || null],
+            ['Encaissé par', openOp.staff || null],
+            ['Référence', openOp.ref || null],
+          ] },
+        ]) : []}/>
 
       {/* Total bas */}
       <div style={{
@@ -1379,61 +1453,65 @@ function OperationsTable({ operations, isMobile, tab }) {
   )
 }
 
-function OperationRow({ op, isMobile }) {
+// 23/11/2026 : la ligne est un bouton qui ouvre le détail de l'opération (contenu en <span>)
+const rowBtnReset = { width: '100%', border: 'none', borderBottom: '1px solid var(--border)', background: 'transparent', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', margin: 0 }
+
+function OperationRow({ op, isMobile, onOpen }) {
   const isDepense = op.sens === 'depense'
   const color = isDepense ? 'var(--coral)' : 'var(--green)'
 
   if (isMobile) {
     return (
-      <div style={{
-        padding: 12, borderBottom: '1px solid var(--border)',
+      <button type="button" className="yc-compta-tap" onClick={onOpen} aria-haspopup="dialog" style={{
+        ...rowBtnReset,
+        padding: 12,
         display: 'flex', flexDirection: 'column', gap: 4,
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--marine)',
+        <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, width: '100%' }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--marine)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {op.description}
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+            </span>
+            <span style={{ display: 'block', fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
               {fmtDate(op.date)} · {op.categorie}
               {op.statut === 'planifie' && <span style={{ color: 'var(--gold)', marginLeft: 4 }}>· Prévu</span>}
-            </div>
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 800, color, flexShrink: 0, whiteSpace: 'nowrap' }}>
+            </span>
+          </span>
+          <span style={{ fontSize: 14, fontWeight: 800, color, flexShrink: 0, whiteSpace: 'nowrap' }}>
             {isDepense ? '-' : '+'}{fmtE(op.montant)}
-          </div>
-        </div>
-      </div>
+          </span>
+        </span>
+      </button>
     )
   }
 
   return (
-    <div style={{
+    <button type="button" className="yc-compta-tap" onClick={onOpen} aria-haspopup="dialog" style={{
+      ...rowBtnReset,
       display: 'grid',
       gridTemplateColumns: '100px 140px 1fr 100px 120px',
       gap: 12, padding: '10px 14px',
-      borderBottom: '1px solid var(--border)',
       alignItems: 'center',
       fontSize: 12,
     }}>
-      <div style={{ color: 'var(--muted)' }}>{fmtDate(op.date)}</div>
-      <div style={{ color: 'var(--marine)', fontWeight: 600,
+      <span style={{ color: 'var(--muted)' }}>{fmtDate(op.date)}</span>
+      <span style={{ color: 'var(--marine)', fontWeight: 600,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {op.categorie}
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600, color: 'var(--text)',
+      </span>
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: 'block', fontWeight: 600, color: 'var(--text)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {op.description}
-        </div>
+        </span>
         {op.ref && (
-          <div style={{ fontSize: 10, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ display: 'block', fontSize: 10, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             Ref : {op.ref}
-          </div>
+          </span>
         )}
-      </div>
-      <div>
+      </span>
+      <span>
         <span style={{
           fontSize: 10, fontWeight: 700,
           padding: '3px 8px', borderRadius: 4,
@@ -1454,13 +1532,13 @@ function OperationRow({ op, isMobile }) {
             Prévu
           </span>
         )}
-      </div>
-      <div style={{
+      </span>
+      <span style={{
         textAlign: 'right', fontWeight: 800, fontSize: 13,
         color, whiteSpace: 'nowrap',
       }}>
         {isDepense ? '-' : '+'}{fmtE(op.montant)}
-      </div>
-    </div>
+      </span>
+    </button>
   )
 }

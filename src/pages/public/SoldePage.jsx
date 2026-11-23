@@ -25,6 +25,7 @@ import { watchCarte } from '../../menu/carte'
 import { apiFetch } from '../../firebase/session'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
 import CommandeDetail from '../../components/CommandeDetail'
+import DetailSheet from '../../components/DetailSheet'
 import { organiserCarte } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
 import {
@@ -617,8 +618,9 @@ export default function SoldePage({ demo = null }) {
   //    montant de l'accueil qui se floute au défilement. Aucune donnée nouvelle, aucune action nouvelle.
   const [detail, setDetail]     = useState(null)    // opération ouverte en lecture seule
   const [plusOpen, setPlusOpen] = useState(false)   // feuille « Plus » de l'accueil
+  // Cartes de résumé cliquables (23/11/2026, maquette validée) : 'solde' | 'demande', ouvertes en DetailSheet
+  const [carteOuverte, setCarteOuverte] = useState(null)
   const heroRef        = useRef(null)
-  const detailCloseRef = useRef(null)
   const plusCloseRef   = useRef(null)
 
   // Recharge au clavier numérique (23/11/2026) : la saisie remplit « autreMontant » comme l'ancien
@@ -660,21 +662,22 @@ export default function SoldePage({ demo = null }) {
     }
   }, [tab, !!spec])
 
-  // Détail et feuille « Plus » : Échap ferme, le fond ne défile plus, le focus revient où il était (23/11/2026)
+  // Feuille « Plus » : Échap ferme, le fond ne défile plus, le focus revient où il était (23/11/2026).
+  // Le détail d'une opération est une DetailSheet (ui/Sheet gère Échap et le focus).
   useEffect(() => {
-    if (!detail && !plusOpen) return
+    if (!plusOpen) return
     const avant = document.activeElement
-    const onKey = (e) => { if (e.key === 'Escape') { setDetail(null); setPlusOpen(false) } }
+    const onKey = (e) => { if (e.key === 'Escape') setPlusOpen(false) }
     document.addEventListener('keydown', onKey)
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    ;(detail ? detailCloseRef : plusCloseRef).current?.focus?.()
+    plusCloseRef.current?.focus?.()
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = overflow
       avant?.focus?.()
     }
-  }, [!!detail, plusOpen])
+  }, [plusOpen])
 
   const Pagination = ({ page, pages, onChange }) => pages <= 1 ? null : (
     <div className={sp.pager}>
@@ -747,7 +750,13 @@ export default function SoldePage({ demo = null }) {
         </button>
       )}
       {spec && avecCloche && (
-        <span className={sp.bellSlot}><NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu} /></span>
+        <span className={sp.bellSlot}><NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}
+          onOpenCommande={(n) => {
+            // Notification liée à une commande : son détail si elle est dans la liste, sinon l'onglet des commandes
+            const r = resas.find(x => (n.resaId && x.id === n.resaId) || (n.resaCode && String(x.code) === String(n.resaCode).replace(/^#/, '')))
+            if (r) setCmdOuverte({ c: r, statut: RESA_STATUS[r.status] || RESA_STATUS.pending })
+            else go('reservations')
+          }} /></span>
       )}
       <ThemeToggle style={rond} />
     </div>
@@ -818,9 +827,13 @@ export default function SoldePage({ demo = null }) {
             </header>
 
             <section ref={heroRef} className={sp.hero} aria-label="Mon solde">
-              <div className={sp.heroLab}>Mon solde</div>
-              <div className={clsx('nv-big', sp.heroBig)}><AnimatedNumber value={spec.solde || 0} format={montantGros} /></div>
-              <span className={sp.chip}><Wallet size={16} aria-hidden="true" />{eventMeta?.nom ? `${eventMeta.nom} · ` : ''}Compte {spec.id}</span>
+              {/* Toucher le solde ouvre son détail (23/11/2026, maquette validée) */}
+              <button type="button" className={clsx(sp.heroBtn, 'nv-press')} onClick={() => setCarteOuverte('solde')}
+                aria-label={`Mon solde : ${fmt(spec.solde || 0)}. Voir le détail`} aria-haspopup="dialog">
+                <span className={sp.heroLab}>Mon solde</span>
+                <span className={clsx('nv-big', sp.heroBig)}><AnimatedNumber value={spec.solde || 0} format={montantGros} /></span>
+                <span className={sp.chip}><Wallet size={16} aria-hidden="true" />{eventMeta?.nom ? `${eventMeta.nom} · ` : ''}Compte {spec.id}</span>
+              </button>
             </section>
 
             <div className={clsx('nv-acts', sp.acts)}>
@@ -868,13 +881,16 @@ export default function SoldePage({ demo = null }) {
 
               {readyResas.map(r => (
                 <section key={r.id} className="nv-glass nv-pad">
-                  <div className={sp.readyHead}>
+                  {/* Toucher la carte ouvre le détail de la commande ; « Voir ma commande » reste (23/11/2026) */}
+                  <button type="button" className={clsx(sp.readyHead, sp.rowBtn, 'nv-press')} onClick={() => setCmdOuverte({ c: r, statut: RESA_STATUS.ready })}
+                    aria-label={`Détail de la commande ${r.code}, prête`} aria-haspopup="dialog">
                     <span className={clsx('nv-ic', sp.opBg, sp.op_credit)}><ShoppingBag size={20} aria-hidden="true" /></span>
-                    <p className={sp.qrTxt}>
+                    <span className={sp.qrTxt}>
                       <b>Votre commande est prête</b>
                       <span>#{r.code}{(r.items || []).length ? ` · ${(r.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')}` : ''} · {fmt(r.total || 0)} · à retirer au stand</span>
-                    </p>
-                  </div>
+                    </span>
+                    <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
+                  </button>
                   <button type="button" className={clsx('nv-btn nv-press', sp.mt16)} onClick={() => go('reservations')}>Voir ma commande</button>
                 </section>
               ))}
@@ -965,12 +981,14 @@ export default function SoldePage({ demo = null }) {
               <div className={clsx('nv-big', sp.histBig)}><AnimatedNumber value={spec.solde || 0} format={montantGros} /></div>
               <div className="nv-mu">Solde actuel</div>
             </div>
-            <div className={clsx('nv-card nv-pad', sp.totals)}>
+            {/* Totaux : toucher ouvre le détail du solde (23/11/2026) */}
+            <button type="button" className={clsx('nv-card nv-pad nv-press', sp.cardBtn, sp.totals)} onClick={() => setCarteOuverte('solde')}
+              aria-label="Totaux depuis l'ouverture. Voir le détail du solde" aria-haspopup="dialog">
               <span>Rechargé<b className="nv-pos">{fmt(totalRecharge)}</b></span>
               <span>Dépensé<b>{fmt(totalDepense)}</b></span>
               {totalRembourse > 0 && <span>Remboursé<b>{fmt(totalRembourse)}</b></span>}
               {totalDonne > 0 && <span>Donné<b>{fmt(totalDonne)}</b></span>}
-            </div>
+            </button>
             <div className={clsx('nv-pills', sp.pillsTop)} role="group" aria-label="Affichage">
               <button type="button" className="nv-pill nv-press" aria-pressed={!chartMode} onClick={() => setChartMode(false)}>Liste</button>
               <button type="button" className="nv-pill nv-press" aria-pressed={chartMode} onClick={() => setChartMode(true)}>Graphe</button>
@@ -1020,13 +1038,15 @@ export default function SoldePage({ demo = null }) {
                 </section>
               ) : demandeVue ? (
                 <section className={clsx('nv-card nv-pad', sp.cardStack)}>
-                  <div className={sp.rembHead}>
-                    <h2 className={sp.cardTitle}>Ma demande</h2>
-                    <Badge tone={{ en_attente: 'warning', rembourse: 'success', annule: 'neutral', refuse: 'danger', echec: 'danger' }[demandeVue.statut] || 'neutral'}>
-                      {{ en_attente: 'En cours', rembourse: 'Remboursé', annule: 'Annulée', refuse: 'Refusée', echec: 'Échec' }[demandeVue.statut] || '—'}
-                    </Badge>
-                  </div>
-                  <p className="nv-mu">{fmt(demandeVue.total || 0)} · demandée le {String(demandeVue.date || '').slice(0, 5)} à {String(demandeVue.heure || '').slice(0, 5)}</p>
+                  {/* Toucher l'en-tête ouvre le détail de la demande (23/11/2026) ; les actions restent dessous */}
+                  <button type="button" className={clsx(sp.rowBtn, sp.cardStack, 'nv-press')} onClick={() => setCarteOuverte('demande')}
+                    aria-label="Voir le détail de ma demande de remboursement" aria-haspopup="dialog">
+                    <span className={sp.rembHead}>
+                      <span className={sp.cardTitle} role="heading" aria-level={2}>Ma demande</span>
+                      <Badge tone={DEMANDE_STATUT[demandeVue.statut]?.tone || 'neutral'}>{DEMANDE_STATUT[demandeVue.statut]?.label || '—'}</Badge>
+                    </span>
+                    <span className="nv-mu">{fmt(demandeVue.total || 0)} · demandée le {String(demandeVue.date || '').slice(0, 5)} à {String(demandeVue.heure || '').slice(0, 5)}</span>
+                  </button>
                   <div className={sp.rembLines}>
                     {demandeVue.stripe?.statut !== 'sans' && (
                       <RembLigne kind="enligne" titre="Carte du paiement en ligne" montant={demandeVue.stripe.rendu ?? demandeVue.stripe.montant}
@@ -1249,10 +1269,14 @@ export default function SoldePage({ demo = null }) {
                 {/* Codes à taper sur la borne : mis en avant (maquette) */}
                 {codesAttente.map(c => (
                   <section key={c.code} className={clsx('nv-card nv-pad', sp.codeCard)}>
-                    <span className="nv-mu">À taper sur la borne « J'ai un code »</span>
-                    <b className={clsx('nv-big', sp.codeMid)} aria-label={`Code ${String(c.code).split('').join(' ')}`}>{String(c.code).slice(0, 3)} {String(c.code).slice(3)}</b>
-                    <span className="nv-mu">{(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')} · {fmt(c.total || 0)} débités à la borne</span>
-                    {c.timestamp && <span className="nv-mu">Commandé le {new Date(c.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                    {/* Toucher la carte ouvre le détail ; « Annuler » reste à côté, hors du bouton (23/11/2026) */}
+                    <button type="button" className={clsx(sp.rowBtn, sp.codeCard, 'nv-press')} onClick={() => setCmdOuverte({ c, statut: CODE_STATUS.en_attente })}
+                      aria-label={`Détail du code ${String(c.code).split('').join(' ')}, à taper sur la borne`} aria-haspopup="dialog">
+                      <span className="nv-mu">À taper sur la borne « J'ai un code »</span>
+                      <b className={clsx('nv-big', sp.codeMid)}>{String(c.code).slice(0, 3)} {String(c.code).slice(3)}</b>
+                      <span className="nv-mu">{(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')} · {fmt(c.total || 0)} débités à la borne</span>
+                      {c.timestamp && <span className="nv-mu">Commandé le {new Date(c.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                    </button>
                     <button type="button" className={clsx('nv-btn-sec nv-press', sp.mt12)} onClick={() => setCancelCode(c.code)}>Annuler (sans frais)</button>
                   </section>
                 ))}
@@ -1321,7 +1345,10 @@ export default function SoldePage({ demo = null }) {
       </main>
 
       {/* Détail d'une commande (23/11/2026) */}
-      <CommandeDetail commande={cmdOuverte?.c || null} statut={cmdOuverte?.statut || null} onClose={() => setCmdOuverte(null)} />
+      <CommandeDetail commande={cmdOuverte?.c || null} statut={cmdOuverte?.statut || null} onClose={() => setCmdOuverte(null)}
+        actions={cmdOuverte?.c?.statut === 'en_attente' ? (
+          <button type="button" className="nv-btn-sec nv-press" onClick={() => { const code = cmdOuverte.c.code; setCmdOuverte(null); setCancelCode(code) }}>Annuler (sans frais)</button>
+        ) : null} />
 
       {/* Fiche article (20/11/2026), hors de la liste animée */}
       {fiche && (
@@ -1401,45 +1428,74 @@ export default function SoldePage({ demo = null }) {
         </div>
       )}
 
-      {/* Détail d'une opération (nouvel écran validé le 23/11/2026) : lecture seule, aucune action */}
-      {detail && spec && (() => {
+      {/* Détail d'une opération (validé le 23/11/2026) : gabarit commun DetailSheet, lecture seule */}
+      <DetailSheet open={!!detail && !!spec} onClose={() => setDetail(null)} {...(detail && spec ? (() => {
         const t = detail
-        const look = txLook(t.type)
-        const Icon = look.icon
         const [titre, ...reste] = String(t.label || t.type || '').split(' · ')
         const articles = (t.items || []).length
           ? t.items.map(i => `${i.qty > 1 ? `${i.qty} × ` : ''}${i.nom}`).join(', ')
           : reste.join(' · ')
         const moyen = moyenLibelle(t.moyen) || (t.stripeSession ? 'Paiement en ligne sécurisé' : '')
         const parQui = t.staff && t.staff !== '—' ? t.staff : ''
-        const heure = heureDe(t)
-        return (
-          <div className={clsx(sp.detail, 'nv-list nv-up')} role="dialog" aria-modal="true" aria-labelledby="sp-detail-titre">
-            <div className={clsx(sp.detHead, sp[opClasse(t.type)])}>
-              <div className={sp.detBar}>
-                <button ref={detailCloseRef} type="button" className="nv-round nv-press" onClick={() => setDetail(null)} aria-label="Fermer le détail"><X size={20} aria-hidden="true" /></button>
-              </div>
-              <span className={clsx(sp.detIc, sp.opBg)}><Icon size={38} aria-hidden="true" /></span>
-              <div id="sp-detail-titre" className={sp.detTitle}>{titre}</div>
-              <div className={clsx('nv-big', sp.detBig, effetSolde(t) > 0 && 'nv-pos')}>{montantSigne(t)}</div>
-              <div className="nv-mu">{[jourDe(t).label, heure].filter(Boolean).join(', ')}</div>
-            </div>
-            <div className={clsx(sp.detBody, 'nv-st')}>
-              <section className="nv-card nv-pad">
-                <div className="nv-mu">Statut</div>
-                <div className={sp.detStatut}>{statutOp(t)}</div>
-              </section>
-              <section className={clsx('nv-card', sp.kvCard)}>
-                {articles && <div className={sp.kv}><span>{(t.items || []).length ? 'Articles' : 'Détail'}</span><b>{articles}</b></div>}
-                {moyen && <div className={sp.kv}><span>Moyen</span><b>{moyen}</b></div>}
-                {parQui && <div className={sp.kv}><span>Enregistré par</span><b>{parQui}</b></div>}
-                {t.commandeNumero && <div className={sp.kv}><span>Commande</span><b>n° {t.commandeNumero}</b></div>}
-                <div className={sp.kv}><span>Compte</span><b>{spec.id}</b></div>
-              </section>
-            </div>
-          </div>
-        )
-      })()}
+        const effet = effetSolde(t)
+        return {
+          title: titre || 'Opération',
+          icon: txLook(t.type).icon,
+          color: OP_COULEUR[opClasse(t.type)],
+          status: { label: statutOp(t), tone: t.type === 'reservation' ? 'warning' : effet > 0 ? 'success' : 'neutral' },
+          value: montantSigne(t),
+          sub: [jourDe(t).label, heureDe(t)].filter(Boolean).join(', '),
+          sections: [{ label: 'Détail', rows: [
+            [(t.items || []).length ? 'Articles' : 'Détail', articles],
+            ['Moyen', moyen],
+            ['Enregistré par', parQui],
+            ['Commande', t.commandeNumero ? `n° ${t.commandeNumero}` : ''],
+            ['Compte', spec.id],
+          ] }],
+        }
+      })() : {})} />
+
+      {/* Détail du solde (toucher le solde de l'accueil ou les totaux de l'historique, 23/11/2026) */}
+      <DetailSheet open={carteOuverte === 'solde' && !!spec} onClose={() => setCarteOuverte(null)}
+        title="Mon solde" icon={Wallet} color="var(--brand)"
+        status={billetAnnule ? { label: 'Billet annulé', tone: 'danger' } : null}
+        value={fmt(spec?.solde || 0)}
+        sub={spec ? `Compte ${spec.id}${eventMeta?.nom ? ` · ${eventMeta.nom}` : ''}` : ''}
+        sections={[
+          { label: "Depuis l'ouverture", rows: [
+            ['Rechargé', fmt(totalRecharge)],
+            ['Dépensé', fmt(totalDepense)],
+            ['Remboursé', totalRembourse > 0 ? fmt(totalRembourse) : ''],
+            ['Donné', totalDonne > 0 ? fmt(totalDonne) : ''],
+          ] },
+          (limiteTxt || demandeEnCours) && { label: 'Remboursement', rows: [
+            [rembClos ? 'Était possible jusqu’au' : 'Possible jusqu’au', limiteTxt],
+            ['Demande', demandeEnCours ? `En cours · ${fmt(demandeEnCours.total || 0)}` : ''],
+          ] },
+        ]}
+        actions={tab !== 'historique' && (
+          <button type="button" className="nv-btn nv-press" onClick={() => { setCarteOuverte(null); go('historique') }}>Voir tout l'historique</button>
+        )} />
+
+      {/* Détail de la demande de remboursement (23/11/2026) : mêmes informations que la carte */}
+      <DetailSheet open={carteOuverte === 'demande' && !!demandeVue} onClose={() => setCarteOuverte(null)}
+        title="Ma demande de remboursement" icon={Euro} color={OP_COULEUR.op_remb}
+        status={demandeVue ? DEMANDE_STATUT[demandeVue.statut] || null : null}
+        value={demandeVue ? fmt(demandeVue.total || 0) : ''}
+        sub={demandeVue ? `Demandée le ${String(demandeVue.date || '').slice(0, 5)} à ${String(demandeVue.heure || '').slice(0, 5)}` : ''}
+        sections={demandeVue ? [
+          { label: 'Répartition', rows: [
+            demandeVue.stripe?.statut !== 'sans' && demandeVue.stripe ? ['Carte du paiement en ligne', partRemb(demandeVue.stripe, { rembourse: 'Remboursé · 5 à 10 jours', partiel: 'Remboursé en partie', echec: 'Refusé par la banque', en_cours: 'En cours' }[demandeVue.stripe.statut])] : null,
+            demandeVue.sumup?.statut !== 'sans' && demandeVue.sumup ? ['Carte utilisée à la billetterie', partRemb(demandeVue.sumup, ETAT_PART[demandeVue.sumup.statut]?.[1])] : null,
+            demandeVue.especes?.statut !== 'sans' && demandeVue.especes ? ['Espèces', partRemb(demandeVue.especes, ETAT_PART[demandeVue.especes.statut]?.[1])] : null,
+          ] },
+          { label: 'Mon compte', rows: [
+            ['Solde restant', demandeVue.statut === 'en_attente' ? fmt(spec?.solde || 0) : ''],
+            ['Date limite', limiteTxt],
+            ['Compte', spec?.id],
+          ] },
+        ] : []} />
+
 
       {/* QR agrandi, sur fond blanc pour le scan */}
       {qrOpen && qrDataUrl && (
@@ -1538,6 +1594,21 @@ const OP_CLASSE = {
   reservation: 'op_resa', annulation: 'op_annul', remboursement: 'op_remb', don: 'op_don',
 }
 const opClasse = (type) => OP_CLASSE[type] || 'op_autre'
+// Mêmes couleurs que les pastilles du module CSS (.op_*), pour la pastille des fenêtres de détail
+const OP_COULEUR = {
+  op_credit: '#1E8F62', op_debit: '#6C5CE7', op_resa: '#C9711A', op_annul: '#6B7785',
+  op_remb: '#2F74D0', op_don: '#D63B72', op_autre: 'var(--brand)',
+}
+// Statut d'une demande de remboursement (carte « Ma demande » et son détail)
+const DEMANDE_STATUT = {
+  en_attente: { label: 'En cours',   tone: 'warning' },
+  rembourse:  { label: 'Remboursé',  tone: 'success' },
+  annule:     { label: 'Annulée',    tone: 'neutral' },
+  refuse:     { label: 'Refusée',    tone: 'danger' },
+  echec:      { label: 'Échec',      tone: 'danger' },
+}
+// Une part du remboursement : montant (rendu s'il est connu) et son état
+const partRemb = (p, etat) => [fmt((p.rendu ?? p.montant) || 0), etat].filter(Boolean).join(' · ')
 
 // États des commandes et codes : couleur et icône de la pastille
 const ETAT_LOOK = {

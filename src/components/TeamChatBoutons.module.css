@@ -1,0 +1,17 @@
+/* Discussion et talkie dans l'entête (23/11/2026). Couleurs reprises de l'ancienne bulle :
+   discussion turquoise, talkie marine ; corail quand je parle, or quand quelqu'un parle. */
+.rond, .carre { position: relative; flex: none; border: 0; color: #FFFFFF; cursor: pointer; display: grid; place-items: center; }
+.rond { touch-action: none; }
+.carre { width: 34px; height: 34px; border-radius: 10px; touch-action: none; }
+.chat { background: #009090; }
+.talkie { background: #002438; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.rond.chat, .rond.talkie { border-color: transparent; }
+.moi { background: #F07848; box-shadow: 0 0 0 4px rgba(240, 120, 72, .35); }
+.autre { background: #D89030; opacity: .85; cursor: not-allowed; }
+.pastille {
+  position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 10px; background: #D83030; color: #FFFFFF; font-size: 11px; font-weight: 800;
+  display: grid; place-items: center; border: 2px solid var(--page, #FFFFFF); pointer-events: none;
+}
+.carre .pastille { min-width: 18px; height: 18px; font-size: 10px; }
+.rond:focus-visible, .carre:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }

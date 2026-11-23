@@ -21,6 +21,8 @@ import useEventStore from '../../store/useEventStore'
 import QRCode from 'qrcode'
 import { APP_VERSION_LABEL } from '../../utils/buildInfo'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+import DetailSheet from '../../components/DetailSheet'
+import { Note, nettoyer } from '../../components/detailContenus'
 
 export default function Spectateurs({ onNavigate }) {
   const { spectateurs, theme } = useAppStore()
@@ -56,7 +58,9 @@ export default function Spectateurs({ onNavigate }) {
   // On garde l'identifiant, pas l'objet : le solde affiché dans la feuille reste à jour.
   const { isMobile } = useBreakpoint()
   const [sheetId, setSheetId] = useState(null)
-  const sheetSpec = isMobile && sheetId ? spectateurs.find(sp => (sp._docId || sp.id) === sheetId) || null : null
+  // 23/11/2026 : la même feuille s'ouvre aussi au clic d'une ligne du tableau (tablette, ordinateur)
+  const sheetSpec = sheetId ? spectateurs.find(sp => (sp._docId || sp.id) === sheetId) || null : null
+  const [statOpen, setStatOpen] = useState(null)
 
   const filtered = spectateurs.filter(s =>
     s.nom?.toLowerCase().includes(search.toLowerCase()) ||
@@ -141,7 +145,8 @@ export default function Spectateurs({ onNavigate }) {
       </span>
     ) },
     { key: 'actions', label: 'Actions', align: 'right', render: sp => (
-      <span className={s.actions}>
+      // Les boutons gardent leur action propre : le clic ne remonte pas jusqu'à la ligne
+      <span className={s.actions} onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
         {/* Modifier / Supprimer : réservés aux admins */}
         {canEdit && (
           <>
@@ -167,10 +172,11 @@ export default function Spectateurs({ onNavigate }) {
       {isMobile ? (
         <>
           {/* Téléphone (20/11/2026) : trois compteurs sur une rangée, le quatrième en sous-titre */}
+          {/* 23/11/2026 : chaque compteur ouvre sa décomposition */}
           <div className={s.k3}>
-            <div className={s.k3Cell}><b>{spectateurs.length}</b><span>Comptes</span></div>
-            <div className={s.k3Cell}><b>{fmt(totalSolde)}</b><span>En circulation</span></div>
-            <div className={s.k3Cell}><b>{spectateurs.length ? fmt(Math.round(totalSolde / spectateurs.length)) : '—'}</b><span>Solde moyen</span></div>
+            <button type="button" className={clsx(s.k3Cell, s.k3Btn)} aria-haspopup="dialog" onClick={() => setStatOpen('total')}><b>{spectateurs.length}</b><span>Comptes</span></button>
+            <button type="button" className={clsx(s.k3Cell, s.k3Btn)} aria-haspopup="dialog" onClick={() => setStatOpen('solde')}><b>{fmt(totalSolde)}</b><span>En circulation</span></button>
+            <button type="button" className={clsx(s.k3Cell, s.k3Btn)} aria-haspopup="dialog" onClick={() => setStatOpen('moyen')}><b>{spectateurs.length ? fmt(Math.round(totalSolde / spectateurs.length)) : '—'}</b><span>Solde moyen</span></button>
           </div>
 
           <div className={s.search}>
@@ -258,10 +264,10 @@ export default function Spectateurs({ onNavigate }) {
 
           {/* Stats rapides */}
           <div className={clsx(s.stats, 'yc-stagger')}>
-            <Stat label="Total spectateurs" value={spectateurs.length}/>
-            <Stat label="Solde en circulation" value={fmt(totalSolde)}/>
-            <Stat label="Solde moyen" value={spectateurs.length ? fmt(Math.round(totalSolde / spectateurs.length)) : '—'}/>
-            <Stat label="Résultats filtrés" value={filtered.length}/>
+            <Stat label="Total spectateurs" value={spectateurs.length} onClick={() => setStatOpen('total')}/>
+            <Stat label="Solde en circulation" value={fmt(totalSolde)} onClick={() => setStatOpen('solde')}/>
+            <Stat label="Solde moyen" value={spectateurs.length ? fmt(Math.round(totalSolde / spectateurs.length)) : '—'} onClick={() => setStatOpen('moyen')}/>
+            <Stat label="Résultats filtrés" value={filtered.length} onClick={() => setStatOpen('filtre')}/>
           </div>
 
           {/* Liste */}
@@ -279,7 +285,7 @@ export default function Spectateurs({ onNavigate }) {
                   Les comptes créés à la billetterie ou via le QR d'inscription apparaîtront ici.
                 </Empty>
               )
-            : <Table columns={columns} rows={filtered}/>
+            : <Table columns={columns} rows={filtered} onRowClick={sp => setSheetId(sp._docId || sp.id)}/>
           }
         </>
       )}
@@ -313,6 +319,42 @@ export default function Spectateurs({ onNavigate }) {
           </div>
         )}
       </Sheet>
+
+      {/* Décomposition des compteurs (23/11/2026) : chiffres seulement, aucun nom */}
+      {statOpen && (() => {
+        const pos = spectateurs.filter(sp => (sp.solde || 0) > 0)
+        const neg = spectateurs.filter(sp => (sp.solde || 0) < 0)
+        const sumPos = pos.reduce((a, sp) => a + (sp.solde || 0), 0)
+        const sumNeg = neg.reduce((a, sp) => a + (sp.solde || 0), 0)
+        const sansCompte = spectateurs.filter(sp => sp.billet?.sansCompte).length
+        const comptes = { label: 'Comptes', rows: [
+          ['Avec un solde', `${pos.length} · ${fmt(sumPos)}`],
+          ['À zéro', String(spectateurs.length - pos.length - neg.length)],
+          ['Solde négatif', neg.length ? `${neg.length} · ${fmt(sumNeg)}` : '0'],
+          ['Billets sans compte', sansCompte ? String(sansCompte) : null],
+        ] }
+        const conf = {
+          total: { title: 'Total spectateurs', value: String(spectateurs.length), sections: [comptes] },
+          solde: { title: 'Solde en circulation', value: fmt(totalSolde), sections: [comptes,
+            { label: 'Ce que compte ce chiffre', content: <Note>Somme des soldes de tous les comptes de l'événement, à cet instant.</Note> }] },
+          moyen: { title: 'Solde moyen', value: spectateurs.length ? fmt(Math.round(totalSolde / spectateurs.length)) : '—', sections: [
+            { label: 'Calcul', rows: [
+              ['Solde en circulation', fmt(totalSolde)],
+              ['Nombre de comptes', String(spectateurs.length)],
+              ['Moyenne des seuls comptes avec solde', pos.length ? fmt(Math.round(sumPos / pos.length)) : null],
+            ] }] },
+          filtre: { title: 'Résultats filtrés', value: String(filtered.length), sections: [
+            { label: 'Recherche', rows: [
+              ['Texte cherché', search || 'aucun (tous les comptes)'],
+              ['Comptes affichés', `${filtered.length} sur ${spectateurs.length}`],
+              ['Solde des comptes affichés', fmt(filtered.reduce((a, sp) => a + (sp.solde || 0), 0))],
+            ] }] },
+        }[statOpen]
+        return (
+          <DetailSheet open onClose={() => setStatOpen(null)} icon={Users} {...conf} sections={nettoyer(conf.sections)}
+            actions={statOpen === 'filtre' && search ? <Button block variant="secondary" icon={X} onClick={() => { setSearch(''); setStatOpen(null) }}>Effacer la recherche</Button> : null}/>
+        )
+      })()}
 
       {/* Modification nom / solde */}
       <Dialog open={!!editing} onClose={() => { if (!saving) setEditing(null) }} title="Modifier le spectateur"

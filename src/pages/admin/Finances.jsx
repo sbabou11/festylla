@@ -25,6 +25,9 @@ import {
 import FinanceDocuments from '../../components/FinanceDocuments'
 import PancartePrincipale from '../../components/PancartePrincipale'
 import { ArrowLeft, Mic } from 'lucide-react'
+import DetailSheet from '../../components/DetailSheet'
+import { Repartition, Note, grouper, nettoyer } from '../../components/detailContenus'
+import { Button } from '../../ui'
 
 const MODE_LABEL = { especes: 'Espèces', virement: 'Virement', cheque: 'Chèque', cb: 'CB', autre: 'Autre' }
 const MODES = ['especes', 'virement', 'cheque', 'cb', 'autre']
@@ -58,6 +61,9 @@ export default function Finances({ onNavigate }) {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
   const [customCats, setCustomCats] = useState({ depense: [], recette: [] })
+  // Fenêtres de détail (23/11/2026) : un mouvement, ou la décomposition d'une carte de synthèse
+  const [detailId, setDetailId] = useState(null)
+  const [statOpen, setStatOpen] = useState(null)
 
   // Abonnement temps réel aux mouvements
   useEffect(() => {
@@ -219,11 +225,13 @@ export default function Finances({ onNavigate }) {
 
       {/* Cartes de synthèse */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10, margin: '16px 0' }}>
-        <StatCard label="Recettes (payées)" value={fmtEur(stats.recettes)} color="var(--green-dark, #065f46)"/>
-        <StatCard label="Dépenses (payées)" value={fmtEur(stats.depenses)} color="var(--red-dark, #a32d2d)"/>
-        <StatCard label="Solde réalisé" value={fmtEur(stats.solde)} color={stats.solde >= 0 ? 'var(--green-dark, #065f46)' : 'var(--red-dark, #a32d2d)'}/>
-        <StatCard label="En attente" value={`${stats.enAttente} mvt${stats.enAttente > 1 ? 's' : ''}`} color="var(--gold-dark, #ba7517)"/>
+        <StatCard label="Recettes (payées)" value={fmtEur(stats.recettes)} color="var(--green-dark, #065f46)" onClick={() => setStatOpen('recettes')}/>
+        <StatCard label="Dépenses (payées)" value={fmtEur(stats.depenses)} color="var(--red-dark, #a32d2d)" onClick={() => setStatOpen('depenses')}/>
+        <StatCard label="Solde réalisé" value={fmtEur(stats.solde)} color={stats.solde >= 0 ? 'var(--green-dark, #065f46)' : 'var(--red-dark, #a32d2d)'} onClick={() => setStatOpen('solde')}/>
+        <StatCard label="En attente" value={`${stats.enAttente} mvt${stats.enAttente > 1 ? 's' : ''}`} color="var(--gold-dark, #ba7517)" onClick={() => setStatOpen('attente')}/>
       </div>
+      {/* Focus visible des cartes et lignes cliquables (23/11/2026) */}
+      <style>{'.yc-fin-tap:focus-visible{outline:2px solid var(--brand);outline-offset:2px}.yc-fin-tap:hover{filter:brightness(.97)}'}</style>
 
       {/* Barre d'outils */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
@@ -253,23 +261,26 @@ export default function Finances({ onNavigate }) {
             const isRec = m.sens === 'recette'
             return (
               <div key={m.id} style={rowStyle}>
-                <div style={{ ...iconBox, background: isRec ? 'var(--green-light, #e1f5ee)' : 'var(--red-light, #fcebeb)',
+                {/* 23/11/2026 : la ligne ouvre le détail ; Modifier et Supprimer restent à côté */}
+                <button type="button" className="yc-fin-tap" aria-haspopup="dialog" onClick={() => setDetailId(m.id)}
+                  style={{ ...tapReset, flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: 'transparent', padding: 0, borderRadius: 6 }}>
+                <span style={{ ...iconBox, background: isRec ? 'var(--green-light, #e1f5ee)' : 'var(--red-light, #fcebeb)',
                   color: isRec ? 'var(--green-dark, #065f46)' : 'var(--red-dark, #a32d2d)' }}>
                   <Icon size={15}/>
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {m.libelle || m.categorie}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                  </span>
+                  <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>
                     {m.categorie} · {m.date} · {MODE_LABEL[m.modePaiement] || m.modePaiement}
                     {(m.documents && m.documents.length > 0) && (
                       <span style={{ marginLeft: 6, color: 'var(--brand-dark, #134e5a)' }}>
                         <Paperclip size={11} style={{ verticalAlign: -1 }}/> {m.documents.length}
                       </span>
                     )}
-                  </div>
-                </div>
+                  </span>
+                </span>
                 <span style={{ ...pill, ...(m.statut === 'paye' ? pillPaye : pillPrevu) }}>
                   {m.statut === 'paye' ? 'Payé' : 'Prévu'}
                 </span>
@@ -277,6 +288,7 @@ export default function Finances({ onNavigate }) {
                   color: isRec ? 'var(--green-dark, #065f46)' : 'var(--red-dark, #a32d2d)' }}>
                   {isRec ? '+ ' : '− '}{fmtEur(m.montant)}
                 </span>
+                </button>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button onClick={() => openEdit(m)} style={iconBtn} aria-label="Modifier"><Edit2 size={13}/></button>
                   <button onClick={() => handleDelete(m)} style={{ ...iconBtn, color: 'var(--red-dark, #a32d2d)' }} aria-label="Supprimer"><Trash2 size={13}/></button>
@@ -286,6 +298,73 @@ export default function Finances({ onNavigate }) {
           })}
         </div>
       )}
+
+      {(() => {
+        const m = detailId ? mouvements.find(x => x.id === detailId) : null
+        const isRec = m?.sens === 'recette'
+        return (
+          <DetailSheet open={!!m} onClose={() => setDetailId(null)} title={m ? (isRec ? 'Recette' : 'Dépense') : 'Mouvement'}
+            icon={m ? categoryIcon(m.categorie, m.sens) : Wallet}
+            color={m ? (isRec ? 'var(--green-dark, #065f46)' : 'var(--red-dark, #a32d2d)') : undefined}
+            status={m ? (m.statut === 'paye' ? { label: 'Payé', tone: 'success' } : { label: 'Prévu', tone: 'warning' }) : null}
+            value={m ? `${isRec ? '+ ' : '− '}${fmtEur(m.montant || 0)}` : null}
+            sub={m ? (m.libelle || m.categorie) : null}
+            sections={m ? nettoyer([
+              { label: 'Mouvement', rows: [
+                ['Catégorie', m.categorie || null],
+                ['Libellé', m.libelle || null],
+                ['Date', m.date || null],
+                ['Mode de paiement', MODE_LABEL[m.modePaiement] || m.modePaiement || null],
+                ['Justificatifs', m.documents?.length ? `${m.documents.length} fichier${m.documents.length > 1 ? 's' : ''}` : null],
+              ] },
+              m.notes && { label: 'Notes', content: <Note>{m.notes}</Note> },
+            ]) : []}
+            actions={m && (<>
+              <Button block variant="secondary" icon={Edit2} onClick={() => { setDetailId(null); openEdit(m) }}>Modifier</Button>
+              <Button block variant="ghost" icon={Trash2} onClick={() => { setDetailId(null); handleDelete(m) }}>Supprimer</Button>
+            </>)}/>
+        )
+      })()}
+
+      {(() => {
+        if (!statOpen) return null
+        const payes = mouvements.filter(x => x.statut === 'paye')
+        const prevus = mouvements.filter(x => x.statut === 'prevu')
+        const somme = (l) => l.reduce((a, x) => a + (x.montant || 0), 0)
+        const parCat = (l) => grouper(l, x => x.categorie)
+        const recPrev = prevus.filter(x => x.sens === 'recette'), depPrev = prevus.filter(x => x.sens !== 'recette')
+        const conf = {
+          recettes: { title: 'Recettes payées', value: fmtEur(stats.recettes), icon: TrendingUp, sections: [
+            { label: 'Par catégorie', content: <Repartition rows={parCat(payes.filter(x => x.sens === 'recette'))} empty="Aucune recette payée." /> },
+            { label: 'Ce que compte ce chiffre', content: <Note>Subventions, sponsors, dons… enregistrés comme payés (hors cashless).</Note> },
+          ] },
+          depenses: { title: 'Dépenses payées', value: fmtEur(stats.depenses), icon: TrendingDown, sections: [
+            { label: 'Par catégorie', content: <Repartition rows={parCat(payes.filter(x => x.sens !== 'recette'))} empty="Aucune dépense payée." /> },
+            { label: 'Ce que compte ce chiffre', content: <Note>Courses, matériel, déplacements… enregistrés comme payés (hors cashless).</Note> },
+          ] },
+          solde: { title: 'Solde réalisé', value: fmtEur(stats.solde), icon: Wallet, sections: [
+            { label: 'Calcul', rows: [
+              ['Recettes payées', fmtEur(stats.recettes)],
+              ['Dépenses payées', `− ${fmtEur(stats.depenses)}`],
+              ['Solde réalisé', fmtEur(stats.solde)],
+            ] },
+            prevus.length > 0 && { label: 'En tenant compte du prévu', rows: [
+              ['Recettes prévues', fmtEur(somme(recPrev))],
+              ['Dépenses prévues', `− ${fmtEur(somme(depPrev))}`],
+              ['Solde prévisionnel', fmtEur(stats.solde + somme(recPrev) - somme(depPrev))],
+            ] },
+          ] },
+          attente: { title: 'Mouvements en attente', value: `${stats.enAttente} mvt${stats.enAttente > 1 ? 's' : ''}`, icon: Wallet, sections: [
+            { label: 'Par sens', rows: [
+              ['Recettes prévues', recPrev.length ? `${recPrev.length} · ${fmtEur(somme(recPrev))}` : '0'],
+              ['Dépenses prévues', depPrev.length ? `${depPrev.length} · ${fmtEur(somme(depPrev))}` : '0'],
+            ] },
+            { label: 'Par catégorie', content: <Repartition rows={parCat(prevus)} empty="Aucun mouvement prévu." /> },
+            { label: 'Ce que compte ce chiffre', content: <Note>Mouvements saisis avec le statut « Prévu », pas encore payés.</Note> },
+          ] },
+        }[statOpen]
+        return <DetailSheet open onClose={() => setStatOpen(null)} {...conf} sections={nettoyer(conf.sections)}/>
+      })()}
 
       {showForm && (
         <FinanceForm
@@ -301,12 +380,15 @@ export default function Finances({ onNavigate }) {
   )
 }
 
-function StatCard({ label, value, color }) {
+// 23/11/2026 : avec onClick, la carte est un bouton qui ouvre le détail du chiffre
+function StatCard({ label, value, color, onClick }) {
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div style={{ background: 'var(--bg2, #f8f9fa)', borderRadius: 8, padding: '10px 12px' }}>
-      <div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: color || 'inherit' }}>{value}</div>
-    </div>
+    <Tag {...(onClick ? { type: 'button', onClick, 'aria-haspopup': 'dialog', 'aria-label': `${label} : voir le détail`, className: 'yc-fin-tap' } : {})}
+      style={{ background: 'var(--bg2, #f8f9fa)', borderRadius: 8, padding: '10px 12px', ...(onClick ? tapReset : {}) }}>
+      <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)' }}>{label}</span>
+      <span style={{ display: 'block', fontSize: 18, fontWeight: 600, marginTop: 2, color: color || 'inherit' }}>{value}</span>
+    </Tag>
   )
 }
 
@@ -449,6 +531,8 @@ const pill = { fontSize: 10, padding: '2px 8px', borderRadius: 10, whiteSpace: '
 const pillPaye = { background: 'var(--green-light, #e1f5ee)', color: 'var(--green-dark, #065f46)' }
 const pillPrevu = { background: 'var(--amber-light, #faeeda)', color: 'var(--gold-dark, #ba7517)' }
 const iconBtn = { width: 28, height: 26, padding: 0, background: 'transparent', border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 6, cursor: 'pointer', color: 'var(--brand-dark, #134e5a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }
+// Bouton sans habillage (cartes et lignes cliquables, 23/11/2026) ; focus visible via .yc-fin-tap
+const tapReset = { border: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', width: '100%', minWidth: 0 }
 const emptyBox = { padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--muted)', fontStyle: 'italic', border: '0.5px dashed var(--border, #e2e8f0)', borderRadius: 12 }
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
 const modal = { background: 'var(--bg, #fff)', color: 'var(--text)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 460, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', boxSizing: 'border-box' }

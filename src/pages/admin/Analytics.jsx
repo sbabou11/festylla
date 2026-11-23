@@ -3,13 +3,15 @@
  * Indicateurs de l'événement, carte de chaleur des ventes, prévision de stock,
  * articles et catégories, consommations bénévoles, réservations.
  */
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Wallet, HandCoins, TrendingUp, PiggyBank, Bookmark, HeartHandshake, ShoppingBag, Tag } from 'lucide-react'
 import useAppStore from '../../store/useAppStore'
 import { fmt } from '../../utils/helpers'
 import { Card, Stat, Empty } from '../../ui'
 import SalesHeatmap from './analytics/SalesHeatmap'
 import StockForecast from './analytics/StockForecast'
+import DetailSheet from '../../components/DetailSheet'
+import { Repartition, Note, grouper, nettoyer } from '../../components/detailContenus'
 import s from './analytics/analytics.module.css'
 
 function Bars({ items, color, format = fmt, empty }) {
@@ -33,6 +35,7 @@ function Bars({ items, color, format = fmt, empty }) {
 export default function Analytics({ onNavigate }) {
   const { spectateurs, reservations, logs, menu } = useAppStore()
   const allTx = logs || []
+  const [open, setOpen] = useState(null) // indicateur ouvert (23/11/2026)
 
   // ── Coût bénévoles ─────────────────────────────────────────────
   const resasBenev = useMemo(() =>
@@ -107,20 +110,65 @@ export default function Analytics({ onNavigate }) {
   return (
     <div className={s.page}>
       <div className={s.kpis}>
-        <Stat label="CA brut encaissé" value={fmt(totalVentes)} icon={TrendingUp} />
-        <Stat label="Coût bénévoles" value={fmt(coutBenev)} icon={HeartHandshake} tone="coral"
+        <Stat label="CA brut encaissé" value={fmt(totalVentes)} icon={TrendingUp} onClick={() => setOpen('ca')} />
+        <Stat label="Coût bénévoles" value={fmt(coutBenev)} icon={HeartHandshake} tone="coral" onClick={() => setOpen('benev')}
           sub={`${nbBenevsActifs} bénévole${nbBenevsActifs > 1 ? 's' : ''} · ${resasBenev.length} résa`} />
-        <Stat label="CA net" value={fmt(caNette)} icon={PiggyBank} tone={caNette >= 0 ? 'success' : 'coral'} sub="après charge bénévoles" />
-        <Stat label="Total rechargé" value={fmt(totalCredits)} icon={HandCoins} tone="warning" />
-        <Stat label="Soldes restants" value={fmt(totalSoldes)} icon={Wallet} sub="en circulation" />
+        <Stat label="CA net" value={fmt(caNette)} icon={PiggyBank} tone={caNette >= 0 ? 'success' : 'coral'} sub="après charge bénévoles" onClick={() => setOpen('net')} />
+        <Stat label="Total rechargé" value={fmt(totalCredits)} icon={HandCoins} tone="warning" onClick={() => setOpen('credits')} />
+        <Stat label="Soldes restants" value={fmt(totalSoldes)} icon={Wallet} sub="en circulation" onClick={() => setOpen('soldes')} />
         {/* Dons à l'ONG Ylla (20/11/2026) : ce que l'association doit reverser à l'ONG */}
         {totalDons > 0 && (
-          <Stat label="Dons à l'ONG Ylla" value={fmt(totalDons)} icon={HeartHandshake} tone="coral"
+          <Stat label="Dons à l'ONG Ylla" value={fmt(totalDons)} icon={HeartHandshake} tone="coral" onClick={() => setOpen('dons')}
             sub={donsAuto > 0 ? `dont ${fmt(donsAuto)} de soldes non réclamés` : 'à reverser à l\'ONG'} />
         )}
-        <Stat label="Taux de retrait résa" value={tauxRetrait + ' %'} icon={Bookmark} tone={tauxRetrait > 60 ? 'success' : 'warning'}
+        <Stat label="Taux de retrait résa" value={tauxRetrait + ' %'} icon={Bookmark} tone={tauxRetrait > 60 ? 'success' : 'warning'} onClick={() => setOpen('retrait')}
           sub={`${resaCollected}/${totalResas} réservations`} />
       </div>
+
+      {/* Décomposition des indicateurs (23/11/2026) : mêmes données que la page, aucune requête */}
+      {open && (() => {
+        const ventes = allTx.filter(t => t.type === 'debit')
+        const credits = allTx.filter(t => t.type === 'credit')
+        const MOYEN = { especes: 'Espèces', cb: 'Carte bancaire', solde: 'Solde YllaCash', sumup: 'Carte (SumUp)' }
+        const def = (txt) => ({ label: 'Ce que compte ce chiffre', content: <Note>{txt}</Note> })
+        const conf = {
+          ca: { title: 'CA brut encaissé', icon: TrendingUp, value: fmt(totalVentes), sections: [
+            { label: 'Par catégorie de la carte', content: <Repartition rows={ventesCat} /> },
+            { label: 'Par caisse', content: <Repartition rows={grouper(ventes, t => t.staff)} /> },
+            def("Tous les achats encaissés depuis le début de l'événement (hors retraits de réservation)."),
+          ] },
+          benev: { title: 'Coût bénévoles', icon: HeartHandshake, value: fmt(coutBenev), sections: [
+            { label: 'Par type', content: <Repartition rows={coutParType} empty="Aucune consommation bénévole retirée." /> },
+            { label: 'Volume', rows: [['Bénévoles servis', String(nbBenevsActifs)], ['Commandes retirées', String(resasBenev.length)]] },
+            def('Prix de la carte des repas et boissons retirés par les bénévoles, pris en charge par l\'événement.'),
+          ] },
+          net: { title: 'CA net', icon: PiggyBank, value: fmt(caNette), sections: [
+            { label: 'Calcul', rows: [['CA brut spectateurs', fmt(totalVentes)], ['Charge bénévoles', `−${fmt(coutBenev)}`], ['CA net événement', fmt(caNette)]] },
+          ] },
+          credits: { title: 'Total rechargé', icon: HandCoins, value: fmt(totalCredits), sections: [
+            { label: 'Par moyen de paiement', content: <Repartition rows={grouper(credits, t => (t.moyen ? (MOYEN[t.moyen] || t.moyen) : 'Non précisé'))} /> },
+            { label: 'Par caisse', content: <Repartition rows={grouper(credits, t => t.staff)} /> },
+            def("Toutes les recharges des comptes spectateurs depuis le début de l'événement."),
+          ] },
+          soldes: { title: 'Soldes restants', icon: Wallet, value: fmt(totalSoldes), sections: [
+            { label: 'Comptes', rows: [
+              ['Avec un solde', String(spectateurs.filter(sp => (sp.solde || 0) > 0).length)],
+              ['Solde négatif', String(spectateurs.filter(sp => (sp.solde || 0) < 0).length)],
+              ['Comptes au total', String(spectateurs.length)],
+            ] },
+            def('Somme des soldes de tous les comptes spectateurs, à cet instant.'),
+          ] },
+          dons: { title: "Dons à l'ONG Ylla", icon: HeartHandshake, value: fmt(totalDons), sections: [
+            { label: 'Origine', rows: [['Dons choisis par les spectateurs', fmt(totalDons - donsAuto)], ['Soldes non réclamés reversés', fmt(donsAuto)], ['Nombre de dons', String(txDons.length)]] },
+            def("Montant que l'association doit reverser à l'ONG Ylla (dons annulés exclus)."),
+          ] },
+          retrait: { title: 'Taux de retrait résa', icon: Bookmark, value: `${tauxRetrait} %`, sections: [
+            { label: 'Réservations spectateurs', content: <Repartition money={false} rows={resaCounts} empty="Aucune réservation." /> },
+            { label: 'Calcul', rows: [['Retirées', String(resaCollected)], ['Au total (annulées comprises)', String(totalResas)]] },
+          ] },
+        }[open]
+        return <DetailSheet open onClose={() => setOpen(null)} {...conf} sections={nettoyer(conf.sections)} />
+      })()}
 
       <SalesHeatmap />
       <StockForecast onNavigate={onNavigate} />

@@ -22,6 +22,9 @@ import { useBreakpoint } from '../../hooks/useBreakpoint'
 import DechargeModal from '../../components/DechargeModal'
 import { PrevuVsReelChart, ModePaiementDonut, TopArtistesChart } from '../../components/CachetsCharts'
 import { APP_VERSION_LABEL } from '../../utils/buildInfo'
+import DetailSheet from '../../components/DetailSheet'
+import { Repartition, Note, grouper, nettoyer } from '../../components/detailContenus'
+import { Button } from '../../ui'
 
 // Configuration modes de paiement
 const MODES = {
@@ -107,6 +110,22 @@ export default function Cachets() {
       countPlanifie: actifs.filter(c => c.statut === 'planifie').length,
     }
   }, [cachets])
+
+  // Paiement d'un cachet (inchangé, sorti de la ligne pour servir aussi à la fenêtre de détail)
+  const payer = async (c) => {
+    try {
+      if (c.modePaiement === 'especes') {
+        setShowDecharge(c)
+      } else {
+        await marquerCachetPaye(c.id)
+        setSuccess('Cachet marqué comme payé')
+        setTimeout(() => setSuccess(''), 2500)
+      }
+    } catch (e) { setErr(e.message) }
+  }
+  // Fenêtres de détail (23/11/2026) : un cachet, ou la décomposition d'une carte de synthèse
+  const [detailId, setDetailId] = useState(null)
+  const [statOpen, setStatOpen] = useState(null)
 
   const openNew = () => { setEditing(null); setShowForm(true); setErr('') }
   const openEdit = (c) => { setEditing(c); setShowForm(true); setErr('') }
@@ -321,11 +340,13 @@ export default function Cachets() {
         gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fit, minmax(150px, 1fr))',
         gap: 8, marginBottom: 16,
       }}>
-        <StatCard label="Total prévu" value={`${stats.totalPrevu.toFixed(2)} €`} color="var(--marine)" isMobile={isMobile}/>
-        <StatCard label="Déjà payé" value={`${stats.totalPaye.toFixed(2)} €`} color="var(--green)" isMobile={isMobile}/>
-        <StatCard label="À payer" value={`${stats.totalAPayer.toFixed(2)} €`} color="var(--gold)" isMobile={isMobile}/>
-        <StatCard label="Nb cachets" value={stats.count} sub={`${stats.countPaye} payés · ${stats.countPlanifie} à payer`} isMobile={isMobile}/>
+        <StatCard label="Total prévu" value={`${stats.totalPrevu.toFixed(2)} €`} color="var(--marine)" isMobile={isMobile} onClick={() => setStatOpen('prevu')}/>
+        <StatCard label="Déjà payé" value={`${stats.totalPaye.toFixed(2)} €`} color="var(--green)" isMobile={isMobile} onClick={() => setStatOpen('paye')}/>
+        <StatCard label="À payer" value={`${stats.totalAPayer.toFixed(2)} €`} color="var(--gold)" isMobile={isMobile} onClick={() => setStatOpen('apayer')}/>
+        <StatCard label="Nb cachets" value={stats.count} sub={`${stats.countPaye} payés · ${stats.countPlanifie} à payer`} isMobile={isMobile} onClick={() => setStatOpen('nombre')}/>
       </div>
+      {/* Focus visible des cartes et lignes cliquables (23/11/2026) */}
+      <style>{'.yc-cachet-tap:focus-visible{outline:2px solid var(--brand);outline-offset:2px}'}</style>
 
       {/* Zone graphiques — toggleable sur mobile pour ne pas surcharger */}
       {cachets.length > 0 && (
@@ -412,22 +433,73 @@ export default function Cachets() {
             return <CachetRow key={c.id} cachet={c} creneau={cr} isMobile={isMobile}
               onEdit={() => openEdit(c)}
               onDelete={() => setConfirmDelete(c)}
-              onPay={async () => {
-                try {
-                  if (c.modePaiement === 'especes') {
-                    setShowDecharge(c)
-                  } else {
-                    await marquerCachetPaye(c.id)
-                    setSuccess('Cachet marqué comme payé')
-                    setTimeout(() => setSuccess(''), 2500)
-                  }
-                } catch (e) { setErr(e.message) }
-              }}
+              onPay={() => payer(c)}
               onShowDecharge={() => setShowDecharge(c)}
+              onOpen={() => setDetailId(c.id)}
             />
           })
         )}
       </div>
+
+      {/* Détail d'un cachet (23/11/2026) : mêmes actions que la ligne */}
+      {(() => {
+        const c = detailId ? cachets.find(x => x.id === detailId) : null
+        const cr = c ? planning.find(p => p.id === c.creneauId) : null
+        const isPaye = c?.statut === 'paye', isAnnule = c?.statut === 'annule'
+        const act = (fn) => () => { setDetailId(null); fn() }
+        return (
+          <DetailSheet open={!!c} onClose={() => setDetailId(null)} title={c ? `Cachet · ${c.artiste || 'Sans nom'}` : 'Cachet'}
+            icon={Banknote}
+            status={c ? (isPaye ? { label: 'Payé', tone: 'success' } : isAnnule ? { label: 'Annulé', tone: 'neutral' } : { label: 'À payer', tone: 'warning' }) : null}
+            value={c ? `${(Number(c.montant) || 0).toFixed(2)} €` : null}
+            sub={c ? (TYPES[c.type] || c.type || null) : null}
+            sections={c ? nettoyer([
+              { label: 'Paiement', rows: [
+                ['Mode', (MODES[c.modePaiement] || MODES.especes).label],
+                ['N° de décharge', c.numeroDecharge || null],
+                ['Signée le', c.signedAt ? `${fmtDate(c.signedAt)} ${fmtHour(c.signedAt)}` : null],
+                ['Preuves jointes', Array.isArray(c.documents) && c.documents.length ? String(c.documents.length) : null],
+              ] },
+              { label: 'Créneau', rows: cr
+                ? [['Date', fmtDate(cr.debut)], ['Heure', fmtHour(cr.debut)], ['Scène', cr.scene || null]]
+                : [['Créneau', c.creneauId ? 'Créneau introuvable' : (c.dateManuelle ? `${fmtDate(c.dateManuelle)} · Hors planning` : 'Hors planning')]] },
+            ]) : []}
+            actions={c && (<>
+              {!isPaye && !isAnnule && <Button block onClick={act(() => payer(c))}>{c.modePaiement === 'especes' ? 'Signer la décharge' : 'Marquer payé'}</Button>}
+              {isPaye && c.numeroDecharge && <Button block variant="secondary" icon={FileText} onClick={act(() => setShowDecharge(c))}>Voir la décharge</Button>}
+              <Button block variant="secondary" icon={Edit2} onClick={act(() => openEdit(c))}>Modifier</Button>
+              <Button block variant="ghost" icon={Trash2} onClick={act(() => setConfirmDelete(c))}>Supprimer</Button>
+            </>)}/>
+        )
+      })()}
+
+      {/* Décomposition des cartes de synthèse (23/11/2026) */}
+      {statOpen && (() => {
+        const actifs = cachets.filter(c => c.statut !== 'annule')
+        const eur = (v) => `${(Number(v) || 0).toFixed(2)} €`
+        const parMode = (l) => grouper(l, c => (MODES[c.modePaiement] || MODES.especes).label, c => Number(c.montant) || 0).map(g => ({ ...g, display: eur(g.value) }))
+        const listeArtistes = (l) => [...l].sort((a, b) => (Number(b.montant) || 0) - (Number(a.montant) || 0)).slice(0, 8).map(c => [c.artiste || 'Sans nom', eur(c.montant)])
+        const aPayer = actifs.filter(c => c.statut === 'planifie')
+        const conf = {
+          prevu: { title: 'Total prévu', value: eur(stats.totalPrevu), sections: [
+            { label: 'Par mode de paiement', content: <Repartition rows={parMode(actifs)} /> },
+            { label: 'Ce que compte ce chiffre', content: <Note>Tous les cachets de l'événement, payés ou à payer (les annulés ne comptent pas).</Note> },
+          ] },
+          paye: { title: 'Déjà payé', value: eur(stats.totalPaye), sections: [
+            { label: 'Par mode de paiement', content: <Repartition rows={parMode(actifs.filter(c => c.statut === 'paye'))} empty="Aucun cachet payé." /> },
+            { label: 'Ce que compte ce chiffre', content: <Note>Cachets marqués payés ou dont la décharge est signée.</Note> },
+          ] },
+          apayer: { title: 'À payer', value: eur(stats.totalAPayer), sections: [
+            { label: 'Par mode de paiement', content: <Repartition rows={parMode(aPayer)} empty="Rien à payer." /> },
+            aPayer.length > 0 && { label: aPayer.length > 8 ? 'Les 8 plus gros' : 'Artistes', rows: listeArtistes(aPayer) },
+          ] },
+          nombre: { title: 'Nombre de cachets', value: String(stats.count), sections: [
+            { label: 'Par statut', rows: [['Payés', String(stats.countPaye)], ['À payer', String(stats.countPlanifie)], ['Annulés (non comptés)', String(cachets.length - actifs.length)]] },
+            { label: 'Par type', content: <Repartition money={false} rows={grouper(actifs, c => TYPES[c.type] || c.type, () => 1).map(g => ({ ...g, count: undefined }))} /> },
+          ] },
+        }[statOpen]
+        return <DetailSheet open onClose={() => setStatOpen(null)} icon={Banknote} {...conf} sections={nettoyer(conf.sections)}/>
+      })()}
 
       {/* Modale formulaire */}
       {showForm && (
@@ -514,16 +586,20 @@ export default function Cachets() {
   )
 }
 
-function StatCard({ label, value, sub, color = 'var(--marine)', isMobile }) {
+// 23/11/2026 : avec onClick, la carte est un bouton qui ouvre le détail du chiffre
+function StatCard({ label, value, sub, color = 'var(--marine)', isMobile, onClick }) {
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div style={{
-      background: 'var(--bg)', borderRadius: 10, padding: isMobile ? '10px 12px' : '12px 14px',
-      border: '1px solid var(--border)', minWidth: 0,
-    }}>
-      <div style={{ fontSize: isMobile ? 9 : 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>
-      <div style={{ fontSize: isMobile ? 17 : 20, fontWeight: 800, color, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
-      {sub && <div style={{ fontSize: isMobile ? 9 : 10, color: 'var(--muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
-    </div>
+    <Tag {...(onClick ? { type: 'button', onClick, className: 'yc-cachet-tap', 'aria-haspopup': 'dialog', 'aria-label': `${label} : voir le détail` } : {})}
+      style={{
+        background: 'var(--bg)', borderRadius: 10, padding: isMobile ? '10px 12px' : '12px 14px',
+        border: '1px solid var(--border)', minWidth: 0,
+        ...(onClick ? { font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', width: '100%' } : {}),
+      }}>
+      <span style={{ display: 'block', fontSize: isMobile ? 9 : 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ display: 'block', fontSize: isMobile ? 17 : 20, fontWeight: 800, color, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+      {sub && <span style={{ display: 'block', fontSize: isMobile ? 9 : 10, color: 'var(--muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>}
+    </Tag>
   )
 }
 
@@ -549,7 +625,7 @@ function FilterChip({ active, onClick, children }) {
   )
 }
 
-function CachetRow({ cachet, creneau, isMobile, onEdit, onDelete, onPay, onShowDecharge }) {
+function CachetRow({ cachet, creneau, isMobile, onEdit, onDelete, onPay, onShowDecharge, onOpen }) {
   const mode = MODES[cachet.modePaiement] || MODES.especes
   const isPaye = cachet.statut === 'paye'
   const isAnnule = cachet.statut === 'annule'
@@ -570,19 +646,21 @@ function CachetRow({ cachet, creneau, isMobile, onEdit, onDelete, onPay, onShowD
       alignItems: isMobile ? 'stretch' : 'center',
       opacity: isAnnule ? 0.5 : 1,
     }}>
-      {/* Ligne 1 mobile : Artiste + montant */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
-        <div style={{
+      {/* Ligne 1 mobile : Artiste + montant (23/11/2026 : bouton qui ouvre le détail) */}
+      <button type="button" className="yc-cachet-tap" onClick={onOpen} aria-haspopup="dialog"
+        aria-label={`Cachet de ${cachet.artiste || 'Sans nom'}, ${(Number(cachet.montant) || 0).toFixed(2)} € : voir le détail`}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1, padding: 0, border: 'none', background: 'none', font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer', borderRadius: 8 }}>
+        <span style={{
           width: 36, height: 36, borderRadius: '50%',
           background: 'var(--brand-light)', color: 'var(--brand-dark)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontWeight: 700, fontSize: 12, flexShrink: 0,
-        }}>{initialsOf(cachet.artiste)}</div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--marine)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        }}>{initialsOf(cachet.artiste)}</span>
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--marine)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {cachet.artiste || 'Sans nom'}
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          </span>
+          <span style={{ display: 'block', fontSize: 10, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {creneau
               ? `${fmtDate(creneau.debut)} · ${fmtHour(creneau.debut)} · ${creneau.scene || '—'}`
               : (cachet.creneauId
@@ -593,10 +671,10 @@ function CachetRow({ cachet, creneau, isMobile, onEdit, onDelete, onPay, onShowD
                       ? `${fmtDate(cachet.dateManuelle)} · Hors planning`
                       : 'Hors planning'))}
             {' · '}{TYPES[cachet.type] || cachet.type}
-          </div>
-        </div>
+          </span>
+        </span>
         {/* Montant — sur la même ligne que l'artiste */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {/* Indicateur "preuves jointes" si au moins 1 document */}
           {Array.isArray(cachet.documents) && cachet.documents.length > 0 && (
             <span title={`${cachet.documents.length} preuve(s) de paiement`}
@@ -609,11 +687,11 @@ function CachetRow({ cachet, creneau, isMobile, onEdit, onDelete, onPay, onShowD
               <Paperclip size={9}/> {cachet.documents.length}
             </span>
           )}
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--marine)' }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--marine)' }}>
             {(Number(cachet.montant) || 0).toFixed(2)} €
-          </div>
-        </div>
-      </div>
+          </span>
+        </span>
+      </button>
 
       {/* Ligne 2 mobile : Badges + Actions */}
       <div style={{

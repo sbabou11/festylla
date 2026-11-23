@@ -129,7 +129,17 @@
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
-.item:last-child { border-bottom: none; }
+.list > li:last-child > .item { border-bottom: none; }
+/* Chaque notification est un bouton qui ouvre son détail (23/11/2026) */
+.itemBtn {
+  width: 100%; margin: 0; border-top: 0; border-left: 0; border-right: 0; border-radius: 0;
+  background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.itemBtn:hover { background: var(--bg2); }
+.itemBtn.unread { background: color-mix(in srgb, var(--notif) 7%, transparent); }
+.itemBtn:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.chev { flex-shrink: 0; align-self: center; color: var(--muted); }
+.detMsg { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
 .unread { background: color-mix(in srgb, var(--notif) 7%, transparent); }
 .icon {
   width: 40px;

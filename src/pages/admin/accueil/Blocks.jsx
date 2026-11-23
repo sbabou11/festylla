@@ -5,7 +5,9 @@
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { collection, query, onSnapshot } from 'firebase/firestore'
-import { TrendingUp, Package, Wallet, Mic, CalendarDays, Users, HandHeart } from 'lucide-react'
+import { TrendingUp, Package, Wallet, Mic, CalendarDays, Users, HandHeart, ChevronRight } from 'lucide-react'
+import DetailSheet from '../../../components/DetailSheet'
+import { Repartition, Note, grouper, nettoyer } from '../../../components/detailContenus'
 import clsx from 'clsx'
 import { db } from '../../../firebase/config'
 import { watchCachets, watchFinances, watchPlanning } from '../../../firebase/service'
@@ -15,6 +17,10 @@ import { getTs } from '../../../utils/dailyKpis'
 import { fmt } from '../../../utils/helpers'
 import { Card, Stat, Table, Empty, Badge, Button, Skeleton, AnimatedNumber } from '../../../ui'
 import s from './Accueil.module.css'
+
+// Libellés des modes de paiement (Finances, Cachets), pour les fenêtres de détail
+const MODE_FIN = { especes: 'Espèces', virement: 'Virement', cheque: 'Chèque', cb: 'CB', autre: 'Autre' }
+const MODE_CACHET = { especes: 'Espèces', virement: 'Virement', cheque: 'Chèque' }
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() }
 
@@ -94,6 +100,8 @@ export function StocksBlock({ go }) {
     return { ruptures: r, bas: b }
   }, [menu])
   const rows = [...ruptures, ...bas].slice(0, 5).map(m => ({ ...m, _key: m._docId || m.id || m.nom, out: ruptures.includes(m) }))
+  const [open, setOpen] = useState(null)
+  const sel = open ? rows.find(r => r._key === open) : null
 
   return (
     <Card title="Stocks" flush
@@ -104,13 +112,25 @@ export function StocksBlock({ go }) {
       ) : (
         <ul className={s.list}>
           {rows.map(m => (
-            <li key={m._key} className={s.row}>
-              <span className={s.rowMain}>{m.nom}</span>
-              {m.out ? <Badge tone="danger">Rupture</Badge> : <Badge tone="warning">Reste {m.stock}</Badge>}
+            <li key={m._key}>
+              <button type="button" className={clsx(s.row, s.rowBtn)} aria-haspopup="dialog" onClick={() => setOpen(m._key)}>
+                <span className={s.rowMain}>{m.nom}</span>
+                {m.out ? <Badge tone="danger">Rupture</Badge> : <Badge tone="warning">Reste {m.stock}</Badge>}
+              </button>
             </li>
           ))}
         </ul>
       )}
+      {/* Détail d'un article (23/11/2026) */}
+      <DetailSheet open={!!sel} onClose={() => setOpen(null)} title={sel?.nom || 'Article'} icon={Package}
+        status={sel ? (sel.out ? { label: 'Rupture', tone: 'danger' } : { label: 'Stock bas', tone: 'warning' }) : null}
+        value={sel ? `${Number(sel.stock || 0)} restant${Number(sel.stock || 0) > 1 ? 's' : ''}` : null}
+        sections={sel ? nettoyer([{ label: 'Article', rows: [
+          ['Catégorie', sel.cat || null],
+          ['Prix', sel.prix != null ? fmt(sel.prix) : null],
+          ["Seuil d'alerte", String(sel.seuilAlerte ?? 10)],
+        ] }, { label: 'Pourquoi', content: <Note>{sel.out ? "L'article n'a plus de stock : il ne peut plus être vendu ni réservé." : "Le stock est passé sous le seuil d'alerte de l'article."}</Note> }]) : []}
+        actions={go && sel ? <Button block variant="secondary" icon={ChevronRight} onClick={() => { setOpen(null); go('menu') }}>Ouvrir la carte</Button> : null} />
     </Card>
   )
 }
@@ -127,6 +147,8 @@ export function DepensesBlock({ go }) {
       totalJour: all.filter(f => f.date === today).reduce((a, f) => a + (f.montant || 0), 0),
     }
   }, [finances])
+  const [open, setOpen] = useState(null)
+  const sel = open ? list.find(f => f.id === open) : null
 
   return (
     <Card title="Dépenses" subtitle={finances ? `${fmt(totalJour)} aujourd'hui` : undefined} flush
@@ -136,13 +158,26 @@ export function DepensesBlock({ go }) {
         : (
           <ul className={s.list}>
             {list.map(f => (
-              <li key={f.id} className={s.row}>
-                <span className={s.rowMain}>{f.libelle || f.categorie || 'Sans libellé'}</span>
-                <span className={s.amountOut}>−{fmt(f.montant || 0)}</span>
+              <li key={f.id}>
+                <button type="button" className={clsx(s.row, s.rowBtn)} aria-haspopup="dialog" onClick={() => setOpen(f.id)}>
+                  <span className={s.rowMain}>{f.libelle || f.categorie || 'Sans libellé'}</span>
+                  <span className={s.amountOut}>−{fmt(f.montant || 0)}</span>
+                </button>
               </li>
             ))}
           </ul>
         )}
+      {/* Détail d'une dépense (23/11/2026) */}
+      <DetailSheet open={!!sel} onClose={() => setOpen(null)} title="Dépense" icon={Wallet}
+        status={sel ? (sel.statut === 'paye' ? { label: 'Payé', tone: 'success' } : sel.statut === 'prevu' ? { label: 'Prévu', tone: 'warning' } : null) : null}
+        value={sel ? `−${fmt(sel.montant || 0)}` : null} sub={sel ? (sel.libelle || sel.categorie || 'Sans libellé') : null}
+        sections={sel ? nettoyer([{ label: 'Mouvement', rows: [
+          ['Catégorie', sel.categorie || null],
+          ['Date', sel.date || null],
+          ['Mode de paiement', MODE_FIN[sel.modePaiement] || sel.modePaiement || null],
+          ['Justificatifs', sel.documents?.length ? String(sel.documents.length) : null],
+        ] }]) : []}
+        actions={go && sel ? <Button block variant="secondary" icon={ChevronRight} onClick={() => { setOpen(null); go('finances') }}>Voir dans Finances</Button> : null} />
     </Card>
   )
 }
@@ -155,37 +190,61 @@ export function CachetsBlock({ go }) {
     const planned = list.filter(c => c.statut === 'planifie')
     const paid = list.filter(c => c.statut === 'paye')
     const sum = (l) => l.reduce((a, c) => a + (c.montant || 0), 0)
-    return { aPayer: sum(planned), aPayerCount: planned.length, payes: sum(paid), payesCount: paid.length, prochains: planned.slice(0, 3) }
+    return { planned, paid, aPayer: sum(planned), aPayerCount: planned.length, payes: sum(paid), payesCount: paid.length, prochains: planned.slice(0, 3) }
   }, [cachets])
+  // Détail (23/11/2026) : 'apayer' | 'payes' | id d'un cachet
+  const [open, setOpen] = useState(null)
+  const fig = open === 'apayer' || open === 'payes' ? open : null
+  const sel = open && !fig ? (cachets || []).find(c => c.id === open) : null
+  const figList = fig === 'apayer' ? k.planned : fig === 'payes' ? k.paid : []
+  const voir = go ? <Button block variant="secondary" icon={ChevronRight} onClick={() => { setOpen(null); go('cachets') }}>Ouvrir les cachets</Button> : null
 
   return (
     <Card title="Cachets" actions={seeAll('Cachets', 'cachets', go)}>
       {!cachets ? <Skeleton lines={3} /> : (
         <>
           <div className={s.figures}>
-            <div className={clsx(s.figure, k.aPayer > 0 && s.figureWarn)}>
+            <button type="button" className={clsx(s.figure, s.figureBtn, k.aPayer > 0 && s.figureWarn)} aria-haspopup="dialog" onClick={() => setOpen('apayer')}>
               <span>À payer{k.aPayerCount ? ` · ${k.aPayerCount}` : ''}</span>
               <b><AnimatedNumber value={k.aPayer} format={fmt} /></b>
-            </div>
-            <div className={s.figure}>
+            </button>
+            <button type="button" className={clsx(s.figure, s.figureBtn)} aria-haspopup="dialog" onClick={() => setOpen('payes')}>
               <span>Payés{k.payesCount ? ` · ${k.payesCount}` : ''}</span>
               <b><AnimatedNumber value={k.payes} format={fmt} /></b>
-            </div>
+            </button>
           </div>
           {k.prochains.length === 0 ? (
             <p className={s.note}>{cachets.length ? 'Tous les cachets sont réglés.' : 'Aucun cachet pour cet événement.'}</p>
           ) : (
             <ul className={clsx(s.list, s.listTight)}>
               {k.prochains.map(c => (
-                <li key={c.id} className={s.row}>
-                  <span className={s.rowMain}><Mic size={13} aria-hidden="true" /> {c.artiste || '—'}</span>
-                  <span className={s.amount}>{fmt(c.montant || 0)}</span>
+                <li key={c.id}>
+                  <button type="button" className={clsx(s.row, s.rowBtn)} aria-haspopup="dialog" onClick={() => setOpen(c.id)}>
+                    <span className={s.rowMain}><Mic size={13} aria-hidden="true" /> {c.artiste || '—'}</span>
+                    <span className={s.amount}>{fmt(c.montant || 0)}</span>
+                  </button>
                 </li>
               ))}
             </ul>
           )}
         </>
       )}
+      <DetailSheet open={!!fig} onClose={() => setOpen(null)} title={fig === 'apayer' ? 'Cachets à payer' : 'Cachets payés'} icon={Mic}
+        value={fig ? fmt(fig === 'apayer' ? k.aPayer : k.payes) : null}
+        sub={fig ? `${figList.length} cachet${figList.length > 1 ? 's' : ''}` : null}
+        sections={fig ? nettoyer([
+          { label: 'Par mode de paiement', content: <Repartition rows={grouper(figList, c => MODE_CACHET[c.modePaiement] || c.modePaiement)} empty="Aucun cachet." /> },
+          figList.length > 0 && { label: figList.length > 8 ? 'Les 8 plus gros' : 'Artistes', rows: [...figList].sort((a, b) => (b.montant || 0) - (a.montant || 0)).slice(0, 8).map(c => [c.artiste || '—', fmt(c.montant || 0)]) },
+        ]) : []}
+        actions={fig ? voir : null} />
+      <DetailSheet open={!!sel} onClose={() => setOpen(null)} title={sel ? `Cachet · ${sel.artiste || '—'}` : 'Cachet'} icon={Mic}
+        status={sel ? (sel.statut === 'paye' ? { label: 'Payé', tone: 'success' } : sel.statut === 'annule' ? { label: 'Annulé', tone: 'neutral' } : { label: 'À payer', tone: 'warning' }) : null}
+        value={sel ? fmt(sel.montant || 0) : null}
+        sections={sel ? nettoyer([{ label: 'Paiement', rows: [
+          ['Mode', MODE_CACHET[sel.modePaiement] || sel.modePaiement || null],
+          ['N° de décharge', sel.numeroDecharge || null],
+        ] }]) : []}
+        actions={sel ? voir : null} />
     </Card>
   )
 }
@@ -200,6 +259,9 @@ export function PlanningBlock({ go }) {
     .sort((a, b) => toMs(a.debut) - toMs(b.debut))
     .slice(0, 4), [planning, now])
   const live = (c) => { const d = toMs(c.debut), f = toMs(c.fin); return d > 0 && f > 0 && now >= d && now <= f }
+  const [open, setOpen] = useState(null)
+  const sel = open ? (planning || []).find(c => c.id === open) : null
+  const jour = (v) => { const ms = toMs(v); return ms ? new Date(ms).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : null }
 
   return (
     <Card title="Prochains créneaux" flush actions={seeAll('Planning', 'planning', go)}>
@@ -208,31 +270,63 @@ export function PlanningBlock({ go }) {
         : (
           <ul className={s.list}>
             {next.map(c => (
-              <li key={c.id} className={s.row}>
-                <span className={clsx(s.time, live(c) && s.timeLive)}>{hhmm(c.debut)}</span>
-                <span className={s.rowText}>
-                  <b>{c.artiste || c.titre || '—'}</b>
-                  {c.scene && <span>{c.scene}</span>}
-                </span>
-                {live(c) && <Badge tone="brand">En cours</Badge>}
+              <li key={c.id}>
+                <button type="button" className={clsx(s.row, s.rowBtn)} aria-haspopup="dialog" onClick={() => setOpen(c.id)}>
+                  <span className={clsx(s.time, live(c) && s.timeLive)}>{hhmm(c.debut)}</span>
+                  <span className={s.rowText}>
+                    <b>{c.artiste || c.titre || '—'}</b>
+                    {c.scene && <span>{c.scene}</span>}
+                  </span>
+                  {live(c) && <Badge tone="brand">En cours</Badge>}
+                </button>
               </li>
             ))}
           </ul>
         )}
+      {/* Détail d'un créneau (23/11/2026) */}
+      <DetailSheet open={!!sel} onClose={() => setOpen(null)} title={sel ? (sel.artiste || sel.titre || 'Créneau') : 'Créneau'} icon={CalendarDays}
+        status={sel ? (live(sel) ? { label: 'En cours', tone: 'brand' } : { label: 'À venir', tone: 'neutral' }) : null}
+        value={sel ? `${hhmm(sel.debut)}${toMs(sel.fin) ? ` – ${hhmm(sel.fin)}` : ''}` : null}
+        sub={sel ? jour(sel.debut) : null}
+        sections={sel ? nettoyer([{ label: 'Créneau', rows: [
+          ['Artiste', sel.artiste || null],
+          ['Titre', sel.titre && sel.titre !== sel.artiste ? sel.titre : null],
+          ['Scène', sel.scene || null],
+          ['Durée', toMs(sel.debut) && toMs(sel.fin) ? `${Math.round((toMs(sel.fin) - toMs(sel.debut)) / 60000)} min` : null],
+        ] }]) : []}
+        actions={go && sel ? <Button block variant="secondary" icon={ChevronRight} onClick={() => { setOpen(null); go('planning') }}>Ouvrir le planning</Button> : null} />
     </Card>
   )
 }
 
 /* ── Spectateurs : inscrits et avec solde (WSpectateurs) ─────────────── */
-export function SpectateursBlock() {
+export function SpectateursBlock({ go }) {
   const { spectateurs } = useAppStore()
-  const total = (spectateurs || []).length
-  const actifs = (spectateurs || []).filter(sp => (sp.solde || 0) > 0).length
-  return <Stat label="Spectateurs" icon={Users} tone="brand" value={<AnimatedNumber value={total} />} sub={`${actifs} avec solde`} className={s.fill} />
+  const [open, setOpen] = useState(false)
+  const list = spectateurs || []
+  const total = list.length
+  const actifs = list.filter(sp => (sp.solde || 0) > 0).length
+  const neg = list.filter(sp => (sp.solde || 0) < 0).length
+  const minuit = startOfToday()
+  return (
+    <>
+      <Stat label="Spectateurs" icon={Users} tone="brand" value={<AnimatedNumber value={total} />} sub={`${actifs} avec solde`} className={s.fill}
+        onClick={() => setOpen(true)} />
+      {/* Détail (23/11/2026) : comptes, sans aucun nom */}
+      <DetailSheet open={open} onClose={() => setOpen(false)} title="Spectateurs" icon={Users} value={String(total)} sub="Comptes de l'événement"
+        sections={[{ label: 'Comptes', rows: [
+          ['Avec un solde', String(actifs)],
+          ['À zéro', String(total - actifs - neg)],
+          ['Solde négatif', String(neg)],
+          ['Créés depuis minuit', String(list.filter(sp => getTs(sp) >= minuit).length)],
+        ] }]}
+        actions={go ? <Button block variant="secondary" icon={ChevronRight} onClick={() => { setOpen(false); go('spectateurs') }}>Voir les spectateurs</Button> : null} />
+    </>
+  )
 }
 
 /* ── Bénévoles : inscrits et actifs aujourd'hui (WBenevoles) ─────────── */
-export function BenevolesBlock() {
+export function BenevolesBlock({ go }) {
   const { currentEventId } = useEventStore()
   const { reservations } = useAppStore()
   const [benevoles, setBenevoles] = useState(null)
@@ -253,9 +347,21 @@ export function BenevolesBlock() {
     })
     return ids.size
   }, [reservations])
+  const [open, setOpen] = useState(false)
   return (
-    <Stat label="Bénévoles" icon={HandHeart} tone="success" className={s.fill}
-      value={benevoles ? <AnimatedNumber value={benevoles.length} /> : <Skeleton width={48} height={24} />}
-      sub={actifs > 0 ? `${actifs} actif${actifs > 1 ? 's' : ''} aujourd'hui` : 'Inscrits au total'} />
+    <>
+      <Stat label="Bénévoles" icon={HandHeart} tone="success" className={s.fill}
+        value={benevoles ? <AnimatedNumber value={benevoles.length} /> : <Skeleton width={48} height={24} />}
+        sub={actifs > 0 ? `${actifs} actif${actifs > 1 ? 's' : ''} aujourd'hui` : 'Inscrits au total'}
+        onClick={() => setOpen(true)} />
+      {/* Détail (23/11/2026) : chiffres seulement, sans aucun nom */}
+      <DetailSheet open={open} onClose={() => setOpen(false)} title="Bénévoles" icon={HandHeart}
+        value={benevoles ? String(benevoles.length) : '…'} sub="Inscrits pour l'événement"
+        sections={[
+          { label: 'Activité', rows: [['Inscrits', benevoles ? String(benevoles.length) : '…'], ["Actifs aujourd'hui", String(actifs)]] },
+          { label: 'Ce que compte ce chiffre', content: <Note>« Actifs aujourd'hui » : bénévoles qui ont retiré au moins une commande depuis minuit.</Note> },
+        ]}
+        actions={go ? <Button block variant="secondary" icon={ChevronRight} onClick={() => { setOpen(false); go('benevoles') }}>Voir les bénévoles</Button> : null} />
+    </>
   )
 }

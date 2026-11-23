@@ -109,6 +109,9 @@
   overflow-wrap: anywhere;
 }
 .k3Cell span { display: block; font-size: var(--fs-12); color: var(--muted); line-height: 1.3; }
+/* 23/11/2026 : compteurs cliquables (ouvrent le détail) */
+.k3Btn { font: inherit; color: inherit; text-align: inherit; cursor: pointer; width: 100%; min-width: 0; }
+.k3Btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .subtitle { margin: 0; font-size: var(--fs-13); color: var(--muted); }
 
 .list {

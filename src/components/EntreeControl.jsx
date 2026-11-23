@@ -9,8 +9,9 @@
  */
 import React, { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { CheckCircle2, XCircle, AlertTriangle, Undo2, RefreshCw } from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, Undo2, RefreshCw, Ticket } from 'lucide-react'
 import QrScanner from './QrScanner'
+import DetailSheet from './DetailSheet'
 import { Button, toast } from '../ui'
 import { friendlyError } from '../utils/errors'
 import { createWedge } from '../utils/scanWedge'
@@ -31,6 +32,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
   const [busy, setBusy] = useState(false)
   const [entrees, setEntrees] = useState([])
   const [echecs, setEchecs] = useState([])
+  const [ouverte, setOuverte] = useState(null) // id de l'entrée dont on voit le détail (23/11/2026)
   const last = useRef({ id: null, at: 0 })
   const busyRef = useRef(false)
 
@@ -73,6 +75,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
   }
 
   const actives = entrees.filter(e => !e.annulee)
+  const ouverteE = ouverte ? entrees.find(e => e.id === ouverte) : null
   const d = result && result.status !== 'annulee' ? describeEntree(result) : null
   const Icon = d ? ICON[d.tone] : null
   const { jour } = parisNow()
@@ -119,8 +122,11 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
         <ul>
           {entrees.slice(0, 12).map(e => (
             <li key={e.id} className={clsx(e.annulee && s.cancelled)}>
-              <span className={s.time}>{e.heure}</span>
-              <span className={s.name}>{e.nom || e.specId}{e.pass ? ` · ${e.pass}` : ''}</span>
+              <button type="button" className={s.rowBtn} onClick={() => setOuverte(e.id)} aria-haspopup="dialog"
+                aria-label={`Détail de l'entrée de ${e.nom || e.specId}, ${e.heure}${e.annulee ? ', annulée' : ''}`}>
+                <span className={s.time}>{e.heure}</span>
+                <span className={s.name}>{e.nom || e.specId}{e.pass ? ` · ${e.pass}` : ''}</span>
+              </button>
               {e.annulee
                 ? <span className={s.tag}>annulée</span>
                 : <button type="button" className={s.undo} onClick={() => undo(e.id)} aria-label={`Annuler l'entrée de ${e.nom || e.specId}`}><Undo2 size={14}/></button>}
@@ -128,6 +134,29 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
           ))}
         </ul>
       </section>
+
+      {/* Détail d'une entrée : seulement ce que le journal du jour contient déjà */}
+      <DetailSheet open={!!ouverteE} onClose={() => setOuverte(null)} title="Entrée"
+        icon={ouverteE?.annulee ? Undo2 : Ticket}
+        color={ouverteE?.annulee ? undefined : 'var(--green)'}
+        status={ouverteE && (ouverteE.annulee ? { label: 'Annulée', tone: 'neutral' } : { label: 'Entrée enregistrée', tone: 'success' })}
+        value={ouverteE?.heure || null}
+        sub={ouverteE ? dayLabel : null}
+        sections={ouverteE ? [
+          { label: 'Billet', rows: [
+            ['Nom', ouverteE.nom || '—'],
+            ['Pass', ouverteE.pass || '—'],
+            ['Code du billet', ouverteE.specId || '—'],
+          ] },
+          { label: 'Entrée', rows: [
+            ['Heure', ouverteE.heure || '—'],
+            ['Enregistrée par', ouverteE.par?.nom || null],
+            ['État', ouverteE.annulee ? 'Annulée' : 'Valable'],
+          ] },
+        ] : []}
+        actions={ouverteE && !ouverteE.annulee && (
+          <Button block variant="secondary" icon={Undo2} onClick={() => { const id = ouverteE.id; setOuverte(null); undo(id) }}>Annuler l'entrée</Button>
+        )} />
     </div>
   )
 }

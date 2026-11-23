@@ -129,28 +129,17 @@
 .sheetTitle { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
 @keyframes fondu { from { opacity: 0; } }
 
-/* ── Détail d'une opération (nouvel écran) ─────────────────── */
-.detail { position: fixed; inset: 0; z-index: 50; overflow-y: auto; overscroll-behavior: contain; }
-.detHead {
-  padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 26px;
-  text-align: center;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--op) 80%, transparent) 0%,
-    color-mix(in srgb, var(--op) 20%, transparent) 55%,
-    var(--nv-list) 100%);
+/* ── Cartes cliquables (23/11/2026) : le détail s'ouvre en DetailSheet (components/DetailSheet) ── */
+/* Solde de l'accueil : bouton transparent qui garde la mise en page centrée */
+.heroBtn {
+  display: grid; justify-items: center; width: 100%; padding: 0; border: 0; border-radius: 20px;
+  background: none; color: inherit; font: inherit; cursor: pointer; text-align: center;
 }
-.detBar { display: flex; max-width: 520px; margin: 0 auto; }
-.detail .detBar :global(.nv-round) { background: var(--nv-glass2); border-color: transparent; }
-.detIc { width: 84px; height: 84px; border-radius: 50%; margin: 8px auto 14px; display: grid; place-items: center; }
-.detTitle { font-size: 19px; font-weight: 500; overflow-wrap: anywhere; }
-.detBig { font-size: clamp(40px, 13vw, 52px); margin: 8px 0 6px; }
-.detBody { max-width: 520px; margin: 0 auto; padding: 0 16px 40px; display: grid; gap: 14px; }
-.detStatut { font-size: 16px; margin-top: 6px; }
-.kvCard { padding: 4px 18px; }
-.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 14px 0; font-size: 16px; }
-.kv span { color: var(--nv-mu); flex: none; }
-.kv b { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
-.kv + .kv { border-top: 1px solid var(--nv-line); }
+.heroBtn .heroLab, .heroBtn .heroBig { display: block; }
+/* Carte entière en bouton : garde le fond de la carte (nv-card), seul l'aspect de bouton est retiré */
+.cardBtn { display: grid; width: 100%; text-align: left; border: 0; color: inherit; font: inherit; cursor: pointer; }
+.readyHead > .qrTxt { flex: 1; }
+.readyHead > .chev { align-self: center; }
 
 /* ── Historique ────────────────────────────────────────────── */
 .histHead { padding: 8px 4px 14px; }

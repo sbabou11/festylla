@@ -12,13 +12,15 @@ import { ROLE_PAGES } from '../store/useAuthStore'
 import s from './BottomNav.module.css'
 
 // Pages mises en avant par rôle (les rôles personnalisés prennent leurs 4 premières pages)
+// 23/11/2026 (maquette validée) : « Accueil » en premier pour tous les rôles ; la page qui sort de la
+// barre reste dans « Plus » (Mon profil, Clôture…)
 const FAVORITES = {
   super_admin:          ['accueil', 'debit', 'transactions', 'alertes'],
   admin:                ['accueil', 'debit', 'transactions', 'alertes'],
-  billetterie:          ['credit', 'commande-sur-place', 'entree', 'cloture'],   // « Compte de secours » ne sert qu'en panne : menu Plus
-  stand:                ['debit', 'reservations-admin', 'transactions', 'mon-profil'],
-  consultation:         ['transactions', 'reservations-admin', 'analytics'],
-  directeur_artistique: ['planning', 'gestion-artistes', 'mon-profil'],   // planning masqué si relié à Event Manager
+  billetterie:          ['accueil', 'credit', 'commande-sur-place', 'entree'],   // « Compte de secours » ne sert qu'en panne : menu Plus
+  stand:                ['accueil', 'debit', 'reservations-admin', 'transactions'],
+  consultation:         ['accueil', 'transactions', 'reservations-admin', 'analytics'],
+  directeur_artistique: ['accueil', 'planning', 'gestion-artistes', 'cachets'],   // planning masqué si relié à Event Manager
 }
 
 // Libellés courts : 5 cases sur 375 px
@@ -30,7 +32,9 @@ const SHORT = {
 }
 
 export default function BottomNav({ role, customPages, currentPage, onNavigate, onMore, canAccess, badges = {} }) {
-  const fav = (FAVORITES[role] || customPages || ROLE_PAGES[role] || []).filter(p => ALL_PAGES[p] && canAccess(p)).slice(0, 4)
+  // Rôles personnalisés : « Accueil » d'abord s'il fait partie de leurs pages, puis leurs premières pages
+  const base = FAVORITES[role] || (customPages ? ['accueil', ...customPages.filter(p => p !== 'accueil')] : ROLE_PAGES[role]) || []
+  const fav = base.filter(p => ALL_PAGES[p] && canAccess(p)).slice(0, 4)
   const inFav = fav.includes(currentPage)
   const navRef = useRef(null)
   const [pill, setPill] = useState(null)

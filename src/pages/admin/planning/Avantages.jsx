@@ -6,6 +6,8 @@
 import React from 'react'
 import clsx from 'clsx'
 import { ChevronDown, ChevronUp, Gift } from 'lucide-react'
+import ConsoArtisteDetail from '../../../components/ConsoArtisteDetail'
+import tap from '../../../components/CarteCliquable.module.css'
 import s from './planning.module.css'
 
 // ── Saisie des avantages (formulaire) ─────────────────────────────────
@@ -90,6 +92,8 @@ export function AvantagesArtisteBlock({ form, setForm, menuItems }) {
 
 // ── Panneau Avantages & Consos (dans liste dépliée) ───────────────────
 export function CreneauAvantagesPanel({ creneau, consumptions, menuItems }) {
+  // Détail d'une consommation de l'historique (23/11/2026)
+  const [ouverte, setOuverte] = React.useState(null)
   const av = creneau.avantages || { drinks: 0, meals: 0, eaux: 0, drinkIds: [], mealIds: [], eauIds: [] }
   const totalQty = (av.drinks || 0) + (av.meals || 0) + (av.eaux || 0)
   if (totalQty === 0) return null
@@ -103,6 +107,10 @@ export function CreneauAvantagesPanel({ creneau, consumptions, menuItems }) {
     if (!ts) return '—'
     const d = ts?.toDate ? ts.toDate() : new Date(ts)
     return d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' })
+  }
+  const fmtJ = (ts) => {
+    const d = ts?.toDate ? ts.toDate() : new Date(ts)
+    return d.toLocaleDateString('fr-FR', { day:'numeric', month:'short' })
   }
 
   const nameOf = (id) => {
@@ -149,17 +157,21 @@ export function CreneauAvantagesPanel({ creneau, consumptions, menuItems }) {
             }).map(c => {
               const icn = c.type === 'drink' ? '☕' : c.type === 'meal' ? '🍽' : '💧'
               return (
-                <div key={c.id} className={s.histRow}>
-                  <span>{icn}</span>
+                <button type="button" key={c.id} className={clsx(tap.tap, s.histRow)} style={{ width: '100%', minHeight: 32, alignItems: 'center' }}
+                  onClick={() => setOuverte(c)} aria-haspopup="dialog"
+                  aria-label={`Détail : ${c.articleNom || 'article'} servi à ${fmtH(c.servedAt)}`}>
+                  <span aria-hidden="true">{icn}</span>
                   <span className={s.histName}>{c.articleNom}</span>
                   <span className={s.num}>{fmtH(c.servedAt)}</span>
                   {c.servedBy?.name && <span>· {c.servedBy.name}</span>}
-                </div>
+                </button>
               )
             })}
           </div>
         </div>
       )}
+      <ConsoArtisteDetail conso={ouverte} onClose={() => setOuverte(null)} artiste={creneau.artiste}
+        creneau={creneau.debut ? `${fmtJ(creneau.debut)} · ${fmtH(creneau.debut)}${creneau.scene ? ' · ' + creneau.scene : ''}` : null} />
     </div>
   )
 }

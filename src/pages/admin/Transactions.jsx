@@ -19,6 +19,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { txTime } from '../../utils/dashboardData'
 import { pastilleTx } from '../../utils/nvPastilles'
 import { Button, Badge, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
+import { TxDetailSheet } from '../../components/detailContenus'
 import s from './transactions/transactions.module.css'
 
 const TYPE_LABEL = { credit: 'Crédit', debit: 'Débit', reservation: 'Réservation', annulation: 'Annulation', 'benev-reservation': 'Résa bénévole', 'benev-retrait': 'Retrait bénévole', 'benev-annulation': 'Annul. bénévole', 'artist-gift': 'Avantage artiste', don: 'Don ONG Ylla' }
@@ -203,7 +204,8 @@ export default function Transactions({ onNavigate }) {
         onMouseEnter={e => setHoverDetail({ tx: t, x: e.clientX, y: e.clientY })}
         onMouseMove={e => setHoverDetail(h => h ? { ...h, x: e.clientX, y: e.clientY } : h)}
         onMouseLeave={() => setHoverDetail(null)}
-        onClick={e => setHoverDetail({ tx: t, x: e.clientX, y: e.clientY, pinned: true })}>
+        onClick={e => { e.stopPropagation(); setHoverDetail({ tx: t, x: e.clientX, y: e.clientY, pinned: true }) }}
+        onKeyDown={e => e.stopPropagation()}>
         {t.label || '—'}
       </button>
     ) },
@@ -212,13 +214,13 @@ export default function Transactions({ onNavigate }) {
       t.annulee || t.annuleTx ? null : (
       <Button variant="danger" size="sm" icon={Undo2} iconOnly aria-label={`Annuler la transaction ${t.label}`}
         loading={deleting === t._docId} disabled={!!deleting || !t._docId}
-        className={s.delBtn} onClick={() => { setMotifAnnul(''); setPending(t) }}/>
+        className={s.delBtn} onClick={e => { e.stopPropagation(); setMotifAnnul(''); setPending(t) }}
+        onKeyDown={e => e.stopPropagation()}/>
       )
     ) },
   ]
 
 
-  const typeLabel = (t) => TYPE_LABEL[t.type] || (t.type === 'debit_correction' ? 'Correction −' : t.type === 'credit_correction' ? 'Correction +' : t.type)
   const emptyFiltre = (
     <Empty icon={SearchX} title="Aucune transaction ne correspond aux filtres"
       action={<Button variant="secondary" onClick={resetFilters}>Réinitialiser les filtres</Button>}>
@@ -226,37 +228,16 @@ export default function Transactions({ onNavigate }) {
     </Empty>
   )
 
-  // Contenu de la ligne dépliée (20/11/2026), commun au téléphone et à la tablette :
-  // compte, date, type écrit en toutes lettres, détail, staff, articles et annulation.
-  const detailDeplie = (t, tone) => (
-    <>
-      <dl className={s.mKv}>
-        {t.specId && (<><dt>Compte</dt><dd className={s.mono}>{t.specId}</dd></>)}
-        <dt>Date</dt><dd>{t.date || '—'}</dd>
-        <dt>Type</dt>
-        <dd className={s.mBadges}>
-          <Badge tone={tone} className={s.mBadge}>{typeLabel(t)}</Badge>
-          {t.annulee && <Badge tone="neutral" className={s.mBadge}>Annulée</Badge>}
-        </dd>
-        <dt>Détail</dt><dd>{t.label || '—'}</dd>
-        <dt>Staff</dt><dd>{t.staff || '—'}</dd>
-      </dl>
-      {Array.isArray(t.items) && t.items.length > 0 && (
-        <div className={s.mItems}>
-          {t.items.map((it, idx) => (
-            <div key={idx} className={s.mItemLine}>
-              <span>{(it.qty || 1)} × {it.nom || '—'}</span>
-              <span className={s.tooltipPrice}>{fmt(it.total || (it.prixUnit || it.prix || 0) * (it.qty || 1))}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      {isAdmin && !(t.annulee || t.annuleTx) && (
-        <Button variant="danger" icon={Undo2} block={isMobile} className={isTablet ? s.tAnnul : undefined}
-          loading={deleting === t._docId} disabled={!!deleting || !t._docId}
-          onClick={() => { setMotifAnnul(''); setPending(t) }}>Annuler cette transaction</Button>
-      )}
-    </>
+  // Fenêtre de détail (23/11/2026, maquette validée) : remplace la ligne dépliée du téléphone et de la
+  // tablette, et s'ouvre aussi au clic d'une ligne du tableau. Mêmes informations (compte, date, type,
+  // détail, staff, articles) plus ce que la transaction porte déjà (moyen, soldes avant/après, annulation).
+  // L'annulation garde exactement les mêmes conditions (admin, transaction ni annulée ni contre-passation).
+  const cleDe = (t) => t._docId || `k${t._k}`
+  const openTx = openKey ? allTx.find(t => cleDe(t) === openKey) || null : null
+  const detailActions = openTx && isAdmin && !(openTx.annulee || openTx.annuleTx) && (
+    <Button variant="danger" icon={Undo2} block
+      loading={deleting === openTx._docId} disabled={!!deleting || !openTx._docId}
+      onClick={() => { const t = openTx; setOpenKey(null); setMotifAnnul(''); setPending(t) }}>Annuler cette transaction</Button>
   )
 
   // Disposition téléphone (20/11/2026) : mêmes données et mêmes actions que le tableau,
@@ -344,13 +325,11 @@ export default function Transactions({ onNavigate }) {
           </div>
           <ul className={clsx('nv-card', s.nvList)}>
             {g.items.map(t => {
-              const open = openKey === t._k
-              const tone = TYPE_TONE[t.type] || 'neutral'
               const quand = t.heure ? String(t.heure).slice(0, 5) : t.date
               return (
                 <li key={t._k} className={s.nvItem}>
-                  <button type="button" className={clsx('nv-row', s.nvLine)} aria-expanded={open}
-                    onClick={() => setOpenKey(open ? null : t._k)}>
+                  <button type="button" className={clsx('nv-row', 'nv-press', s.nvLine)} aria-haspopup="dialog"
+                    onClick={() => setOpenKey(cleDe(t))}>
                     <span className={clsx('nv-ic', s.nvSign)} style={{ background: pastilleTx(t.type) }} aria-hidden="true">{sign(t) || '•'}</span>
                     <span className="nv-rt">
                       <b>{t.snom}</b>
@@ -358,11 +337,6 @@ export default function Transactions({ onNavigate }) {
                     </span>
                     <span className={clsx('nv-amt', t.type === 'credit' && !t.annulee && 'nv-pos', t.annulee && s.mStruck)}>{sign(t)}{fmt(t.montant || 0)}</span>
                   </button>
-                  {open && (
-                    <div className={clsx(s.mMore, s.nvMore)}>
-                      {detailDeplie(t, tone)}
-                    </div>
-                  )}
                 </li>
               )
             })}
@@ -396,16 +370,16 @@ export default function Transactions({ onNavigate }) {
           </thead>
           <tbody>
             {displayTx.slice(0, visible).map(t => {
-              const open = openKey === t._k
+              const open = openKey === cleDe(t)
               const tone = TYPE_TONE[t.type] || 'neutral'
               return (
                 <React.Fragment key={t._k}>
-                  {/* Toute la ligne se touche ; au clavier, c'est le nom (bouton) qui déplie */}
-                  <tr className={clsx(s.tRow, open && s.tRowOpen)} onClick={() => setOpenKey(open ? null : t._k)}>
+                  {/* Toute la ligne se touche ; au clavier, c'est le nom (bouton) qui ouvre le détail */}
+                  <tr className={clsx(s.tRow, open && s.tRowOpen)} onClick={() => setOpenKey(cleDe(t))}>
                     <td>
                       <span className={s.tSpec}>
                         <span className={clsx(s.mDot, s[`dot_${tone}`])} aria-hidden="true">{sign(t) || '•'}</span>
-                        <button type="button" className={s.tName} aria-expanded={open} aria-controls={`tx-detail-${t._k}`}>
+                        <button type="button" className={s.tName} aria-haspopup="dialog">
                           {t.snom}
                         </button>
                       </span>
@@ -419,20 +393,13 @@ export default function Transactions({ onNavigate }) {
                       <span className={clsx(s.amount, s.tAmount, s[`amt_${tone}`], t.annulee && s.mStruck)}>{sign(t)}{fmt(t.montant || 0)}</span>
                     </td>
                   </tr>
-                  {open && (
-                    <tr className={s.tMoreRow} id={`tx-detail-${t._k}`}>
-                      <td colSpan={TAB_COLS.length}>
-                        <div className={s.tMore}>{detailDeplie(t, tone)}</div>
-                      </td>
-                    </tr>
-                  )}
                 </React.Fragment>
               )
             })}
           </tbody>
         </table>
       </div>
-      <p className={s.muted}>{isAdmin ? 'Touchez une ligne pour voir le compte, le type et annuler.' : 'Touchez une ligne pour voir le compte et le type.'}</p>
+      <p className={s.muted}>{isAdmin ? 'Touchez une ligne pour voir tout le détail et annuler.' : 'Touchez une ligne pour voir tout le détail.'}</p>
     </>
   ))
 
@@ -483,7 +450,12 @@ export default function Transactions({ onNavigate }) {
 
       {!isMobile && !isTablet && <Table columns={columns} rows={displayTx.slice(0, visible)} rowKey="_k"
         sort={{ key: sortKey, dir: sortDir }} onSort={headerSort}
+        onRowClick={t => { setHoverDetail(null); setOpenKey(cleDe(t)) }}
         empty={emptyFiltre}/>}
+
+      {/* Détail complet d'une transaction (23/11/2026) */}
+      <TxDetailSheet tx={openTx} client={openTx?.snom !== '—' ? openTx?.snom : null}
+        onClose={() => setOpenKey(null)} actions={detailActions || null}/>
 
       {/* Pagination */}
       {(displayTx.length > 10) && (

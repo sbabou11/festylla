@@ -48,6 +48,11 @@
 .reqName > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reqMeta { margin-top: 2px; font-size: var(--fs-11); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reqActions { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; }
+/* 23/11/2026 : la demande ouvre son détail */
+.reqOpen { display: block; padding: 0; margin: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; border-radius: 6px; }
+.reqOpen .reqMeta { display: block; }
+.reqOpen:hover .reqName > span:first-child { text-decoration: underline; text-underline-offset: 3px; }
+.reqOpen:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
 
 /* Liste des membres */
 .members { display: grid; }

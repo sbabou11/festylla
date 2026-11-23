@@ -38,6 +38,10 @@ import {
   TopArticlesBlock, StocksBlock, DepensesBlock, CachetsBlock, PlanningBlock, SpectateursBlock, BenevolesBlock,
 } from './accueil/Blocks'
 import { pastilleTx, pastilleAlerte } from '../../utils/nvPastilles'
+import DetailSheet from '../../components/DetailSheet'
+import {
+  TxDetailSheet, Repartition, BarresHeures, Note, grouper, parHeure, moyenLabel, nettoyer, TX_TYPE_LABEL,
+} from '../../components/detailContenus'
 import d from './dashboard/Dashboard.module.css'
 import s from './accueil/Accueil.module.css'
 
@@ -107,15 +111,18 @@ function NvBars({ values = [], tone }) {
     </span>
   )
 }
-function NvKpi({ label, value, sub, delta, bars, barsTone }) {
+// 23/11/2026 : avec onClick, la carte est un bouton qui ouvre le détail du chiffre
+function NvKpi({ label, value, sub, delta, bars, barsTone, onClick }) {
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div className={clsx('nv-glass', s.nvKpi)}>
+    <Tag className={clsx('nv-glass', s.nvKpi, onClick && clsx('nv-press', s.nvKpiBtn))}
+      {...(onClick ? { type: 'button', onClick, 'aria-haspopup': 'dialog', 'aria-label': `${label} : voir le détail` } : {})}>
       <span className={s.nvKpiLabel}>{label}</span>
       <b className={s.nvKpiValue}>{value}</b>
       {delta && <span className={clsx(s.nvDelta, delta.dir === 'up' && 'nv-pos', delta.dir === 'down' && 'nv-neg')}>{delta.text}</span>}
       {sub && <span className={s.nvKpiSub}>{sub}</span>}
       {bars && <NvBars values={bars} tone={barsTone} />}
-    </div>
+    </Tag>
   )
 }
 
@@ -143,6 +150,229 @@ function watchList(logs) {
     if (t.type === 'debit' && (t.montant || 0) > 5000) big++
   })
   return { busy: Object.values(perSpec).filter(c => c >= 5).length, big }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Détail des chiffres (23/11/2026, maquette validée) : décomposition calculée
+// avec les seules données déjà en mémoire sur l'accueil, puis lien vers la page.
+// ═══════════════════════════════════════════════════════════════════════
+const HEURE = 3600 * 1000
+const VENTES = ['debit', 'retrait', 'benev-retrait']
+const entre = (list, from, to) => list.filter(t => { const ms = txTime(t); return ms != null && ms >= from && ms < to })
+const somme = (l) => l.reduce((a, t) => a + (t.montant || 0), 0)
+const evolution = (cur, prev) => {
+  if (!prev) return null
+  const p = Math.round(((cur - prev) / prev) * 100)
+  return `${p > 0 ? '▲ +' : p < 0 ? '▼ ' : '= '}${p} %`
+}
+const typeNom = (t) => TX_TYPE_LABEL[t.type] || t.type
+
+function buildKpiDetail(id, { allTx, myLogs, now, day, kpis, mine, spectateurs, wallets, can, go }) {
+  const start = dayStart(now)
+  const elapsed = now - start
+  const today = entre(allTx, start, now)
+  const hier = entre(allTx, start - 24 * HEURE, start - 24 * HEURE + elapsed)
+  const minuit = startOfToday()
+  const mesLogs = myLogs.filter(t => getTs(t) >= minuit)
+  const voir = (page, label) => can(page) ? <Button block variant="secondary" icon={ChevronRight} onClick={() => go(page)}>{label}</Button> : null
+  const def = (txt) => ({ label: 'Ce que compte ce chiffre', content: <Note>{txt}</Note> })
+
+  switch (id) {
+    case 'recettes': {
+      const ventes = today.filter(t => VENTES.includes(t.type))
+      const veille = somme(hier.filter(t => VENTES.includes(t.type)))
+      return {
+        title: 'Recettes du jour', icon: ShoppingCart, value: fmt(day.revenue),
+        sub: `${plural(ventes.length, 'opération')} depuis 6h`,
+        sections: [
+          { label: 'Tendance', rows: [
+            ['Hier à la même heure', day.hasYesterday ? fmt(veille) : null],
+            ['Évolution', evolution(day.revenue, veille)],
+            [`Projection à ${day.closingLabel}`, `≈ ${fmt(day.projected)}`],
+          ] },
+          { label: 'Par type', content: <Repartition rows={grouper(ventes, typeNom)} /> },
+          { label: 'Par caisse', content: <Repartition rows={grouper(ventes, t => t.staff)} /> },
+          { label: 'Heure par heure', content: <BarresHeures buckets={parHeure(ventes, now)} label="Recettes par heure" /> },
+          def('Achats au stand, retraits de réservation et retraits bénévoles depuis 6h (une journée festival va de 6h à 6h).'),
+        ],
+        actions: voir('transactions', 'Voir ces transactions'),
+      }
+    }
+    case 'credits': {
+      const credits = today.filter(t => t.type === 'credit')
+      const veille = somme(hier.filter(t => t.type === 'credit'))
+      return {
+        title: "Rechargé aujourd'hui", icon: PlusCircle, value: fmt(day.credits),
+        sub: `${plural(credits.length, 'recharge')} depuis 6h`,
+        sections: [
+          { label: 'Par moyen de paiement', content: <Repartition rows={grouper(credits, t => moyenLabel(t.moyen))} /> },
+          { label: 'Par caisse', content: <Repartition rows={grouper(credits, t => t.staff)} /> },
+          { label: 'Heure par heure', content: <BarresHeures buckets={parHeure(credits, now)} label="Recharges par heure" /> },
+          { label: 'Tendance', rows: [
+            ['Hier à la même heure', day.hasYesterday ? fmt(veille) : null],
+            ['Évolution', evolution(day.credits, veille)],
+          ] },
+          def('Recharges des comptes spectateurs depuis 6h, tous moyens de paiement confondus.'),
+        ],
+        actions: voir('transactions', 'Voir ces transactions'),
+      }
+    }
+    case 'soldes': {
+      const pos = spectateurs.filter(sp => (sp.solde || 0) > 0)
+      const neg = spectateurs.filter(sp => (sp.solde || 0) < 0)
+      const zero = spectateurs.length - pos.length - neg.length
+      const sumPos = pos.reduce((a, sp) => a + (sp.solde || 0), 0)
+      const sumNeg = neg.reduce((a, sp) => a + (sp.solde || 0), 0)
+      return {
+        title: 'Soldes en circulation', icon: Wallet, value: fmt(kpis.totalSoldes),
+        sub: `${wallets} portefeuille${wallets > 1 ? 's' : ''} actif${wallets > 1 ? 's' : ''} sur ${plural(spectateurs.length, 'compte')}`,
+        sections: [
+          { label: 'Répartition des comptes', rows: [
+            ['Avec un solde', `${pos.length} · ${fmt(sumPos)}`],
+            ['À zéro', String(zero)],
+            ['Solde négatif', neg.length ? `${neg.length} · ${fmt(sumNeg)}` : '0'],
+            ['Solde moyen (comptes avec solde)', pos.length ? fmt(Math.round(sumPos / pos.length)) : null],
+          ] },
+          { label: "Mouvements d'aujourd'hui", rows: [
+            ["Rechargé depuis 6h", fmt(day.credits)],
+            ['Dépensé depuis 6h', fmt(day.revenue)],
+          ] },
+          def("Somme des soldes de tous les comptes spectateurs de l'événement, à cet instant."),
+        ],
+        actions: voir('spectateurs', 'Voir les spectateurs'),
+      }
+    }
+    case 'panier': {
+      const achats = today.filter(t => t.type === 'debit')
+      const achatsHier = hier.filter(t => t.type === 'debit')
+      const parCaisse = grouper(achats, t => t.staff).map(g => ({ ...g, value: Math.round(g.value / g.count) })).sort((a, b) => b.value - a.value)
+      return {
+        title: 'Panier moyen du jour', icon: Users, value: fmt(Math.round(day.basket)),
+        sub: `Sur ${plural(achats.length, 'achat')} depuis 6h`,
+        sections: [
+          { label: 'Calcul', rows: [
+            ['Total des achats', fmt(somme(achats))],
+            ["Nombre d'achats", String(achats.length)],
+            ['Hier à la même heure', achatsHier.length ? fmt(Math.round(somme(achatsHier) / achatsHier.length)) : null],
+          ] },
+          { label: 'Panier moyen par caisse', content: <Repartition rows={parCaisse} /> },
+          def("Montant moyen d'un achat au stand depuis 6h (les retraits de réservation ne sont pas comptés)."),
+        ],
+        actions: voir('transactions', 'Voir ces transactions'),
+      }
+    }
+    case 'resas': {
+      const list = kpis.activeResas || []
+      const nb = (st) => list.filter(r => r.status === st).length
+      const spec = list.filter(r => !r.isBenev)
+      return {
+        title: 'Réservations en cours', icon: Bookmark, value: String(list.length),
+        sub: kpis.resaReady > 0 ? `${kpis.resaReady} prête${kpis.resaReady > 1 ? 's' : ''} à retirer` : null,
+        sections: [
+          { label: 'Par étape', content: <Repartition money={false} rows={[
+            { label: 'En attente', value: nb('pending') },
+            { label: 'En préparation', value: nb('processing') },
+            { label: 'Prêtes à retirer', value: nb('ready') },
+          ]} empty="Aucune réservation en cours." /> },
+          { label: 'Clients', rows: [
+            ['Spectateurs', String(spec.length)],
+            ['Bénévoles', String(list.length - spec.length)],
+            ['Montant des réservations spectateurs', spec.length ? fmt(spec.reduce((a, r) => a + (r.total || 0), 0)) : null],
+          ] },
+          def('Réservations ni retirées ni annulées.'),
+        ],
+        actions: voir('reservations-admin', 'Voir les réservations'),
+      }
+    }
+    // ─── Chiffres personnels (depuis minuit, vos seules opérations) ───
+    case 'm-credits': {
+      const credits = mesLogs.filter(t => t.type === 'credit')
+      return {
+        title: 'Vos crédits du jour', icon: PlusCircle, value: fmt(mine.credits), sub: plural(mine.creditsCount, 'recharge'),
+        sections: [
+          { label: 'Par moyen de paiement', content: <Repartition rows={grouper(credits, t => moyenLabel(t.moyen))} /> },
+          { label: 'Heure par heure', content: <BarresHeures buckets={parHeure(credits, now, minuit)} label="Vos recharges par heure" /> },
+          def('Les recharges que vous avez faites depuis minuit.'),
+        ],
+        actions: voir('transactions', 'Voir vos transactions'),
+      }
+    }
+    case 'm-ventes': case 'm-panier': {
+      const ventes = mesLogs.filter(t => ['debit', 'retrait'].includes(t.type))
+      const panier = id === 'm-panier'
+      return {
+        title: panier ? 'Votre panier moyen' : 'Encaissé du jour', icon: panier ? Users : ShoppingCart,
+        value: panier ? (mine.ventesCount ? fmt(Math.round(mine.ventes / mine.ventesCount)) : '—') : fmt(mine.ventes),
+        sub: plural(mine.ventesCount, 'vente'),
+        sections: [
+          panier && { label: 'Calcul', rows: [['Total encaissé', fmt(mine.ventes)], ['Nombre de ventes', String(mine.ventesCount)]] },
+          { label: 'Par type', content: <Repartition rows={grouper(ventes, typeNom)} /> },
+          { label: 'Heure par heure', content: <BarresHeures buckets={parHeure(ventes, now, minuit)} label="Vos ventes par heure" /> },
+          def(panier ? 'Montant moyen de vos ventes et retraits depuis minuit.' : 'Vos ventes et retraits de réservation depuis minuit.'),
+        ],
+        actions: voir('transactions', 'Voir vos transactions'),
+      }
+    }
+    case 'm-tx': return {
+      title: 'Vos transactions', icon: List, value: String(mine.txCount), sub: 'Depuis minuit',
+      sections: [
+        { label: 'Par type', content: <Repartition money={false} rows={grouper(mesLogs, typeNom, () => 1).map(g => ({ ...g, count: undefined }))} /> },
+        { label: 'Heure par heure', content: <BarresHeures money={false} buckets={parHeure(mesLogs, now, minuit, () => 1)} label="Vos opérations par heure" /> },
+        def('Toutes les opérations enregistrées à votre nom depuis minuit.'),
+      ],
+      actions: voir('transactions', 'Voir vos transactions'),
+    }
+    case 'm-nouveaux': return {
+      title: 'Nouveaux inscrits', icon: UserPlus, value: String(mine.nouveaux), sub: 'Depuis minuit',
+      sections: [
+        { label: 'Comptes', rows: [['Créés depuis minuit', String(mine.nouveaux)], ['Spectateurs au total', String(spectateurs.length)]] },
+        def("Comptes spectateurs créés depuis minuit, à tous les postes de l'événement."),
+      ],
+      actions: voir('spectateurs', 'Voir les spectateurs'),
+    }
+    case 'm-resas': return {
+      title: 'Réservations à retirer', icon: Bookmark, value: String(mine.resasPretes),
+      sub: mine.resasAttente ? `${mine.resasAttente} en attente` : 'Aucune en attente',
+      sections: [
+        { label: 'Par étape', rows: [['Prêtes à retirer', String(mine.resasPretes)], ['En attente ou en préparation', String(mine.resasAttente)]] },
+        def("Réservations de l'événement prêtes à être retirées au stand."),
+      ],
+      actions: voir('reservations-admin', 'Voir les réservations'),
+    }
+    default: return null
+  }
+}
+
+// Détail d'une alerte : niveau, pourquoi, éléments concernés (données déjà chargées)
+function buildAlertDetail(a, { spectateurs, allTx, menu }) {
+  const why = []
+  let sections = []
+  if (a.id === 'neg') {
+    const neg = spectateurs.filter(sp => (sp.solde || 0) < 0).sort((x, y) => (x.solde || 0) - (y.solde || 0))
+    why.push(`${plural(neg.length, 'compte')} ont un solde sous zéro.`)
+    sections = [{ label: 'Comptes concernés', rows: neg.slice(0, 6).map(sp => [sp.nom || sp.id, fmt(sp.solde || 0)]) }]
+    if (neg.length > 6) sections.push({ content: <Note>… et {neg.length - 6} autres, sur la page Alertes.</Note> })
+  } else if (a.id === 'ecart') {
+    const credits = somme(allTx.filter(t => t.type === 'credit'))
+    const debits = somme(allTx.filter(t => t.type === 'debit' && !t.surPlace))
+    const soldes = spectateurs.reduce((x, sp) => x + (sp.solde || 0), 0)
+    why.push('Les recharges moins les achats ne correspondent pas aux soldes des comptes (tolérance 2 €).')
+    sections = [{ label: 'Calcul', rows: [
+      ['Recharges', fmt(credits)], ['Achats (hors commandes sur place)', `− ${fmt(debits)}`],
+      ['Attendu en soldes', fmt(credits - debits)], ['Soldes réels', fmt(soldes)], ['Écart', fmt(a.detail || 0)],
+    ] }]
+  } else {
+    const nom = a.title.split(' · ')[0].replace(/ en rupture$/, '')
+    const m = (menu || []).find(x => x.nom === nom)
+    why.push(a.id.startsWith('prev-')
+      ? "Au rythme des ventes des dernières heures, l'article sera épuisé avant la fermeture."
+      : a.id.startsWith('rupture-') ? "L'article n'a plus de stock." : "Le stock est passé sous le seuil d'alerte.")
+    sections = [{ label: 'Article', rows: [
+      ['Article', m?.nom || nom], ['Stock restant', a.stock != null ? String(a.stock) : null],
+      ["Seuil d'alerte", m ? String(m.seuilAlerte || 10) : null],
+    ] }]
+  }
+  return { why: why.join(' '), sections }
 }
 
 /**
@@ -393,6 +623,18 @@ export default function Accueil({ onNavigate, view }) {
     .sort((a, b) => (txTime(b) || 0) - (txTime(a) || 0))
     .slice(0, 7), [recentSource])
 
+  // ─── Fenêtres de détail (23/11/2026, maquette validée) ──────────────
+  // Chaque chiffre, transaction et alerte s'ouvre dans une feuille du bas. Décompositions calculées
+  // uniquement avec les données déjà chargées pour ce rôle : vue événement (allTx) pour l'admin et la
+  // consultation, sinon les seules opérations de la personne connectée (myLogs), comme les cartes.
+  const [kpiOpen, setKpiOpen] = useState(null)
+  const [txOpen, setTxOpen]   = useState(null)
+  const [alertOpen, setAlertOpen] = useState(null)
+  const kpiDetail = useMemo(() => kpiOpen ? buildKpiDetail(kpiOpen, {
+    allTx, myLogs, now, day, kpis, mine, spectateurs, wallets, can, go,
+  }) : null, [kpiOpen, allTx, myLogs, now, day, kpis, mine, spectateurs, wallets, can, go])
+  const openAlert = alertOpen ? alerts.find(a => a.id === alertOpen) || null : null
+
   // ─── Téléphone, nouveau style (23/11/2026) ──────────────────────────
   // Mêmes données, mêmes droits et mêmes destinations que les blocs ci-dessous ; seul le dessin change.
   // Le gros montant de l'en-tête reprend le premier chiffre des indicateurs (recettes du jour pour
@@ -412,22 +654,22 @@ export default function Accueil({ onNavigate, view }) {
       case 'kpis': return (
         <div className={s.nvKpis}>
           {globalView ? (<>
-            <NvKpi label="Rechargé" value={<AnimatedNumber value={day.credits} format={fmt} />} bars={creditBars} />
-            <NvKpi label="En circulation" value={<AnimatedNumber value={kpis.totalSoldes} format={fmt} />}
+            <NvKpi label="Rechargé" value={<AnimatedNumber value={day.credits} format={fmt} />} bars={creditBars} onClick={() => setKpiOpen('credits')} />
+            <NvKpi label="En circulation" value={<AnimatedNumber value={kpis.totalSoldes} format={fmt} />} onClick={() => setKpiOpen('soldes')}
               sub={`${wallets} portefeuille${wallets > 1 ? 's' : ''}`} />
-            <NvKpi label="Panier moyen" value={<AnimatedNumber value={Math.round(day.basket)} format={fmt} />}
+            <NvKpi label="Panier moyen" value={<AnimatedNumber value={Math.round(day.basket)} format={fmt} />} onClick={() => setKpiOpen('panier')}
               delta={day.basketDiff != null
                 ? { dir: day.basketDiff > 0 ? 'up' : day.basketDiff < 0 ? 'down' : 'flat', text: `${day.basketDiff > 0 ? '▲' : day.basketDiff < 0 ? '▼' : '='} ${day.basketDiff >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(day.basketDiff)))}` }
                 : undefined}
               sub={day.basketDiff == null ? plural(day.salesCount, 'encaissement') : undefined} />
-            <NvKpi label="Réservations" value={<AnimatedNumber value={kpis.activeResas.length} />}
+            <NvKpi label="Réservations" value={<AnimatedNumber value={kpis.activeResas.length} />} onClick={() => setKpiOpen('resas')}
               sub={kpis.resaReady > 0 ? `${kpis.resaReady} prête${kpis.resaReady > 1 ? 's' : ''} à retirer` : kpis.resaPending > 0 ? `${kpis.resaPending} en attente` : 'Aucune en cours'} />
           </>) : (<>
-            {canCredit && heroFig?.key !== 'credits' && <NvKpi label="Vos crédits du jour" value={<AnimatedNumber value={mine.credits} format={fmt} />} sub={plural(mine.creditsCount, 'recharge')} />}
-            <NvKpi label="Vos transactions" value={<AnimatedNumber value={mine.txCount} />} sub="Depuis minuit" />
-            {canCredit && !canSell && <NvKpi label="Nouveaux inscrits" value={<AnimatedNumber value={mine.nouveaux} />} sub={`${spectateurs.length} spectateurs au total`} />}
-            {canSell && <NvKpi label="Résas à retirer" value={<AnimatedNumber value={mine.resasPretes} />} sub={mine.resasAttente ? `${mine.resasAttente} en attente` : 'Aucune en attente'} />}
-            {canSell && !canCredit && <NvKpi label="Panier moyen" value={mine.ventesCount ? <AnimatedNumber value={Math.round(mine.ventes / mine.ventesCount)} format={fmt} /> : '—'} sub="Sur vos ventes du jour" />}
+            {canCredit && heroFig?.key !== 'credits' && <NvKpi label="Vos crédits du jour" value={<AnimatedNumber value={mine.credits} format={fmt} />} sub={plural(mine.creditsCount, 'recharge')} onClick={() => setKpiOpen('m-credits')} />}
+            <NvKpi label="Vos transactions" value={<AnimatedNumber value={mine.txCount} />} sub="Depuis minuit" onClick={() => setKpiOpen('m-tx')} />
+            {canCredit && !canSell && <NvKpi label="Nouveaux inscrits" value={<AnimatedNumber value={mine.nouveaux} />} sub={`${spectateurs.length} spectateurs au total`} onClick={() => setKpiOpen('m-nouveaux')} />}
+            {canSell && <NvKpi label="Résas à retirer" value={<AnimatedNumber value={mine.resasPretes} />} sub={mine.resasAttente ? `${mine.resasAttente} en attente` : 'Aucune en attente'} onClick={() => setKpiOpen('m-resas')} />}
+            {canSell && !canCredit && <NvKpi label="Panier moyen" value={mine.ventesCount ? <AnimatedNumber value={Math.round(mine.ventes / mine.ventesCount)} format={fmt} /> : '—'} sub="Sur vos ventes du jour" onClick={() => setKpiOpen('m-panier')} />}
           </>)}
         </div>
       )
@@ -456,7 +698,7 @@ export default function Accueil({ onNavigate, view }) {
           {alerts.length === 0 ? (
             <p className={s.nvEmpty}>Rien à signaler</p>
           ) : alerts.slice(0, 4).map(a => (
-            <button key={a.id} type="button" className="nv-row nv-press" onClick={() => go(a.page)}>
+            <button key={a.id} type="button" className="nv-row nv-press" aria-haspopup="dialog" onClick={() => setAlertOpen(a.id)}>
               <span className="nv-ic" style={{ background: pastilleAlerte(a.tone) }} aria-hidden="true"><AlertTriangle size={20} /></span>
               <span className="nv-rt">
                 <b>{a.title}</b>
@@ -499,14 +741,14 @@ export default function Accueil({ onNavigate, view }) {
           ) : recentTx.map((t, i) => {
             const st = TX_STYLE[t.type] || { tone: 'danger', sign: '−' }
             return (
-              <div key={t.id || i} className="nv-row">
+              <button key={t.id || i} type="button" className="nv-row nv-press" aria-haspopup="dialog" onClick={() => setTxOpen(t)}>
                 <span className={clsx('nv-ic', s.nvSign)} style={{ background: pastilleTx(t.type) }} aria-hidden="true">{st.sign || '•'}</span>
                 <span className="nv-rt">
                   <b>{t.label}</b>
                   <span>{t.benevoleNom || specMap[t.specId] || t.specNom || '—'} · {t.heure || t.date}</span>
                 </span>
                 <span className={clsx('nv-amt', t.type === 'credit' && 'nv-pos')}>{st.sign}{fmt(t.montant || 0)}</span>
-              </div>
+              </button>
             )
           })}
           <button type="button" className={clsx(s.nvSee, 'nv-press')} onClick={() => go('transactions')}>Tout voir</button>
@@ -525,37 +767,37 @@ export default function Accueil({ onNavigate, view }) {
     switch (id) {
       case 'kpis': return globalView ? (
         <div className={d.stats}>
-          <Stat
+          <Stat onClick={() => setKpiOpen('recettes')}
             label="Recettes du jour" value={<AnimatedNumber value={day.revenue} format={fmt} />} icon={ShoppingCart} tone="coral" trend={day.trend}
             delta={day.revenueDelta != null
               ? { value: `${signed(day.revenueDelta)} %`, direction: day.revenueDelta > 0 ? 'up' : day.revenueDelta < 0 ? 'down' : 'flat', label: vsYesterday }
               : undefined}
             sub={day.revenueDelta == null ? `${plural(day.salesCount, 'vente')} depuis 6h` : undefined}
           />
-          <Stat
+          <Stat onClick={() => setKpiOpen('soldes')}
             label="Soldes en circulation" value={<AnimatedNumber value={kpis.totalSoldes} format={fmt} />} icon={Wallet} tone="success"
             sub={`${wallets} portefeuille${wallets > 1 ? 's' : ''} actif${wallets > 1 ? 's' : ''} · ${fmt(day.credits)} rechargés aujourd'hui`}
           />
-          <Stat
+          <Stat onClick={() => setKpiOpen('panier')}
             label="Panier moyen du jour" value={<AnimatedNumber value={Math.round(day.basket)} format={fmt} />} icon={Users} tone="brand"
             delta={day.basketDiff != null
               ? { value: `${day.basketDiff >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(day.basketDiff)))}`, direction: day.basketDiff > 0 ? 'up' : day.basketDiff < 0 ? 'down' : 'flat', label: vsYesterday }
               : undefined}
             sub={day.basketDiff == null ? plural(day.salesCount, 'encaissement') : undefined}
           />
-          <Stat
+          <Stat onClick={() => setKpiOpen('resas')}
             label="Réservations" value={<AnimatedNumber value={kpis.activeResas.length} />} icon={Bookmark} tone="warning"
             sub={kpis.resaReady > 0 ? `${kpis.resaReady} prête${kpis.resaReady > 1 ? 's' : ''} à retirer` : kpis.resaPending > 0 ? `${kpis.resaPending} en attente` : 'Aucune en cours'}
           />
         </div>
       ) : (
         <div className={s.statsAuto}>
-          {canCredit && <Stat label="Vos crédits du jour" icon={PlusCircle} tone="success" value={<AnimatedNumber value={mine.credits} format={fmt} />} sub={plural(mine.creditsCount, 'recharge')} />}
-          {canSell && <Stat label="Encaissé du jour" icon={ShoppingCart} tone="coral" value={<AnimatedNumber value={mine.ventes} format={fmt} />} sub={plural(mine.ventesCount, 'vente')} />}
-          <Stat label="Vos transactions" icon={List} tone="brand" value={<AnimatedNumber value={mine.txCount} />} sub="Depuis minuit" />
-          {canCredit && !canSell && <Stat label="Nouveaux inscrits" icon={UserPlus} tone="warning" value={<AnimatedNumber value={mine.nouveaux} />} sub={`${spectateurs.length} spectateurs au total`} />}
-          {canSell && <Stat label="Résas à retirer" icon={Bookmark} tone="warning" value={<AnimatedNumber value={mine.resasPretes} />} sub={mine.resasAttente ? `${mine.resasAttente} en attente` : 'Aucune en attente'} />}
-          {canSell && !canCredit && <Stat label="Panier moyen" icon={Users} tone="brand" value={mine.ventesCount ? <AnimatedNumber value={Math.round(mine.ventes / mine.ventesCount)} format={fmt} /> : '—'} sub="Sur vos ventes du jour" />}
+          {canCredit && <Stat onClick={() => setKpiOpen('m-credits')} label="Vos crédits du jour" icon={PlusCircle} tone="success" value={<AnimatedNumber value={mine.credits} format={fmt} />} sub={plural(mine.creditsCount, 'recharge')} />}
+          {canSell && <Stat onClick={() => setKpiOpen('m-ventes')} label="Encaissé du jour" icon={ShoppingCart} tone="coral" value={<AnimatedNumber value={mine.ventes} format={fmt} />} sub={plural(mine.ventesCount, 'vente')} />}
+          <Stat onClick={() => setKpiOpen('m-tx')} label="Vos transactions" icon={List} tone="brand" value={<AnimatedNumber value={mine.txCount} />} sub="Depuis minuit" />
+          {canCredit && !canSell && <Stat onClick={() => setKpiOpen('m-nouveaux')} label="Nouveaux inscrits" icon={UserPlus} tone="warning" value={<AnimatedNumber value={mine.nouveaux} />} sub={`${spectateurs.length} spectateurs au total`} />}
+          {canSell && <Stat onClick={() => setKpiOpen('m-resas')} label="Résas à retirer" icon={Bookmark} tone="warning" value={<AnimatedNumber value={mine.resasPretes} />} sub={mine.resasAttente ? `${mine.resasAttente} en attente` : 'Aucune en attente'} />}
+          {canSell && !canCredit && <Stat onClick={() => setKpiOpen('m-panier')} label="Panier moyen" icon={Users} tone="brand" value={mine.ventesCount ? <AnimatedNumber value={Math.round(mine.ventes / mine.ventesCount)} format={fmt} /> : '—'} sub="Sur vos ventes du jour" />}
         </div>
       )
 
@@ -620,7 +862,7 @@ export default function Accueil({ onNavigate, view }) {
             <ul className={d.alerts}>
               {alerts.slice(0, 4).map(a => (
                 <li key={a.id}>
-                  <button type="button" className={d.alert} onClick={() => go(a.page)}>
+                  <button type="button" className={d.alert} aria-haspopup="dialog" onClick={() => setAlertOpen(a.id)}>
                     <i className={clsx(d.stripe, d[a.tone])} />
                     <span className={d.alertText}>
                       <b>{a.title}</b>
@@ -667,13 +909,15 @@ export default function Accueil({ onNavigate, view }) {
               {recentTx.map((t, i) => {
                 const st = TX_STYLE[t.type] || { tone: 'danger', sign: '−' }
                 return (
-                  <li key={t.id || i} className={d.tx}>
-                    <span className={clsx(d.txIcon, d[st.tone])}>{st.sign || '•'}</span>
-                    <span className={d.txText}>
-                      <b>{t.label}</b>
-                      <span>{t.benevoleNom || specMap[t.specId] || t.specNom || '—'} · {t.heure || t.date}</span>
-                    </span>
-                    <span className={clsx(d.txAmount, d[`${st.tone}Text`])}>{st.sign}{fmt(t.montant || 0)}</span>
+                  <li key={t.id || i}>
+                    <button type="button" className={clsx(d.tx, s.txBtn)} aria-haspopup="dialog" onClick={() => setTxOpen(t)}>
+                      <span className={clsx(d.txIcon, d[st.tone])}>{st.sign || '•'}</span>
+                      <span className={d.txText}>
+                        <b>{t.label}</b>
+                        <span>{t.benevoleNom || specMap[t.specId] || t.specNom || '—'} · {t.heure || t.date}</span>
+                      </span>
+                      <span className={clsx(d.txAmount, d[`${st.tone}Text`])}>{st.sign}{fmt(t.montant || 0)}</span>
+                    </button>
                   </li>
                 )
               })}
@@ -687,8 +931,8 @@ export default function Accueil({ onNavigate, view }) {
       case 'planning':     return <PlanningBlock go={go} />
       case 'stocks':       return <StocksBlock go={can('menu') ? go : null} />
       case 'depenses':     return <DepensesBlock go={go} />
-      case 'spectateurs':  return <SpectateursBlock />
-      case 'benevoles':    return <BenevolesBlock />
+      case 'spectateurs':  return <SpectateursBlock go={can('spectateurs') ? go : null} />
+      case 'benevoles':    return <BenevolesBlock go={can('benevoles') ? go : null} />
 
       case 'raccourcis': return (
         <section className={s.section} aria-labelledby="acc-shortcuts">
@@ -715,13 +959,17 @@ export default function Accueil({ onNavigate, view }) {
           La pastille aux initiales et la recherche sont dans la barre du haut (App.jsx). */}
       {isMobile ? (
         <header className={clsx(s.nvHero, 'nv-in')}>
-          {heroFig ? (<>
-            <p className={s.nvHeroLabel}>{event?.nom ? `${event.nom} · ` : ''}{heroFig.label}</p>
-            <p className={clsx('nv-big', s.nvHeroValue)}><AnimatedNumber value={heroFig.value} format={bigEuros} /></p>
-            {heroFig.delta && (
-              <p className={clsx(s.nvHeroDelta, heroFig.delta.dir === 'up' && 'nv-pos', heroFig.delta.dir === 'down' && 'nv-neg')}>{heroFig.delta.text}</p>
-            )}
-          </>) : (<>
+          {heroFig ? (
+            // 23/11/2026 : le gros montant ouvre aussi sa décomposition
+            <button type="button" className={clsx(s.cardBtn, s.heroBtn)} aria-haspopup="dialog"
+              onClick={() => setKpiOpen(globalView ? 'recettes' : heroFig.key === 'ventes' ? 'm-ventes' : 'm-credits')}>
+              <span className={clsx(s.nvHeroLabel, s.block)}>{event?.nom ? `${event.nom} · ` : ''}{heroFig.label}</span>
+              <span className={clsx('nv-big', s.nvHeroValue, s.block)}><AnimatedNumber value={heroFig.value} format={bigEuros} /></span>
+              {heroFig.delta && (
+                <span className={clsx(s.nvHeroDelta, s.block, heroFig.delta.dir === 'up' && 'nv-pos', heroFig.delta.dir === 'down' && 'nv-neg')}>{heroFig.delta.text}</span>
+              )}
+            </button>
+          ) : (<>
             <p className={clsx('nv-title', s.nvHeroHello)}>{greeting} {prenom}</p>
             <p className={s.nvHeroLabel}>{event?.nom || 'Aucun événement actif'}{event?.lieu && ` · ${event.lieu}`}</p>
           </>)}
@@ -794,6 +1042,26 @@ export default function Accueil({ onNavigate, view }) {
           })}
         </ul>
       </Sheet>
+
+      {/* Fenêtres de détail (23/11/2026) */}
+      <DetailSheet open={!!kpiDetail} onClose={() => setKpiOpen(null)} {...(kpiDetail || {})}
+        sections={kpiDetail ? nettoyer(kpiDetail.sections) : []} />
+      <TxDetailSheet tx={txOpen} onClose={() => setTxOpen(null)}
+        client={txOpen ? (txOpen.benevoleNom || specMap[txOpen.specId] || txOpen.specNom || null) : null}
+        actions={can('transactions') ? <Button block variant="secondary" icon={ChevronRight} onClick={() => { setTxOpen(null); go('transactions') }}>Voir toutes les transactions</Button> : null} />
+      {openAlert && (() => {
+        const info = buildAlertDetail(openAlert, { spectateurs, allTx, menu })
+        return (
+          <DetailSheet open onClose={() => setAlertOpen(null)} title={openAlert.title}
+            icon={AlertTriangle} color={pastilleAlerte(openAlert.tone)}
+            status={{ label: ALERT_TONE[openAlert.tone] || 'Information', tone: openAlert.tone === 'danger' ? 'danger' : openAlert.tone === 'warning' ? 'warning' : 'brand' }}
+            value={openAlert.detail != null ? fmt(openAlert.detail) : openAlert.stock != null ? `Reste ${openAlert.stock}` : null}
+            sections={nettoyer([{ label: 'Pourquoi', content: <Note>{info.why}</Note> }, ...info.sections])}
+            actions={<Button block icon={ChevronRight} onClick={() => { setAlertOpen(null); go(openAlert.page) }}>
+              {openAlert.page === 'menu' ? 'Ouvrir la carte' : openAlert.page === 'analytics' ? 'Ouvrir les analyses' : 'Ouvrir les alertes'}
+            </Button>} />
+        )
+      })()}
 
       <GoalDialog
         open={goalOpen}

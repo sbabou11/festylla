@@ -11,6 +11,9 @@ export default function WalkieOverlay({
   talkerName,
   muted,
   onToggleMute,
+  // 23/11/2026 : talkie dans l'entête → bandeau affiché juste sous l'entête, dans le flux de la page
+  inline = false,
+  talkDuration = 0,
 }) {
   if (!iAmTalking && !someoneElseTalking) return null
 
@@ -22,11 +25,10 @@ export default function WalkieOverlay({
     : '0 6px 20px rgba(216,144,48,.40)'
 
   return (
-    <div style={{
-      position:'fixed',
-      top: 'max(env(safe-area-inset-top), 8px)',
-      left: 8, right: 8,
-      zIndex: 1200,
+    <div role="status" style={{
+      ...(inline
+        ? { position: 'relative', margin: '0 16px 8px', zIndex: 3 }
+        : { position: 'fixed', top: 'max(env(safe-area-inset-top), 8px)', left: 8, right: 8, zIndex: 1200 }),
       background: bg, color: fgText,
       borderRadius: 12,
       padding: '10px 14px',
@@ -44,7 +46,9 @@ export default function WalkieOverlay({
       <Radio size={18} style={{ flexShrink: 0 }}/>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 800, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-          {iAmTalking ? 'Vous parlez en direct…' : (talkerName + ' parle…')}
+          {iAmTalking
+            ? (inline ? `Vous parlez · ${talkDuration} s · relâchez pour envoyer` : 'Vous parlez en direct…')
+            : (talkerName + ' parle…' + (inline ? ' · talkie occupé' : ''))}
         </div>
         {someoneElseTalking && muted && (
           <div style={{ fontSize: 10, opacity: .85, display:'flex', alignItems:'center', gap: 4, marginTop: 1 }}>

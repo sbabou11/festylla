@@ -19,12 +19,13 @@ import { friendlyError } from '../../utils/errors'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
 import {
   Plus, Pencil, Trash2, Copy, Save, ChevronDown, ChevronUp, Calendar, Clock, MapPin, Coins,
-  ExternalLink, AlertCircle, AlertTriangle, BarChart3, Printer, Search, SearchX, X, List, GanttChart, Camera,
+  ExternalLink, AlertCircle, AlertTriangle, BarChart3, Eye, Printer, Search, SearchX, X, List, GanttChart, Camera,
 } from 'lucide-react'
 import { Button, Card, Badge, Tabs, Empty, Dialog, Field, focusFirstInvalid, toast } from '../../ui'
 import TimelineView from './planning/TimelineView'
 import { AvantagesArtisteBlock, CreneauAvantagesPanel } from './planning/Avantages'
 import ConsommationsModal from './planning/ConsommationsModal'
+import DetailSheet from '../../components/DetailSheet'
 import printArtisteSheet from './planning/printArtisteSheet'
 import s from './planning/planning.module.css'
 
@@ -550,7 +551,6 @@ export default function Planning({ onNavigate }) {
             const ti   = typeInfo(cr.type)
             const st   = autoStatut(cr)
             const stI  = statutInfo(cr.statut === 'annule' ? 'annule' : st)
-            const open = detailOpen === cr.id
             // Bordure : chevauchement > annulé > en cours
             const state = conflicts.has(cr.id) ? 'conflict' : cr.statut === 'annule' ? 'annule' : st === 'en-cours' ? 'live' : undefined
             const btnSize = isMobile ? 'md' : 'sm'
@@ -558,13 +558,16 @@ export default function Planning({ onNavigate }) {
               <article key={cr.id} className={s.item} data-state={state} style={{ '--c': ti.color }}>
                 {/* Ligne principale */}
                 <div className={s.itemMain}>
-                  <div className={clsx(s.avatar, cr.photo && s.avatarClickable)}
-                    onClick={() => cr.photo && setDetailOpen(open ? null : cr.id)}>
-                    {cr.photo ? <img src={cr.photo} alt={cr.artiste} style={{ objectPosition: cr.photoPosition || 'center center' }}/> : ti.icon}
+                  {/* Fiche du créneau (23/11/2026) : la photo, le nom et la ligne ouvrent la fenêtre de détail ;
+                      le nom est le vrai bouton (clavier, lecteur d'écran), le reste est un raccourci au doigt */}
+                  <div className={clsx(s.avatar, s.avatarClickable)} aria-hidden="true"
+                    onClick={() => setDetailOpen(cr.id)}>
+                    {cr.photo ? <img src={cr.photo} alt="" style={{ objectPosition: cr.photoPosition || 'center center' }}/> : ti.icon}
                   </div>
-                  <div className={s.itemBody}>
+                  <div className={s.itemBody} onClick={() => setDetailOpen(cr.id)} style={{ cursor: 'pointer' }}>
                     <div className={s.itemTitle}>
-                      <button type="button" className={s.artiste} onClick={() => setDetailOpen(open ? null : cr.id)}>
+                      <button type="button" className={s.artiste} onClick={() => setDetailOpen(cr.id)}
+                        aria-haspopup="dialog" aria-label={`Voir le détail du créneau de ${cr.artiste}`}>
                         {cr.artiste}
                       </button>
                       {cr.titre && <span className={s.sousTitre}>— {cr.titre}</span>}
@@ -586,8 +589,8 @@ export default function Planning({ onNavigate }) {
                     </div>
                   </div>
                   <div className={s.itemActions}>
-                    <Button variant="secondary" size={btnSize} iconOnly icon={open ? ChevronUp : ChevronDown}
-                      onClick={() => setDetailOpen(open ? null : cr.id)} title="Voir détails" aria-label="Voir détails" aria-expanded={open} />
+                    <Button variant="secondary" size={btnSize} iconOnly icon={Eye}
+                      onClick={() => setDetailOpen(cr.id)} title="Voir détails" aria-label={`Voir le détail du créneau de ${cr.artiste}`} aria-haspopup="dialog" />
                     <Button variant="secondary" size={btnSize} iconOnly icon={Pencil}
                       onClick={() => openEdit(cr)} title="Modifier" aria-label="Modifier" />
                     <Button variant="secondary" size={btnSize} iconOnly icon={Copy}
@@ -597,42 +600,78 @@ export default function Planning({ onNavigate }) {
                   </div>
                 </div>
 
-                {open && (
-                  <div className={s.detail}>
-                    {cr.bio && <p className={s.bio}>{cr.bio}</p>}
-                    {cr.description && <p className={s.desc}>{cr.description}</p>}
-                    {cr.liens && Object.entries(cr.liens).some(([,v])=>v) && (
-                      <div className={s.extLinks}>
-                        {Object.entries(cr.liens).filter(([,v])=>v).map(([k,v])=>(
-                          <a key={k} href={v} target="_blank" rel="noreferrer" className={s.extLink}>
-                            {k} <ExternalLink size={11} aria-hidden="true" />
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                    <div className={s.statuts}>
-                      <span className={s.statutsLabel}>Statut :</span>
-                      {STATUTS.map(opt => (
-                        <button key={opt.value} type="button" onClick={() => handleStatut(cr.id, opt.value)}
-                          data-tone={STATUT_TONE[opt.value]}
-                          aria-pressed={cr.statut === opt.value}
-                          className={clsx(s.statut, cr.statut === opt.value && s.statutOn)}>
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Avantages artiste + consos temps réel — réservé aux admins */}
-                    {canManageAvantages && (
-                      <CreneauAvantagesPanel creneau={cr} consumptions={artistConsumptions} menuItems={menuItems}/>
-                    )}
-                  </div>
-                )}
               </article>
             )
           })}
         </div>
       )}
+
+      {/* Détail du créneau (23/11/2026, maquette validée) : remplace l'ancien dépliage dans la liste,
+          avec le même contenu (présentation, liens, statut, avantages) et les actions Modifier / Dupliquer */}
+      {(() => {
+        const cr = detailOpen ? planning.find(p => p.id === detailOpen) : null
+        const ti = cr ? typeInfo(cr.type) : null
+        const stI = cr ? statutInfo(cr.statut === 'annule' ? 'annule' : autoStatut(cr)) : null
+        const cachet = cr ? cachetStatusByCreneau[cr.id] : null
+        const cachetLabel = cachet === 'paye' ? 'Payé' : cachet === 'planifie' ? 'À payer' : cachet === 'annule' ? null : 'Aucun'
+        const jourCr = cr?.debut ? (cr.debut.toDate ? cr.debut.toDate() : new Date(cr.debut)).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : null
+        const liens = cr?.liens ? Object.entries(cr.liens).filter(([, v]) => v) : []
+        const fermerPuis = (fn) => () => { const c = cr; setDetailOpen(null); fn(c) }
+        return (
+          <DetailSheet open={!!cr} onClose={() => setDetailOpen(null)} title="Créneau"
+            icon={cr?.statut === 'annule' ? AlertCircle : Calendar} color={ti?.color}
+            status={stI && { label: stI.label, tone: STATUT_TONE[stI.value] }}
+            value={cr ? `${fmt2(cr.debut)} → ${fmt2(cr.fin)}` : null}
+            sub={cr ? [cr.artiste, jourCr].filter(Boolean).join(' · ') : null}
+            sections={cr ? [
+              { label: 'Créneau', rows: [
+                ['Artiste', cr.artiste || '—'],
+                ['Titre', cr.titre || null],
+                ['Horaires', `${fmt2(cr.debut)} → ${fmt2(cr.fin)}${duree(cr.debut, cr.fin) ? ' (' + duree(cr.debut, cr.fin) + ')' : ''}`],
+                ['Scène', cr.scene || null],
+                ['Type', `${ti.icon} ${ti.label}`],
+                ['Chevauchement', conflicts.has(cr.id) ? 'Oui, sur la même scène' : null],
+                ['Balance', cr.balanceDebut ? `${fmt2(cr.balanceDebut)} → ${fmt2(cr.balanceFin)}${cr.balanceScene ? ' · ' + cr.balanceScene : ''}` : null],
+                ['Cachet', cachetLabel],
+              ] },
+              (cr.bio || cr.description || liens.length > 0) && { label: 'Présentation', content: (
+                <div className={s.detail} style={{ borderTop: 0, borderRadius: 'var(--radius-md)' }}>
+                  {cr.bio && <p className={s.bio}>{cr.bio}</p>}
+                  {cr.description && <p className={s.desc}>{cr.description}</p>}
+                  {liens.length > 0 && (
+                    <div className={s.extLinks}>
+                      {liens.map(([k, v]) => (
+                        <a key={k} href={v} target="_blank" rel="noreferrer" className={s.extLink}>
+                          {k} <ExternalLink size={11} aria-hidden="true" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) },
+              { label: 'Statut', content: (
+                <div className={s.statuts}>
+                  {STATUTS.map(opt => (
+                    <button key={opt.value} type="button" onClick={() => handleStatut(cr.id, opt.value)}
+                      data-tone={STATUT_TONE[opt.value]}
+                      aria-pressed={cr.statut === opt.value}
+                      className={clsx(s.statut, cr.statut === opt.value && s.statutOn)}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              ) },
+              // Avantages artiste + consos temps réel — réservé aux admins
+              canManageAvantages && ((cr.avantages?.drinks || 0) + (cr.avantages?.meals || 0) + (cr.avantages?.eaux || 0)) > 0 && { label: 'Avantages', content: (
+                <CreneauAvantagesPanel creneau={cr} consumptions={artistConsumptions} menuItems={menuItems}/>
+              ) },
+            ] : []}
+            actions={cr && (<>
+              <Button block icon={Pencil} onClick={fermerPuis(openEdit)}>Modifier</Button>
+              <Button block variant="secondary" icon={Copy} onClick={fermerPuis(openDuplicate)}>Dupliquer</Button>
+            </>)} />
+        )
+      })()}
 
       {/* Formulaire du créneau */}
       <Dialog open={showForm} onClose={() => setShowForm(false)} className={s.formDialog}

@@ -6,12 +6,13 @@
  *   - Vue grille par jour (même structure que l'admin) au lieu de cartes verticales
  *   - Bug corrigé : myId tolère benev._id ET benev.id (BenevoleApp utilise _id)
  *   - Mises à jour temps réel automatiques (listeners Firestore)
- *   - Modale d'inscription en bottom sheet (cohérent avec l'admin)
+ *   - Fenêtre d'inscription : gabarit commun DetailSheet, partant du bas (23/11/2026)
  *   - Plus ergonomique : moins de bruit visuel, focus sur l'action
  */
 
 import React, { useState, useEffect, useMemo } from 'react'
-import { createPortal } from 'react-dom'
+import DetailSheet from './DetailSheet'
+import { Button } from '../ui'
 import {
   watchVolunteerPosts, watchVolunteerShifts, assignBenevoleToPost,
 } from '../firebase/service'
@@ -111,22 +112,22 @@ export default function BenevolePlanning({ benev, eventId, benevoles, posts: pos
         💡 Cliquez sur une cellule pour vous inscrire à un poste, ou cliquez sur la cellule où vous êtes (✓) pour vous désinscrire.
       </div>
 
-      {/* Modale inscription/désinscription */}
-      {assigning && (
-        <BenevoleAssignModal
-          shifts={shifts}
-          posts={posts}
-          shiftId={assigning.shiftId}
-          postId={assigning.postId}
-          postOverride={assigning.postOverride}
-          myId={myId}
-          eventId={eventId}
-          benevsById={benevsById}
-          onAssign={onAssign}
-          onClose={() => setAssigning(null)}
-          onError={(msg) => setError(msg)}
-        />
-      )}
+      {/* Fenêtre inscription/désinscription (gabarit commun DetailSheet, 23/11/2026) :
+          toujours montée pour garder l'animation de fermeture */}
+      <BenevoleAssignModal
+        open={!!assigning}
+        shifts={shifts}
+        posts={posts}
+        shiftId={assigning?.shiftId}
+        postId={assigning?.postId}
+        postOverride={assigning?.postOverride}
+        myId={myId}
+        eventId={eventId}
+        benevsById={benevsById}
+        onAssign={onAssign}
+        onClose={() => setAssigning(null)}
+        onError={(msg) => setError(msg)}
+      />
     </div>
   )
 }
@@ -425,26 +426,29 @@ function BenevoleDayGrid({ shifts, posts, myId, onCellClick }) {
 /* ═══════════════════════════════════════════════════════════════
    MODALE INSCRIPTION/DÉSINSCRIPTION — bottom sheet
    ═══════════════════════════════════════════════════════════════ */
-function BenevoleAssignModal({ shifts, posts, shiftId, postId, postOverride, myId, eventId, benevsById, onAssign, onClose, onError }) {
+function BenevoleAssignModal({ open, shifts, posts, shiftId, postId, postOverride, myId, eventId, benevsById, onAssign, onClose, onError }) {
   const [busy, setBusy] = useState(false)
 
   // Lecture en direct du shift (pas figé)
-  const shift = shifts.find(s => s.id === shiftId)
-  const post = postOverride || posts.find(p => p.id === postId)
-  if (!shift || !post) return null
+  const shift = open ? shifts.find(s => s.id === shiftId) : null
+  const post = open ? (postOverride || posts.find(p => p.id === postId)) : null
 
-  const isFreeMode = post.id === '__free__'
-  const assigned = isFreeMode ? (shift.libres || []) : (shift.postes?.[post.id]?.assignments || [])
-  const target = isFreeMode ? null : (shift.postes?.[post.id]?.target ?? 0)
-  const iAmHere = assigned.includes(myId)
-
-  // Mes affectations actuelles sur ce shift (autres postes)
+  // Mes affectations actuelles sur ce shift (autres postes) — calculé avant tout retour anticipé
   const myCurrentPostId = useMemo(() => {
+    if (!shift) return null
     const found = Object.entries(shift.postes || {}).find(([, p]) => (p.assignments || []).includes(myId))
     if (found) return found[0]
     if ((shift.libres || []).includes(myId)) return '__free__'
     return null
   }, [shift, myId])
+
+  // Créneau ou poste disparu : la fenêtre se ferme (Sheet garde son dernier contenu pour l'animation)
+  if (!shift || !post) return <DetailSheet open={false} onClose={onClose} title="" />
+
+  const isFreeMode = post.id === '__free__'
+  const assigned = isFreeMode ? (shift.libres || []) : (shift.postes?.[post.id]?.assignments || [])
+  const target = isFreeMode ? null : (shift.postes?.[post.id]?.target ?? 0)
+  const iAmHere = assigned.includes(myId)
 
   const handleAction = async (action) => {
     if (!myId) {
@@ -469,155 +473,80 @@ function BenevoleAssignModal({ shifts, posts, shiftId, postId, postOverride, myI
   const otherNames = assigned.filter(id => id !== myId).map(id => benevsById[id]).filter(Boolean)
   const full = target !== null && assigned.length >= target
 
-  // Rendu via createPortal pour échapper au contexte de PageTransition
-  // (qui a will-change:transform sur son wrapper, ce qui transforme position:fixed
-  //  en absolute par rapport au parent — cause de modale mal centrée).
-  return createPortal(
-    <div onClick={onClose}
-      style={{
-        position:'fixed', inset:0, zIndex:300,
-        background:'rgba(0,0,0,.55)',
-        display:'flex',
-        // Centrée verticalement et horizontalement (au lieu de collée en bas)
-        alignItems:'center', justifyContent:'center',
-        // Padding pour ne pas que la modale touche les bords sur petit écran
-        padding: 16,
-        // Animation fade-in de l'overlay
-        animation: 'ycFadeIn .18s ease-out',
-      }}>
-      <div onClick={e => e.stopPropagation()}
-        style={{
-          background:'var(--bg)',
-          // Coins arrondis sur TOUS les côtés (carte centrale, pas bottom sheet)
-          borderRadius:'var(--radius-xl, 16px)',
-          width:'100%',
-          // Largeur max plus restreinte pour un effet "carte centrale" sur desktop
-          maxWidth:420,
-          maxHeight:'85vh',
-          display:'flex', flexDirection:'column',
-          border:'1px solid var(--border)',
-          // Ombre douce tout autour pour décoller du fond
-          boxShadow:'0 16px 48px rgba(0,0,0,0.25)',
-          // Animation de scale-up légère (vs slide-up)
-          animation: 'ycScaleIn .22s cubic-bezier(.2,.8,.2,1)',
-        }}>
-        {/* Header */}
-        <div style={{ padding:'16px 18px 14px', borderBottom:'1px solid var(--border)', flexShrink:0, display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10 }}>
-          <div style={{ minWidth:0, flex:1 }}>
-            <div style={{ fontSize:11, color:'var(--muted)', marginBottom:3 }}>
-              {fmtDate(shift.date)} · {shift.debut} → {shift.fin}{shift.label ? ' · ' + shift.label : ''}
-            </div>
-            <div style={{ fontSize:17, fontWeight:700, color:'var(--text)', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-              <span style={{ fontSize:22 }}>{post.emoji}</span>
-              <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis' }}>{post.nom}</span>
-              {target !== null && (
-                <span style={{ fontSize:12, color: full ? 'var(--red-dark)' : 'var(--muted)', fontWeight:500 }}>
-                  · {assigned.length} / {target}
+  // Gabarit commun DetailSheet (23/11/2026) : rendu dans un portail (échappe au will-change de
+  // PageTransition), Échap, clic sur le fond et focus gardé ; mêmes contenus et mêmes actions qu'avant.
+  const places = target !== null ? `${assigned.length} / ${target}` : 'Sans limite'
+  const status = iAmHere ? { label: 'Vous y êtes', tone: 'success' }
+    : full ? { label: 'Complet', tone: 'danger' }
+    : target !== null && assigned.length === 0 ? { label: `0 / ${target}`, tone: 'danger' }
+    : target !== null ? { label: places, tone: 'warning' }
+    : { label: 'Polyvalent', tone: 'brand' }
+  const ligne = { display:'flex', alignItems:'center', gap:10, padding:'10px 12px 10px 14px', borderRadius:8, minHeight:44 }
+
+  return (
+    <DetailSheet open={open} onClose={onClose} title={`${post.emoji || ''} ${post.nom}`.trim()}
+      status={status}
+      value={`${shift.debut} → ${shift.fin}`}
+      sub={[fmtDate(shift.date), shift.label].filter(Boolean).join(' · ')}
+      sections={[
+        { label: 'Poste', rows: [
+          ['Poste', post.nom],
+          ['Places', places],
+          ['Créneau', shift.label || null],
+        ] },
+        // Déjà inscrit ailleurs sur ce créneau
+        myCurrentPostId && myCurrentPostId !== post.id && { content: (
+          <div className="alert alert-warning">
+            ⚠ Vous êtes déjà inscrit à un autre poste sur ce créneau ({
+              myCurrentPostId === '__free__'
+                ? 'Polyvalent'
+                : (posts.find(p => p.id === myCurrentPostId)?.nom || 'autre poste')
+            }). Rejoindre ici vous désinscrira automatiquement de l'autre.
+          </div>
+        ) },
+        { label: assigned.length === 0 ? 'Personne pour le moment' : `${assigned.length} inscrit${assigned.length>1?'s':''}`, content: assigned.length > 0 && (
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {/* Moi en premier si présent */}
+            {iAmHere && (
+              <div style={{ ...ligne, background:'var(--brand-light)', border:'1.5px solid var(--brand)' }}>
+                <Check size={16} style={{ color:'var(--brand-dark)', flexShrink:0 }} aria-hidden="true"/>
+                <span style={{ flex:1, fontSize:14, color:'var(--brand-dark)', fontWeight:700 }}>Vous</span>
+              </div>
+            )}
+            {/* Autres */}
+            {otherNames.map(b => (
+              <div key={b.id} style={{ ...ligne, background:'var(--bg2)' }}>
+                <Users size={14} style={{ color:'var(--muted)', flexShrink:0 }} aria-hidden="true"/>
+                <span style={{ flex:1, fontSize:14, color:'var(--text)', fontWeight:600, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {b.prenom} {b.nom}
                 </span>
-              )}
-            </div>
+                {b.poste && <span style={{ fontSize:11, color:'var(--muted)', flexShrink:0 }}>{b.poste}</span>}
+              </div>
+            ))}
           </div>
-          {/* Bouton fermer en croix */}
-          <button onClick={onClose}
-            aria-label="Fermer"
-            style={{
-              background: 'transparent', border: 'none', padding: 4, cursor: 'pointer',
-              color: 'var(--muted)', flexShrink: 0, display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: 6,
-            }}>
-            <X size={18}/>
-          </button>
-        </div>
-
-        {/* Body : liste des affectés + actions */}
-        <div style={{ padding:'14px 18px', overflowY:'auto', flex:1 }}>
-          {/* Affichage de mon statut sur ce créneau (autre poste éventuel) */}
-          {myCurrentPostId && myCurrentPostId !== post.id && (
-            <div className="alert alert-warning" style={{ marginBottom:14 }}>
-              ⚠ Vous êtes déjà inscrit à un autre poste sur ce créneau ({
-                myCurrentPostId === '__free__'
-                  ? 'Polyvalent'
-                  : (posts.find(p => p.id === myCurrentPostId)?.nom || 'autre poste')
-              }). Rejoindre ici vous désinscrira automatiquement de l'autre.
-            </div>
-          )}
-
-          <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'.05em', marginBottom:8 }}>
-            {assigned.length === 0 ? 'Personne pour le moment' : `${assigned.length} inscrit${assigned.length>1?'s':''}`}
+        ) },
+        // État disponibilité
+        !iAmHere && full && { content: (
+          <div className="alert alert-error">
+            Ce poste est complet. Désistez-vous d'un autre créneau ou choisissez un autre poste.
           </div>
-
-          {assigned.length > 0 && (
-            <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:14 }}>
-              {/* Moi en premier si présent */}
-              {iAmHere && (
-                <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px 10px 14px', background:'var(--brand-light)', border:'1.5px solid var(--brand)', borderRadius:8, minHeight:44 }}>
-                  <Check size={16} style={{ color:'var(--brand-dark)', flexShrink:0 }}/>
-                  <span style={{ flex:1, fontSize:14, color:'var(--brand-dark)', fontWeight:700 }}>Vous</span>
-                </div>
-              )}
-              {/* Autres */}
-              {otherNames.map(b => (
-                <div key={b.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px 10px 14px', background:'var(--bg2)', borderRadius:8, minHeight:44 }}>
-                  <Users size={14} style={{ color:'var(--muted)', flexShrink:0 }}/>
-                  <span style={{ flex:1, fontSize:14, color:'var(--text)', fontWeight:600, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {b.prenom} {b.nom}
-                  </span>
-                  {b.poste && <span style={{ fontSize:10, color:'var(--muted)', flexShrink:0 }}>{b.poste}</span>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* État disponibilité */}
-          {!iAmHere && full && (
-            <div className="alert alert-error" style={{ marginBottom:8 }}>
-              Ce poste est complet. Désistez-vous d'un autre créneau ou choisissez un autre poste.
-            </div>
-          )}
-
-          {/* Message d'engagement avant inscription */}
-          {!iAmHere && !full && (
-            <div style={{
-              background: 'var(--brand-light)',
-              border: '0.5px solid var(--brand)',
-              borderRadius: 8,
-              padding: '10px 12px',
-              marginTop: 4,
-              fontSize: 12,
-              color: 'var(--brand-dark)',
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 8,
-            }}>
-              <span style={{ fontSize: 14, lineHeight: 1, marginTop: 1 }}>ℹ️</span>
-              <span>
-                En vous inscrivant, vous vous engagez à être présent sur ce créneau.
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Footer : actions */}
-        <div style={{ padding:'12px 18px max(env(safe-area-inset-bottom), 14px)', borderTop:'1px solid var(--border)', flexShrink:0, background:'var(--bg)', display:'flex', gap:8 }}>
-          {iAmHere ? (
-            <>
-              <button onClick={onClose} className="btn-secondary" style={{ flex:1, minHeight:44 }}>Fermer</button>
-              <button onClick={() => handleAction('leave')} disabled={busy} className="btn-danger" style={{ flex:1, minHeight:44 }}>
-                <X size={14}/> Se désinscrire
-              </button>
-            </>
-          ) : (
-            <>
-              <button onClick={onClose} className="btn-secondary" style={{ flex:1, minHeight:44 }}>Annuler</button>
-              <button onClick={() => handleAction('join')} disabled={busy || (target !== null && full)} className="btn-primary" style={{ flex:1, minHeight:44 }}>
-                <Check size={14}/> {busy ? 'Inscription…' : 'Confirmer'}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
+        ) },
+        // Message d'engagement avant inscription
+        !iAmHere && !full && { content: (
+          <div style={{ background:'var(--brand-light)', border:'0.5px solid var(--brand)', borderRadius:8, padding:'10px 12px', fontSize:13, color:'var(--brand-dark)', display:'flex', alignItems:'flex-start', gap:8 }}>
+            <span style={{ fontSize:14, lineHeight:1, marginTop:1 }} aria-hidden="true">ℹ️</span>
+            <span>En vous inscrivant, vous vous engagez à être présent sur ce créneau.</span>
+          </div>
+        ) },
+      ]}
+      actions={iAmHere ? (<>
+        <Button block variant="danger" icon={X} onClick={() => handleAction('leave')} loading={busy}>Se désinscrire</Button>
+        <Button block variant="secondary" onClick={onClose}>Fermer</Button>
+      </>) : (<>
+        <Button block icon={Check} onClick={() => handleAction('join')} loading={busy} disabled={target !== null && full}>
+          {busy ? 'Inscription…' : 'Confirmer'}
+        </Button>
+        <Button block variant="secondary" onClick={onClose}>Annuler</Button>
+      </>)} />
   )
 }

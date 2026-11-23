@@ -1,0 +1,40 @@
+/* Contenus des fenêtres de détail (23/11/2026) : jetons de l'appli, clair et sombre */
+.mono { font-family: var(--font-mono, ui-monospace, monospace); font-size: .92em; }
+.struck { text-decoration: line-through; opacity: .7; }
+.empty { margin: 6px 0; color: var(--muted); font-size: 14px; }
+
+/* Articles */
+.items { list-style: none; margin: 0; padding: 0; }
+.item { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.item + .item { border-top: 1px solid var(--border); }
+.qty {
+  flex: none; min-width: 28px; height: 28px; padding: 0 6px; border-radius: 8px;
+  display: grid; place-items: center; background: var(--bg2); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.itemTxt { flex: 1; min-width: 0; display: grid; }
+.itemTxt b { overflow-wrap: anywhere; }
+.itemTxt span { color: var(--muted); font-size: 13px; }
+.itemPrix { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Répartition en barres */
+.rep { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.repRow { display: grid; gap: 4px; }
+.repTop { display: flex; justify-content: space-between; gap: 12px; min-width: 0; }
+.repLab { min-width: 0; overflow-wrap: anywhere; }
+.repVal { flex: none; font-variant-numeric: tabular-nums; }
+.repCount { font-weight: 500; color: var(--muted); }
+.repBar { display: block; height: 6px; border-radius: 99px; background: var(--bg2); overflow: hidden; }
+.repBar i { display: block; height: 100%; border-radius: inherit; background: var(--brand); }
+
+/* Heure par heure */
+.hours { margin: 0; }
+.hoursBars { display: flex; align-items: flex-end; gap: 3px; height: 96px; }
+.hourCol { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; gap: 4px; }
+.hourCol i { display: block; border-radius: 4px 4px 2px 2px; background: color-mix(in srgb, var(--brand) 45%, transparent); }
+.hourCol i.hourPeak { background: var(--brand); }
+.hourCol small { font-size: 10px; color: var(--muted); text-align: center; line-height: 1; white-space: nowrap; overflow: hidden; }
+.hoursCap { margin-top: 8px; font-size: 13px; color: var(--muted); }
+.hoursCap b { color: var(--text); }
+
+/* Lien « Voir … » et note de définition */
+.note { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }

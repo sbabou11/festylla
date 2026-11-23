@@ -18,7 +18,10 @@ import useEventStore from '../../store/useEventStore'
 import { getSettings } from '../../firebase/service'
 import {
   computeExpoStatut, computeExpoPercent, aggregateExpoStats, expoDisplayName,
+  computeExpoPaye, computeExpoRestant,
 } from '../../utils/expositions'
+import DetailSheet from '../../components/DetailSheet'
+import { Repartition, Note, grouper, nettoyer } from '../../components/detailContenus'
 import { Button, Stat, Table, Empty } from '../../ui'
 import ExpoDetail from './exposants/ExpoDetail'
 import ExpoForm from './exposants/ExpoForm'
@@ -35,6 +38,7 @@ export default function Exposants() {
   const [selectedId, setSelectedId] = useState(null)
   const [editingId, setEditingId]   = useState(null) // null = création
   const [search, setSearch]     = useState('')
+  const [statOpen, setStatOpen] = useState(null) // carte de synthèse ouverte (23/11/2026)
 
   // Thématiques chargées au montage (sans listener — config rarement modifiée)
   const [thematiques, setThematiques] = useState([])
@@ -146,12 +150,38 @@ export default function Exposants() {
 
       {/* Stats globales */}
       <div className={s.stats}>
-        <Stat label="Total facturé" value={eur(stats.totalFacture)} icon={Receipt} tone="brand"/>
-        <Stat label="Encaissé" value={eur(stats.totalEncaisse)} icon={Wallet} tone="success"/>
+        <Stat label="Total facturé" value={eur(stats.totalFacture)} icon={Receipt} tone="brand" onClick={() => setStatOpen('facture')}/>
+        <Stat label="Encaissé" value={eur(stats.totalEncaisse)} icon={Wallet} tone="success" onClick={() => setStatOpen('encaisse')}/>
         <Stat label="Restant dû" value={eur(stats.totalRestant)} icon={Clock}
-          tone={stats.totalRestant > 0 ? 'warning' : 'brand'}/>
-        <Stat label="Exposants" value={String((expositions || []).length)} icon={Building2} tone="brand"/>
+          tone={stats.totalRestant > 0 ? 'warning' : 'brand'} onClick={() => setStatOpen('restant')}/>
+        <Stat label="Exposants" value={String((expositions || []).length)} icon={Building2} tone="brand" onClick={() => setStatOpen('nombre')}/>
       </div>
+
+      {/* Décomposition des indicateurs (23/11/2026) : données déjà chargées, puis l'exposant en un toucher */}
+      {statOpen && (() => {
+        const list = expositions || []
+        const parThem = (valueOf) => grouper(list, e => e.thematiqueLabel || 'Sans thématique', valueOf).filter(g => g.value)
+          .map(g => ({ ...g, display: eur(g.value) }))
+        const restants = list.filter(e => computeExpoRestant(e) > 0).sort((a, b) => computeExpoRestant(b) - computeExpoRestant(a))
+        const STAT_NOM = { paye: 'Payé', acompte: 'Acompte versé', impaye: 'Impayé' }
+        const conf = {
+          facture: { title: 'Total facturé', icon: Receipt, value: eur(stats.totalFacture), sections: [
+            { label: 'Par thématique', content: <Repartition rows={parThem(e => Number(e.montantTotal) || 0)} empty="Aucun exposant."/> },
+          ] },
+          encaisse: { title: 'Encaissé', icon: Wallet, value: eur(stats.totalEncaisse), sections: [
+            { label: 'Par thématique', content: <Repartition rows={parThem(computeExpoPaye)} empty="Rien d'encaissé."/> },
+            { label: 'Ce que compte ce chiffre', content: <Note>Acomptes et soldes enregistrés sur les fiches exposants.</Note> },
+          ] },
+          restant: { title: 'Restant dû', icon: Clock, value: eur(stats.totalRestant), sections: [
+            restants.length > 0 && { label: restants.length > 8 ? 'Les 8 plus gros restes' : 'Exposants concernés', rows: restants.slice(0, 8).map(e => [expoDisplayName(e), eur(computeExpoRestant(e))]) },
+            restants.length === 0 && { content: <Note>Tous les exposants sont à jour.</Note> },
+          ] },
+          nombre: { title: 'Exposants', icon: Building2, value: String(list.length), sections: [
+            { label: 'Par statut de paiement', content: <Repartition money={false} rows={grouper(list, e => STAT_NOM[computeExpoStatut(e)] || computeExpoStatut(e), () => 1).map(g => ({ ...g, count: undefined }))} empty="Aucun exposant."/> },
+          ] },
+        }[statOpen]
+        return <DetailSheet open onClose={() => setStatOpen(null)} {...conf} sections={nettoyer(conf.sections)}/>
+      })()}
 
       {/* Recherche + bouton ajouter */}
       <div className={s.toolbar}>

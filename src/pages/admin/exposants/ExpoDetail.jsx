@@ -17,8 +17,10 @@ import {
 import {
   computeExpoStatut, computeExpoRestant,
   STATUT_LABEL, PAYMENT_METHODS, METHOD_LABEL,
-  isExpoStatutForce, TYPE_LABEL, expoDisplayName, getExpoLignes,
+  isExpoStatutForce, TYPE_LABEL, expoDisplayName, getExpoLignes, formatReductionLabel,
 } from '../../../utils/expositions'
+import DetailSheet from '../../../components/DetailSheet'
+import tap from '../../../components/CarteCliquable.module.css'
 import { Badge, Button, Card, Dialog, Field, focusFirstInvalid, toast } from '../../../ui'
 import { friendlyError } from '../../../utils/errors'
 import ExpoDocuments from '../../../components/expo/ExpoDocuments'
@@ -36,6 +38,7 @@ export default function ExpoDetail({ expo, organisateur, eventId, onBack, onEdit
   const { user } = useAuthStore()
   const canForceStatut = user && ['admin', 'super_admin'].includes(user.role)
 
+  const [ligneOuverte, setLigneOuverte] = useState(null) // ligne de frais dont on voit le détail
   const [showPaymentForm, setShowPaymentForm] = useState(null) // 'acompte' | 'solde' | null
   const [paymentMontant, setPaymentMontant]   = useState('')
   const [paymentDate, setPaymentDate]         = useState(new Date().toISOString().slice(0, 10))
@@ -239,14 +242,38 @@ export default function ExpoDetail({ expo, organisateur, eventId, onBack, onEdit
               <h3 className={s.overline}>Détail des frais</h3>
               <ul className={s.feeList}>
                 {lignes.map((l, i) => (
-                  <li key={l.id || i} className={s.feeRow}>
-                    <span className={s.ellipsis}><strong>{l.qty}×</strong> {l.description}</span>
-                    <span className={s.feeAmounts}>{eur(l.prixUnit)} → {eur(l.total)}</span>
+                  <li key={l.id || i}>
+                    {/* Ligne de frais : ouvre son détail (23/11/2026) */}
+                    <button type="button" className={clsx(tap.tap, s.feeRow)} style={{ width: '100%', minHeight: 36, borderRadius: 0, borderTop: i ? '1px solid var(--border)' : 0 }}
+                      onClick={() => setLigneOuverte(l)} aria-haspopup="dialog"
+                      aria-label={`Détail des frais : ${l.qty} × ${l.description || 'ligne'}, ${eur(l.total)}`}>
+                      <span className={s.ellipsis}><strong>{l.qty}×</strong> {l.description}</span>
+                      <span className={s.feeAmounts}>{eur(l.prixUnit)} → {eur(l.total)}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
             </div>
           )}
+
+          <DetailSheet open={!!ligneOuverte} onClose={() => setLigneOuverte(null)} title="Ligne de frais"
+            icon={FileText} color="var(--brand)"
+            value={ligneOuverte ? eur(ligneOuverte.total) : null}
+            sub={ligneOuverte?.description || null}
+            sections={ligneOuverte ? [
+              { label: 'Détail', rows: [
+                ['Description', ligneOuverte.description || '—'],
+                ['Quantité', String(ligneOuverte.qty ?? '—')],
+                ['Prix unitaire', eur(ligneOuverte.prixUnit)],
+                ['Réduction', ligneOuverte.reduction && (Number(ligneOuverte.reduction.value) || 0) > 0
+                  ? [formatReductionLabel(ligneOuverte.reduction), ligneOuverte.reduction.label].filter(Boolean).join(' · ')
+                  : null],
+                ['Total', eur(ligneOuverte.total)],
+              ] },
+              { label: 'Exposant', rows: [
+                ['Exposant', expoDisplayName(expo) || '—'],
+              ] },
+            ] : []} />
 
           {expo.commentaires && <p className={s.comment}>{expo.commentaires}</p>}
 

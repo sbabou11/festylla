@@ -12,6 +12,7 @@ import { fmt }      from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
 import { Clock, ChefHat, CheckCircle, Package, XCircle, Trash2, ShoppingBag, Lock } from 'lucide-react'
 import { Button, Badge, Tabs, Empty, Dialog, HoldButton, Field, focusFirstInvalid, toast } from '../../ui'
+import { ResaDetailSheet } from '../../components/detailContenus'
 import s from './reservations/reservations.module.css'
 
 const STATUTS = {
@@ -152,6 +153,57 @@ export default function Reservations({ onNavigate }) {
     return total > 0 ? fmt(total) : '—'
   }
 
+  // Détail (23/11/2026) : on garde l'identifiant pour suivre le statut en direct
+  const [detailId, setDetailId] = useState(null)
+  const detailResa = detailId ? reservations.find(r => r.id === detailId) || null : null
+
+  // Boutons d'action d'une réservation, communs à la carte et à la fenêtre de détail (mêmes droits).
+  // Depuis la fenêtre, Annuler et Supprimer la ferment avant d'ouvrir leur confirmation.
+  const actionsDe = (resa, inSheet = false) => {
+    const can = canAct(resa)
+    const isLoading = loading === resa.id
+    const size = inSheet ? 'md' : 'sm'
+    const ouvrir = (fn) => () => { if (inSheet) setDetailId(null); fn() }
+    return (
+      <>
+        {/* Pending → Prendre en charge ou Annuler */}
+        {resa.status === 'pending' && (
+          <>
+            <Button variant="coral" size={size} icon={ChefHat} loading={isLoading}
+              onClick={() => act(() => prendreEnCharge(resa.id), resa.id, "La prise en charge n'est pas passée.")}>Prendre en charge</Button>
+            <Button variant="danger" size={size} icon={XCircle} onClick={ouvrir(() => setAnnulModal(resa.id))}>Annuler</Button>
+          </>
+        )}
+
+        {/* Processing → Marquer prête ou Annuler (si droits) */}
+        {resa.status === 'processing' && can && (
+          <>
+            <Button size={size} icon={CheckCircle} loading={isLoading}
+              onClick={() => act(() => marquerResaPrete(resa.id), resa.id, "La réservation n'a pas été marquée prête.")}>Marquer prête</Button>
+            <Button variant="danger" size={size} icon={XCircle} onClick={ouvrir(() => setAnnulModal(resa.id))}>Annuler</Button>
+          </>
+        )}
+
+        {/* Processing mais pas les droits */}
+        {resa.status === 'processing' && !can && (
+          <p className={s.locked}>En charge par {resa.assignedStaff} — vous ne pouvez pas modifier</p>
+        )}
+
+        {/* Ready → Valider retrait */}
+        {resa.status === 'ready' && can && (
+          <Button size={size} icon={Package} loading={isLoading}
+            onClick={() => act(() => validerRetrait(resa.id), resa.id, "Le retrait n'a pas été validé.")}>Valider le retrait</Button>
+        )}
+
+        {/* Supprimer (admin uniquement, après annulation ou retrait) */}
+        {isAdmin && (resa.status === 'cancelled' || resa.status === 'collected') && (
+          <Button variant="ghost" size={size} icon={Trash2} loading={isLoading} className={s.deleteBtn}
+            onClick={ouvrir(() => setPendingDel(resa))}>Supprimer</Button>
+        )}
+      </>
+    )
+  }
+
   return (
     <div className={s.page}>
       {/* Bandeau "Lecture seule" pour le rôle consultation */}
@@ -209,82 +261,55 @@ export default function Reservations({ onNavigate }) {
         {sorted.slice(0, visible).map(resa => {
           const st   = STATUTS[resa.status] || STATUTS.pending
           const cancelLabel = getCancelLabel(resa)
-          const can  = canAct(resa)
           const items = (resa.items||[]).map(i => i.nom + (i.qty>1?` ×${i.qty}`:'')).join(', ')
-          const isLoading = loading === resa.id
 
           return (
             <article key={resa.id} className={s.card}>
-              {/* En-tête */}
-              <div className={s.head}>
-                <div className={s.headLeft}>
-                  <Badge tone={st.tone} icon={st.icon}>{resa.status === 'cancelled' ? cancelLabel : st.label}</Badge>
-                  <span className={s.code}>#{resa.code}</span>
-                </div>
-                <span className={s.date}>{resa.date}</span>
-              </div>
+              {/* 23/11/2026 : en-tête et infos ouvrent le détail ; les boutons d'action restent à part */}
+              <button type="button" className={s.openBtn} aria-haspopup="dialog" onClick={() => setDetailId(resa.id)}
+                aria-label={`Réservation #${resa.code} de ${resa.benevoleNom || resa.specNom || 'client inconnu'}, ${resa.status === 'cancelled' ? cancelLabel : st.label} : voir le détail`}>
+                {/* En-tête */}
+                <span className={s.head}>
+                  <span className={s.headLeft}>
+                    <Badge tone={st.tone} icon={st.icon}>{resa.status === 'cancelled' ? cancelLabel : st.label}</Badge>
+                    <span className={s.code}>#{resa.code}</span>
+                  </span>
+                  <span className={s.date}>{resa.date}</span>
+                </span>
 
-              {/* Infos */}
-              <div className={s.info}>
-                <div className={s.nameRow}>
-                  <span className={s.name}>{resa.benevoleNom || resa.specNom}</span>
-                  {resa.isBenev && <Badge tone="coral">Bénévole</Badge>}
-                </div>
-                <div className={s.items}>{items}</div>
-                <div className={s.total}>{totalOf(resa)}</div>
-                {resa.assignedStaff && resa.status !== 'pending' && (
-                  <div className={s.assigned}>
-                    <ChefHat size={13} aria-hidden="true"/> Pris en charge par <strong>{resa.assignedStaff}</strong>
-                  </div>
-                )}
-                {resa.status === 'cancelled' && resa.motifAnnulation && (
-                  <div className={s.motif}>Motif : {resa.motifAnnulation}</div>
-                )}
-              </div>
+                {/* Infos */}
+                <span className={s.info}>
+                  <span className={s.nameRow}>
+                    <span className={s.name}>{resa.benevoleNom || resa.specNom}</span>
+                    {resa.isBenev && <Badge tone="coral">Bénévole</Badge>}
+                  </span>
+                  <span className={s.items}>{items}</span>
+                  <span className={s.total}>{totalOf(resa)}</span>
+                  {resa.assignedStaff && resa.status !== 'pending' && (
+                    <span className={s.assigned}>
+                      <ChefHat size={13} aria-hidden="true"/> Pris en charge par <strong>{resa.assignedStaff}</strong>
+                    </span>
+                  )}
+                  {resa.status === 'cancelled' && resa.motifAnnulation && (
+                    <span className={s.motif}>Motif : {resa.motifAnnulation}</span>
+                  )}
+                </span>
+              </button>
 
               {/* Actions — masquées pour le rôle consultation (lecture seule) */}
-              {!isReadOnly && (
-              <div className={s.actions}>
-                {/* Pending → Prendre en charge ou Annuler */}
-                {resa.status === 'pending' && (
-                  <>
-                    <Button variant="coral" size="sm" icon={ChefHat} loading={isLoading}
-                      onClick={() => act(() => prendreEnCharge(resa.id), resa.id, "La prise en charge n'est pas passée.")}>Prendre en charge</Button>
-                    <Button variant="danger" size="sm" icon={XCircle} onClick={() => setAnnulModal(resa.id)}>Annuler</Button>
-                  </>
-                )}
-
-                {/* Processing → Marquer prête ou Annuler (si droits) */}
-                {resa.status === 'processing' && can && (
-                  <>
-                    <Button size="sm" icon={CheckCircle} loading={isLoading}
-                      onClick={() => act(() => marquerResaPrete(resa.id), resa.id, "La réservation n'a pas été marquée prête.")}>Marquer prête</Button>
-                    <Button variant="danger" size="sm" icon={XCircle} onClick={() => setAnnulModal(resa.id)}>Annuler</Button>
-                  </>
-                )}
-
-                {/* Processing mais pas les droits */}
-                {resa.status === 'processing' && !can && (
-                  <p className={s.locked}>En charge par {resa.assignedStaff} — vous ne pouvez pas modifier</p>
-                )}
-
-                {/* Ready → Valider retrait */}
-                {resa.status === 'ready' && can && (
-                  <Button size="sm" icon={Package} loading={isLoading}
-                    onClick={() => act(() => validerRetrait(resa.id), resa.id, "Le retrait n'a pas été validé.")}>Valider le retrait</Button>
-                )}
-
-                {/* Supprimer (admin uniquement, après annulation ou retrait) */}
-                {isAdmin && (resa.status === 'cancelled' || resa.status === 'collected') && (
-                  <Button variant="ghost" size="sm" icon={Trash2} loading={isLoading} className={s.deleteBtn}
-                    onClick={() => setPendingDel(resa)}>Supprimer</Button>
-                )}
-              </div>
-              )}
+              {!isReadOnly && <div className={s.actions}>{actionsDe(resa)}</div>}
             </article>
           )
         })}
       </div>
+
+      {/* Détail d'une réservation (23/11/2026) : mêmes actions, mêmes droits que la carte */}
+      <ResaDetailSheet resa={detailResa} onClose={() => setDetailId(null)}
+        statut={detailResa ? { label: getCancelLabel(detailResa), tone: (STATUTS[detailResa.status] || STATUTS.pending).tone } : null}
+        total={detailResa ? totalOf(detailResa) : null}
+        actions={detailResa && !isReadOnly ? <div className={s.actions}>{actionsDe(detailResa, true)}</div> : null}>
+        {err && detailResa && !annulModal && <div className={s.error} role="alert">{err}</div>}
+      </ResaDetailSheet>
 
       {/* Pagination */}
       {sorted.length > 10 && (

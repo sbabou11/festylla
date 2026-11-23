@@ -23,6 +23,14 @@
 .empty { margin: 0; font-size: var(--fs-13); color: var(--muted); }
 .log ul { margin: 0; padding: 0; list-style: none; display: grid; }
 .log li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-13); }
+/* Ligne du journal : bouton qui ouvre le détail de l'entrée (23/11/2026) */
+.rowBtn {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+  margin: 0; padding: 0; border: 0; border-radius: 6px; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+  min-height: 32px; -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) { .rowBtn:hover .name { color: var(--brand-dark); } }
 .time { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 40px; }
 .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cancelled .name { text-decoration: line-through; color: var(--muted); }

@@ -23,6 +23,9 @@ import {
   Music, BookOpen, Clapperboard, Drama,
 } from 'lucide-react'
 import { Button, Badge, Empty, Jar, SuccessCheck } from '../../ui'
+import DetailSheet from '../../components/DetailSheet'
+import ConsoArtisteDetail from '../../components/ConsoArtisteDetail'
+import tap from '../../components/CarteCliquable.module.css'
 import s from './ArtistServeMode.module.css'
 import { adaptArtisteEm, duJour, isEmArtiste } from '../../em/artiste'
 import { festDay } from '../../em/jour'
@@ -71,6 +74,9 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
   const [loading, setLoading]           = useState(false)
   const [forceServeAnyDay, setForceServeAnyDay] = useState(false)
   const [pendingResas, setPendingResas] = useState([])
+  // Fenêtres de détail (23/11/2026) : réservation en attente (par id, suivie en direct) et avantage servi
+  const [resaOuverte, setResaOuverte]   = useState(null)
+  const [consoOuverte, setConsoOuverte] = useState(null)
 
   // Charger toute la liste des créneaux pour recherche
   useEffect(() => {
@@ -283,9 +289,36 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
     </div>
   )
 
+  // Détail d'une réservation en attente : suivie en direct, se ferme quand elle est servie ou annulée
+  const resa = resaOuverte ? pendingResas.find(r => r.id === resaOuverte) : null
+  const resaTypes = resa ? [...new Set((resa.items || []).map(i => consoOf(i.type).label))].join(', ') : ''
+  const fenetres = (<>
+    <DetailSheet open={!!resa} onClose={() => setResaOuverte(null)} title="Réservation artiste"
+      icon={Bell} color="var(--gold)"
+      status={{ label: 'En attente', tone: 'warning' }}
+      value={resa?.artisteNom || '—'}
+      sub={resa ? `${(resa.items || []).length} article${(resa.items || []).length > 1 ? 's' : ''} réservé${(resa.items || []).length > 1 ? 's' : ''}` : null}
+      sections={resa ? [
+        { label: 'Articles', rows: (resa.items || []).map(i => [i.nom || '—', consoOf(i.type).label]) },
+        { label: 'Réservation', rows: [
+          ['Artiste', resa.artisteNom || '—'],
+          ["Type d'avantage", resaTypes || '—'],
+          ['Demandée le', resa.createdAt ? `${fmtDate(resa.createdAt)} · ${fmtHour(resa.createdAt)}` : '—'],
+          ['État', 'À servir'],
+        ] },
+      ] : []}
+      actions={resa && (
+        <Button block onClick={() => { const r = resa; setResaOuverte(null); handleServeResa(r) }} disabled={loading}>Servir</Button>
+      )} />
+    <ConsoArtisteDetail conso={consoOuverte} onClose={() => setConsoOuverte(null)}
+      artiste={creneau?.artiste}
+      creneau={creneau?.debut ? `${fmtDate(creneau.debut)} · ${fmtHour(creneau.debut)}${creneau.scene ? ' · ' + creneau.scene : ''}` : null} />
+  </>)
+
   if (!creneau) return (
     // ── Aucun artiste sélectionné : réservations, scan ou recherche ──
     <div className={s.wrap}>
+      {fenetres}
       {okBox}
 
       {pendingResas.length > 0 && (
@@ -296,7 +329,8 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
           <ul className={clsx(s.list, 'yc-stagger')}>
             {pendingResas.map(r => (
               <li key={r.id} className={s.pendingRow}>
-                <div className={s.rowText}>
+                <button type="button" className={clsx(tap.tap, s.rowText)} onClick={() => setResaOuverte(r.id)}
+                  aria-haspopup="dialog" aria-label={`Voir la réservation de ${r.artisteNom || "l'artiste"}`}>
                   <b>{r.artisteNom || '—'}</b>
                   <span className={s.items}>
                     {(r.items || []).map((i, k) => {
@@ -304,7 +338,7 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
                       return <span key={k} className={s.item}><Ic size={12} aria-hidden="true" />{i.nom}</span>
                     })}
                   </span>
-                </div>
+                </button>
                 <Button onClick={() => handleServeResa(r)} disabled={loading} className={s.serveBtn}>Servir</Button>
               </li>
             ))}
@@ -355,6 +389,7 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
   // ── Artiste sélectionné : fiche + actions ──
   return (
     <div className={s.wrap}>
+      {fenetres}
       <section className={clsx(s.artist, s[ti.tone])}>
         <div className={s.photo}>
           {creneau.photo
@@ -433,10 +468,13 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
             {consumptions.map(c => {
               const Ic = consoOf(c.type).icon
               return (
-                <li key={c.id} className={s.histRow}>
-                  <Ic size={15} aria-hidden="true" className={s.histIcon} />
-                  <span className={s.histName}>{c.articleNom}</span>
-                  <span className={s.histMeta}>{fmtHour(c.servedAt)} · {c.servedBy?.name || '—'}</span>
+                <li key={c.id}>
+                  <button type="button" className={clsx(tap.tap, s.histRow)} style={{ width: '100%', minHeight: 'var(--touch)' }}
+                    onClick={() => setConsoOuverte(c)} aria-haspopup="dialog" aria-label={`Détail : ${c.articleNom || 'article'} servi à ${fmtHour(c.servedAt)}`}>
+                    <Ic size={15} aria-hidden="true" className={s.histIcon} />
+                    <span className={s.histName}>{c.articleNom}</span>
+                    <span className={s.histMeta}>{fmtHour(c.servedAt)} · {c.servedBy?.name || '—'}</span>
+                  </button>
                 </li>
               )
             })}

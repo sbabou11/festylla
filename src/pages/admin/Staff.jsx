@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { Button, Card, Badge, Tabs, Empty, Dialog, Sheet, PasswordStrength, Field, focusFirstInvalid, toast } from '../../ui'
+import DetailSheet from '../../components/DetailSheet'
 import s from './staff/staff.module.css'
 
 import { cleanEmail, emailOk } from '../../utils/msAccount'
@@ -165,6 +166,7 @@ export default function Staff() {
   // ── Demandes de réinitialisation de mot de passe ───────────────────
   const [pwdRequests, setPwdRequests] = useState([])
   const [resolvingRequest, setResolvingRequest] = useState(null) // { id, identifier, ... }
+  const [reqDetailId, setReqDetailId] = useState(null) // demande ouverte en détail (23/11/2026)
   const [newPwdValue, setNewPwdValue] = useState('')
   const [reqTried, setReqTried] = useState(false)
   const reqFormRef = useRef(null)
@@ -393,16 +395,17 @@ export default function Staff() {
               const dateStr = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('fr-FR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''
               return (
                 <div key={r.id} className={s.req}>
-                  <div className={s.reqInfo}>
-                    <div className={s.reqName}>
+                  {/* 23/11/2026 : le nom ouvre le détail de la demande ; les boutons restent à côté */}
+                  <button type="button" className={clsx(s.reqInfo, s.reqOpen)} aria-haspopup="dialog" onClick={() => setReqDetailId(r.id)}>
+                    <span className={s.reqName}>
                       <span>{r.staffNom || r.identifier}</span>
                       {r.staffRole && <Badge>{r.staffRole}</Badge>}
-                    </div>
-                    <div className={s.reqMeta}>
+                    </span>
+                    <span className={s.reqMeta}>
                       {r.staffId ? `Compte trouvé · ${r.identifier}` : `⚠ Aucun compte trouvé pour « ${r.identifier} »`}
                       {dateStr && ' · ' + dateStr}
-                    </div>
-                  </div>
+                    </span>
+                  </button>
                   <div className={s.reqActions}>
                     {r.staffId && (
                       <Button size="sm" onClick={() => { setReqTried(false); setResolvingRequest(r); setNewPwdValue('') }}>
@@ -419,6 +422,26 @@ export default function Staff() {
           </div>
         </section>
       )}
+
+      {/* Détail d'une demande (23/11/2026) : mêmes actions que la ligne */}
+      {(() => {
+        const r = reqDetailId ? pwdRequests.find(x => x.id === reqDetailId) : null
+        const dateStr = r?.createdAt?.toDate ? r.createdAt.toDate().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null
+        return (
+          <DetailSheet open={!!r} onClose={() => setReqDetailId(null)} title="Demande de réinitialisation" icon={MailQuestion}
+            status={r ? (r.staffId ? { label: 'Compte trouvé', tone: 'success' } : { label: 'Aucun compte trouvé', tone: 'warning' }) : null}
+            value={r ? (r.staffNom || r.identifier) : null}
+            sections={r ? [{ label: 'Demande', rows: [
+              ['Identifiant saisi', r.identifier || null],
+              ['Rôle', r.staffRole || null],
+              ['Reçue le', dateStr],
+            ] }] : []}
+            actions={r && (<>
+              {r.staffId && <Button block onClick={() => { setReqDetailId(null); setReqTried(false); setResolvingRequest(r); setNewPwdValue('') }}>Réinitialiser</Button>}
+              <Button block variant="secondary" onClick={() => { setReqDetailId(null); handleDismissRequest(r) }}>Ignorer</Button>
+            </>)}/>
+        )
+      })()}
 
       {/* Résolution d'une demande */}
       <Sheet open={!!resolvingRequest} onClose={() => setResolvingRequest(null)} title="Réinitialiser le mot de passe"

@@ -16,6 +16,9 @@ import { Button, Card, Badge, Stat, Dialog, Sheet, toast } from '../../ui'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import s from './alertes/alertes.module.css'
 import { getSettings, saveSettings } from '../../firebase/service'
+import DetailSheet from '../../components/DetailSheet'
+import { Repartition, Note, grouper, nettoyer } from '../../components/detailContenus'
+import { pastilleAlerte } from '../../utils/nvPastilles'
 import { friendlyError } from '../../utils/errors'
 
 // Valeurs par défaut (centimes pour les montants)
@@ -348,6 +351,57 @@ export default function Alertes() {
     </Dialog>
   )
 
+  // 23/11/2026 (maquette validée) — fenêtres de détail : une alerte (niveau, pourquoi, compte et
+  // opérations liées déjà chargées, bouton Acquitter) ou un compteur (répartition par type).
+  const [detailId, setDetailId] = useState(null)
+  const [statOpen, setStatOpen] = useState(null)
+  const detail = detailId ? actives.find(a => a.id === detailId) || null : null
+  const detailSpec = detail?.specId ? spectateurs.find(x => x.id === detail.specId) : null
+  const liees = detail?.specId
+    ? (logs || []).filter(t => t.specId === detail.specId)
+        .sort((a, b) => (b.createdAt?.seconds || Date.parse(b.timestamp || '') / 1000 || 0) - (a.createdAt?.seconds || Date.parse(a.timestamp || '') / 1000 || 0))
+        .slice(0, 5)
+    : []
+  const typeAlerte = (a) => a.type || String(a.titre || 'Alerte').split(' — ')[0]
+  const statListe = statOpen === 'critique' ? critiques : statOpen === 'attention' ? actives.filter(a => a.niveau === 'attention') : []
+  const detailSheets = (
+    <>
+      <DetailSheet open={!!detail} onClose={() => setDetailId(null)} title={detail ? (detail.type || detail.titre) : 'Alerte'}
+        icon={AlertTriangle} color={pastilleAlerte(detail?.niveau === 'critique' ? 'danger' : 'warning')}
+        status={detail ? { label: detail.niveau === 'critique' ? 'Critique' : 'Attention', tone: detail.niveau === 'critique' ? 'danger' : 'warning' } : null}
+        sections={detail ? nettoyer([
+          { label: 'Pourquoi', content: <Note>{detail.detail}</Note> },
+          { label: 'Détection', rows: [['Niveau', detail.niveau === 'critique' ? 'Critique' : 'Attention'], ['Détectée', detail.date || null]] },
+          { label: 'Compte', rows: [
+            ['Nom', detailSpec?.nom || null],
+            ['N° de compte', detail.specId || null],
+            ['Solde actuel', detailSpec ? fmt(detailSpec.solde || 0) : null],
+          ] },
+          liees.length > 0 && { label: 'Dernières opérations du compte', rows: liees.map(t => [
+            `${t.label || t.type}${t.heure || t.date ? ` · ${String(t.heure || t.date).slice(0, 16)}` : ''}`,
+            fmt(t.montant || 0),
+          ]) },
+        ]) : []}
+        actions={detail && <Button block icon={CheckCircle} onClick={() => { const id = detail.id; setDetailId(null); acquitter(id) }}>Acquitter</Button>}/>
+      <DetailSheet open={!!statOpen} onClose={() => setStatOpen(null)}
+        title={statOpen === 'critique' ? 'Alertes critiques' : statOpen === 'attention' ? 'Alertes en attention' : 'Alertes acquittées'}
+        icon={statOpen === 'acquittees' ? CheckCircle : AlertTriangle}
+        value={statOpen === 'acquittees' ? String(acquittees.size) : String(statListe.length)}
+        sections={statOpen === 'acquittees'
+          ? [
+            { label: 'Détail', rows: [
+              ['Acquittées sur cet appareil', String(acquittees.size)],
+              ['Dont encore détectées', String(anomalies.filter(a => acquittees.has(a.id)).length)],
+            ] },
+            { label: 'Ce que compte ce chiffre', content: <Note>Les alertes marquées comme traitées. La liste est gardée dans ce navigateur : un autre appareil ne la voit pas.</Note> },
+          ]
+          : [
+            { label: 'Par type', content: <Repartition money={false} rows={grouper(statListe, typeAlerte, () => 1).map(g => ({ ...g, count: undefined }))} empty="Aucune alerte à ce niveau." /> },
+            { label: 'Ce que compte ce chiffre', content: <Note>{statOpen === 'critique' ? 'Alertes actives de niveau critique (soldes négatifs, écart comptable, doublons, ruptures), non acquittées.' : 'Alertes actives de niveau attention (transactions rapides, débits élevés, stocks bas), non acquittées.'}</Note> },
+          ]}/>
+    </>
+  )
+
   // 20/11/2026 — disposition téléphone : compteurs sur une rangée, alertes en liste,
   // actions rares (son, seuils, tout acquitter) dans une feuille montant du bas.
   // Mêmes données et mêmes fonctions que la disposition large.
@@ -362,11 +416,11 @@ export default function Alertes() {
         </div>
 
         <div className={s.mStats}>
-          <div className={clsx(s.mStat, critiques.length > 0 && s.mStatAlert)}>
+          <button type="button" className={clsx(s.mStat, s.mStatBtn, critiques.length > 0 && s.mStatAlert)} aria-haspopup="dialog" onClick={() => setStatOpen('critique')}>
             <b>{critiques.length}</b><span>Critiques</span>
-          </div>
-          <div className={s.mStat}><b>{enAttention}</b><span>Attention</span></div>
-          <div className={s.mStat}><b>{acquittees.size}</b><span>Acquittées</span></div>
+          </button>
+          <button type="button" className={clsx(s.mStat, s.mStatBtn)} aria-haspopup="dialog" onClick={() => setStatOpen('attention')}><b>{enAttention}</b><span>Attention</span></button>
+          <button type="button" className={clsx(s.mStat, s.mStatBtn)} aria-haspopup="dialog" onClick={() => setStatOpen('acquittees')}><b>{acquittees.size}</b><span>Acquittées</span></button>
         </div>
 
         {actives.length === 0
@@ -386,12 +440,13 @@ export default function Alertes() {
                 return (
                   <li key={a.id || `${a.titre}-${i}`} className={clsx(s.mRow, crit && s.mCrit)}>
                     <span className={s.mDot} aria-hidden="true">!</span>
-                    <div className={s.mText}>
+                    {/* 23/11/2026 : le texte ouvre le détail ; « Acquitter » reste à côté */}
+                    <button type="button" className={clsx(s.mText, s.openBtn)} aria-haspopup="dialog" onClick={() => setDetailId(a.id)}>
                       <span className={s.mSev}>{crit ? 'Critique' : 'Attention'}</span>
                       <span className={s.mType}>{a.type || a.titre}</span>
                       <span className={s.mDetail}>{a.detail}</span>
                       {a.date && <span className={s.mDate}>{a.date}</span>}
-                    </div>
+                    </button>
                     <Button variant="secondary" size="sm" className={s.mTap}
                       aria-label={`Acquitter : ${a.type || a.titre}`} onClick={()=>acquitter(a.id)}>Acquitter</Button>
                   </li>
@@ -436,6 +491,7 @@ export default function Alertes() {
         </Sheet>
 
         {resetDialog}
+        {detailSheets}
       </div>
     )
   }
@@ -485,10 +541,10 @@ export default function Alertes() {
       {/* Stats rapides */}
       <div className={clsx(s.stats, 'yc-stagger')}>
         <div className={clsx(s.statWrap, critiques.length > 0 && s.statAlert)}>
-          <Stat label="Alertes critiques" value={critiques.length} icon={AlertTriangle} tone={critiques.length ? 'coral' : 'brand'}/>
+          <Stat label="Alertes critiques" value={critiques.length} icon={AlertTriangle} tone={critiques.length ? 'coral' : 'brand'} onClick={() => setStatOpen('critique')}/>
         </div>
-        <Stat label="En attention" value={enAttention} icon={AlertTriangle} tone="warning"/>
-        <Stat label="Acquittées" value={acquittees.size} icon={CheckCircle}/>
+        <Stat label="En attention" value={enAttention} icon={AlertTriangle} tone="warning" onClick={() => setStatOpen('attention')}/>
+        <Stat label="Acquittées" value={acquittees.size} icon={CheckCircle} onClick={() => setStatOpen('acquittees')}/>
       </div>
 
       {/* Liste des alertes */}
@@ -506,15 +562,18 @@ export default function Alertes() {
               const crit = a.niveau === 'critique'
               return (
                 <article key={a.id || `${a.titre}-${i}`} className={clsx(s.alert, crit && s.critique)}>
-                  <div className={s.alertHead}>
-                    <div className={s.alertTitle}>
-                      <AlertTriangle size={16} aria-hidden="true" className={s.alertIcon}/>
-                      <span className={s.alertType}>{a.type || a.titre}</span>
-                      <Badge tone={crit ? 'danger' : 'warning'}>{crit ? 'Critique' : 'Attention'}</Badge>
-                    </div>
-                    {a.date && <span className={s.alertDate}>{a.date}</span>}
-                  </div>
-                  <p className={s.alertDetail}>{a.detail}</p>
+                  {/* 23/11/2026 : titre et texte ouvrent le détail ; « Acquitter » reste en bas */}
+                  <button type="button" className={clsx(s.openBtn, s.openGrid)} aria-haspopup="dialog" onClick={() => setDetailId(a.id)}>
+                    <span className={s.alertHead}>
+                      <span className={s.alertTitle}>
+                        <AlertTriangle size={16} aria-hidden="true" className={s.alertIcon}/>
+                        <span className={s.alertType}>{a.type || a.titre}</span>
+                        <Badge tone={crit ? 'danger' : 'warning'}>{crit ? 'Critique' : 'Attention'}</Badge>
+                      </span>
+                      {a.date && <span className={s.alertDate}>{a.date}</span>}
+                    </span>
+                    <span className={clsx(s.alertDetail, s.block)}>{a.detail}</span>
+                  </button>
                   <div className={s.alertFoot}>
                     <Button variant="secondary" size="sm" icon={CheckCircle} onClick={()=>acquitter(a.id)}>Acquitter</Button>
                   </div>
@@ -524,6 +583,7 @@ export default function Alertes() {
           </div>
         )
       }
+      {detailSheets}
     </div>
   )
 }

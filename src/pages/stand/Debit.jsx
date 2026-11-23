@@ -14,8 +14,10 @@ import { db }        from '../../firebase/config'
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore'
 import { fmt } from '../../utils/helpers'
 import { dayStart, txTime } from '../../utils/dashboardData'
-import { holdSale, cancelSale, dismissSale, retrySale, subscribe, subscribeCommitted } from '../../utils/pendingSales'
-import { Tabs, toast, ConnectionBar, Sheet } from '../../ui'
+import { holdSale, cancelSale, dismissSale, retrySale, subscribe, subscribeCommitted, HOLD_MS } from '../../utils/pendingSales'
+import DetailSheet from '../../components/DetailSheet'
+import tap from '../../components/CarteCliquable.module.css'
+import { Tabs, toast, ConnectionBar, Sheet, Button } from '../../ui'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import useSunMode    from '../../store/useSunMode'
 import { friendlyError } from '../../utils/errors'
@@ -69,6 +71,7 @@ export default function Debit() {
   const [feedback, setFeedback] = useState(null)
   const [pending, setPending]   = useState([])
   const [accepted, setAccepted] = useState([]) // ventes écrites à l'instant
+  const [venteOuverte, setVenteOuverte] = useState(null) // id de la vente en file dont on voit le détail
   const [, tick]                = useState(0)
   const lastSale  = useRef({ id: null, at: 0 })
   const snapshots = useRef({}) // saleId -> { client, qtys } pour rouvrir le ticket après annulation
@@ -226,6 +229,18 @@ export default function Debit() {
   const waiting = pending.filter(p => p.status === 'waiting-network')
   const standName = staffNom
 
+  // Détail d'une vente en file ou en échec (23/11/2026) : suivi en direct, se ferme quand elle quitte la file
+  const vente = venteOuverte ? pending.find(p => p.id === venteOuverte) : null
+  const ETAT_VENTE = {
+    holding:           { label: 'Annulable', tone: 'brand', texte: 'Retenue avant enregistrement' },
+    sending:           { label: 'Envoi…', tone: 'brand', texte: "En cours d'enregistrement" },
+    'waiting-network': { label: 'Hors ligne', tone: 'warning', texte: 'Gardée sur cet appareil, attend le réseau' },
+    failed:            { label: 'Non passée', tone: 'danger', texte: "L'encaissement n'est pas passé" },
+  }
+  const etatVente = vente ? (ETAT_VENTE[vente.status] || ETAT_VENTE.holding) : null
+  const heureVente = (p) => p?.commitAt ? new Date(p.commitAt - HOLD_MS).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'
+  const resteVente = vente?.status === 'holding' ? Math.max(0, Math.ceil((vente.commitAt - Date.now()) / 1000)) : 0
+
   return (
     <div className={clsx(s.page, sun && 'sun', isMobile && s.nvPos)}>
       {/* Téléphone (23/11/2026) : grand titre et bouton rond des réglages de la caisse */}
@@ -291,7 +306,10 @@ export default function Debit() {
           offlineText="Hors ligne · les encaissements sont gardés sur cet appareil, les soldes ne sont pas vérifiés" />
         {holding.map(p => (
           <div key={p.id} className={clsx(s.notice, s.noticeBrand)} role="status">
-            <span>{p.specNom || p.specId} · −{fmt(p.total)} · enregistré dans {Math.max(0, Math.ceil((p.commitAt - Date.now()) / 1000))} s</span>
+            <button type="button" className={clsx(tap.tap, tap.plain)} onClick={() => setVenteOuverte(p.id)} aria-haspopup="dialog"
+              aria-label={`Détail de l'encaissement de ${fmt(p.total)} pour ${p.specNom || p.specId}`}>
+              {p.specNom || p.specId} · −{fmt(p.total)} · enregistré dans {Math.max(0, Math.ceil((p.commitAt - Date.now()) / 1000))} s
+            </button>
             <button type="button" onClick={() => undo(p.id)}>
               <Undo2 size={14} /> Annuler
             </button>
@@ -305,11 +323,42 @@ export default function Debit() {
         {failed.map(p => (
           <div key={p.id} className={clsx(s.notice, s.noticeRed)} role="alert">
             <AlertTriangle size={15} />
-            <span>Encaissement non passé : {p.specNom || p.specId} · {fmt(p.total)} — {p.error}</span>
+            <button type="button" className={clsx(tap.tap, tap.plain)} onClick={() => setVenteOuverte(p.id)} aria-haspopup="dialog"
+              aria-label={`Détail de l'encaissement non passé de ${fmt(p.total)} pour ${p.specNom || p.specId}`}>
+              Encaissement non passé : {p.specNom || p.specId} · {fmt(p.total)} — {p.error}
+            </button>
             <button type="button" onClick={() => retrySale(p.id)}><RotateCcw size={14} /> Réessayer</button>
             <button type="button" onClick={() => dismissSale(p.id)}>Retirer</button>
           </div>
         ))}
+
+        {/* Détail d'une vente en file ou en échec : mêmes actions que le bandeau */}
+        <DetailSheet open={!!vente} onClose={() => setVenteOuverte(null)} title="Encaissement"
+          icon={vente?.status === 'failed' ? AlertTriangle : ReceiptText}
+          color={vente?.status === 'failed' ? 'var(--red)' : 'var(--brand)'}
+          status={etatVente && { label: etatVente.label, tone: etatVente.tone }}
+          value={vente ? `−${fmt(vente.total)}` : null}
+          sub={vente ? (vente.specNom || vente.specId) : null}
+          sections={vente ? [
+            { label: 'Articles', rows: (vente.items || []).map(i => [`${i.qty}× ${i.nom}`, fmt((i.prix || 0) * (i.qty || 0))]) },
+            { label: 'Encaissement', rows: [
+              ['Total', fmt(vente.total)],
+              ['Client', vente.specNom || vente.specId || '—'],
+              ['Heure', heureVente(vente)],
+              ['État', vente.status === 'holding' ? `${etatVente.texte} · ${resteVente} s` : etatVente.texte],
+              ['Erreur', vente.status === 'failed' ? (vente.error || '—') : null],
+              ['Encaissé par', vente.staffNom || null],
+            ] },
+          ] : []}
+          actions={vente && (vente.status === 'holding' ? (
+            <Button block variant="secondary" icon={Undo2}
+              onClick={() => { const id = vente.id; setVenteOuverte(null); undo(id) }}>Annuler l'encaissement</Button>
+          ) : vente.status === 'failed' ? (<>
+            <Button block icon={RotateCcw}
+              onClick={() => { const id = vente.id; setVenteOuverte(null); retrySale(id) }}>Réessayer</Button>
+            <Button block variant="secondary"
+              onClick={() => { const id = vente.id; setVenteOuverte(null); dismissSale(id) }}>Retirer</Button>
+          </>) : null)} />
 
         <div className={clsx(s.layout, !prefs.rush && s.layoutArticlesFirst)}>
           <section className={s.catalog} aria-label="Articles">

@@ -10,6 +10,7 @@
  *   statut    { label, tone } déjà calculé par l'écran appelant (success | warning | danger | brand | neutral)
  *   benevole  true : quantités en droits (« 1 repas ») au lieu des prix
  *   onClose
+ *   actions   (facultatif, 23/11/2026) boutons existants de l'écran, affichés en bas (ex. Annuler un code)
  */
 import React from 'react'
 import { Sheet, Badge } from '../ui'
@@ -36,7 +37,7 @@ const droit = (i) => {
 }
 const standDe = (i) => i.standNom || (i.standNumero ? `Stand n° ${i.standNumero}` : '')
 
-export default function CommandeDetail({ commande, statut, benevole = false, onClose }) {
+export default function CommandeDetail({ commande, statut, benevole = false, onClose, actions = null }) {
   const c = commande
   const items = c?.items || []
   const titre = c ? (c.code ? `Commande ${String(c.code).startsWith('#') ? '' : '#'}${c.code}` : 'Commande') : ''
@@ -79,6 +80,7 @@ export default function CommandeDetail({ commande, statut, benevole = false, onC
               ? <div><dt>Pris sur mes droits</dt><dd>{items.map(droit).join(', ') || '—'}</dd></div>
               : <div><dt>Débité du solde</dt><dd>{c.status === 'cancelled' ? 'rien (annulée)' : debit}</dd></div>}
           </dl>
+          {actions && <div className={s.acts}>{actions}</div>}
         </div>
       )}
     </Sheet>

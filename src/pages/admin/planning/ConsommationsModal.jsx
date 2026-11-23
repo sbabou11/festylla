@@ -2,12 +2,17 @@
  * pages/admin/planning/ConsommationsModal.jsx — suivi des consommations artistes
  * Totaux par type, détail par créneau, export CSV.
  */
-import React from 'react'
+import React, { useState } from 'react'
+import clsx from 'clsx'
 import { Coffee, UtensilsCrossed, Droplet, Download, Receipt } from 'lucide-react'
 import { Dialog, Button, Stat, Empty } from '../../../ui'
+import ConsoArtisteDetail from '../../../components/ConsoArtisteDetail'
+import tap from '../../../components/CarteCliquable.module.css'
 import s from './planning.module.css'
 
 export default function ConsommationsModal({ consumptions, planning, onClose }) {
+  // Détail d'une consommation (23/11/2026) : { conso, creneau }
+  const [ouverte, setOuverte] = useState(null)
   // Grouper par créneau
   const byCreneau = {}
   consumptions.forEach(c => {
@@ -91,17 +96,22 @@ export default function ConsommationsModal({ consumptions, planning, onClose }) 
               {consos.map(c => {
                 const icon = c.type === 'drink' ? '☕' : c.type === 'meal' ? '🍽' : '💧'
                 return (
-                  <div key={c.id} className={s.consoRow}>
-                    <span>{icon}</span>
+                  <button type="button" key={c.id} className={clsx(tap.tap, s.consoRow)} style={{ width: '100%', minHeight: 36, alignItems: 'center' }}
+                    onClick={() => setOuverte({ conso: c, creneau })} aria-haspopup="dialog"
+                    aria-label={`Détail : ${c.articleNom || 'article'} servi à ${creneau.artiste || "l'artiste"} à ${fmtHour(c.servedAt)}`}>
+                    <span aria-hidden="true">{icon}</span>
                     <span className={s.histName}>{c.articleNom}</span>
                     <span className={s.num}>{fmtHour(c.servedAt)} · {c.servedBy?.name || '—'}</span>
-                  </div>
+                  </button>
                 )
               })}
             </div>
           ))}
         </div>
       )}
+      <ConsoArtisteDetail conso={ouverte?.conso || null} onClose={() => setOuverte(null)}
+        artiste={ouverte?.creneau?.artiste}
+        creneau={ouverte?.creneau ? `${fmtDate(ouverte.creneau.debut)} ${fmtHour(ouverte.creneau.debut)}${ouverte.creneau.scene ? ' · ' + ouverte.creneau.scene : ''}` : null} />
     </Dialog>
   )
 }

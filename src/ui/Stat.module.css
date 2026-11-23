@@ -31,3 +31,17 @@
 .flat { color: var(--muted); }
 .sub { font-size: var(--fs-12); color: var(--muted); }
 .trend { margin-top: var(--space-1); }
+.value, .delta, .sub { display: block; }
+
+/* 23/11/2026 : carte cliquable (ouvre le détail) */
+.clickable {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color 160ms var(--ease, ease), box-shadow 160ms var(--ease, ease), transform 120ms var(--ease, ease);
+}
+.clickable:hover { border-color: var(--brand); }
+.clickable:active { transform: scale(.99); }
+.clickable:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
