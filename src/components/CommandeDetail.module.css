@@ -1,0 +1,19 @@
+/* Détail d'une commande (23/11/2026) : jetons de l'appli, suivent le thème */
+.wrap { display: grid; gap: 4px; justify-items: start; }
+.code { justify-self: stretch; display: grid; gap: 2px; text-align: center; margin: 12px 0 4px; padding: 14px; border-radius: 18px; background: var(--bg2); }
+.code span { font-size: 14px; color: var(--muted); }
+.code b { font-size: 36px; font-weight: 800; letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+.lab { margin: 16px 0 4px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.items { justify-self: stretch; margin: 0; padding: 0; list-style: none; }
+.item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; }
+.item + .item { border-top: 1px solid var(--border); }
+.n { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 10px; background: var(--bg2); font-weight: 700; }
+.t { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.t b { font-weight: 600; overflow-wrap: anywhere; }
+.t span { font-size: 14px; color: var(--muted); }
+.m { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kv { justify-self: stretch; margin: 0; }
+.kv > div { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.kv > div + div { border-top: 1px solid var(--border); }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }

@@ -15,6 +15,9 @@
  *                                             unique, valable 2 minutes, affiché en QR au guichet
  *   { action: 'ouvrir-lien', ev, jeton }      téléphone du spectateur, sans session : échange le jeton
  *                                             contre l'ouverture de son espace et sa nouvelle clé
+ *   { action: 'jetons-espace', ev }           espace bénévole ou artiste ouvert sans le lien personnel
+ *                                             (23/11/2026) : le téléphone ne connaît pas la clé, le serveur
+ *                                             calcule les QR tournants des 5 prochaines minutes (api/_qr/espace)
  * Pour la borne, une identification réussie ouvre une autorisation de 10 minutes sur ce seul compte
  * (events/{ev}/autorisations/{compte}) : les règles de la base ne laissent la borne lire ce compte
  * et débiter son solde que pendant ce temps. Limite d'essais : celle des pages publiques.
@@ -25,6 +28,7 @@ const { cleDuCompte } = require('../_auth/cles')
 const { admin, getDb, clientIp, verifyCaller, canManage, writeAudit } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { lireJeton, jetonValable, lireSecours, nouveauSecours } = require('../_qr/tournant')
+const { jetonsAVenir } = require('../_qr/espace')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/
@@ -114,6 +118,24 @@ module.exports = async (req, res) => {
         if (ok) { res.status(200).json({ code, secondes: Math.round(SECOURS_MS / 1000) }); return }
       }
       throw new Refus(503, 'Aucun code libre, réessayez.')
+    }
+
+    // ── Espace bénévole ou artiste sans clé sur le téléphone : QR tournants calculés ici ──
+    if (body.action === 'jetons-espace') {
+      let kind = null, id = ''
+      if (caller.type === 'benevole') {
+        kind = 'benevole'
+        const m = /^events\/([\w-]{1,128})\/benevoles\/([\w-]{1,128})$/.exec(String(caller.fiche || ''))
+        if (m && m[1] === ev) id = m[2]
+      } else if (caller.type === 'artiste') {
+        kind = 'artiste'
+        id = String(caller.creneauId || '')
+      }
+      if (!kind || !ID.test(id)) throw new Refus(403, "Réservé à l'espace bénévole ou artiste.")
+      const lien = await evRef.collection('liens').doc(`${kind}-${id}`).get()
+      const cle = lien.exists ? String(lien.data().cle || '') : ''
+      if (!cle) throw new Refus(404, "Aucun lien personnel pour cet espace : demandez votre lien à l'organisation, ou commandez avec un code à 6 chiffres.")
+      res.status(200).json({ jetons: jetonsAVenir({ kind, cle, ev, id, ms: now, n: 10 }) }); return
     }
 
     // ── Billetterie : donner un nouveau lien à un spectateur qui a perdu le sien ──

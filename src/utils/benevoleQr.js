@@ -2,7 +2,9 @@
  * utils/benevoleQr.js — QR de l'espace bénévole lu à la borne (parcours du 19/11/2026)
  *
  * Le QR contient le lien personnel : …/benevole?id=<fiche>&ev=<événement>&k=<clé>.
- * La borne en tire la fiche et la clé, que le serveur vérifie (api/borne.js).
+ * Depuis le 23/11/2026, ces QR (lien personnel avec sa clé, parfois imprimés) ne permettent plus de
+ * commander : la borne les reconnaît seulement pour expliquer qu'il faut présenter le QR tournant
+ * de l'espace (utils/qrEspace).
  * On essaie chaque lecture (touches et codes clavier) : selon la disposition du clavier,
  * l'une des deux restitue correctement les « ? », « = » et « & ».
  */

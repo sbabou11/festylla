@@ -5,28 +5,34 @@
  * c'est ce service qui vérifie et décompte. Réservé à la session de la borne de l'événement.
  *
  * POST /api/borne
- *   { action: 'ouvrir', ev, id, cle }                    QR du bénévole : vérifie la clé de son lien
- *                                                         personnel, renvoie son nom et ses droits du jour
- *   { action: 'commander', ev, id, cle, lignes }         commande passée à la borne (lignes : [{ id, qty }])
+ *   { action: 'ouvrir', ev, qr }                         QR tournant du bénévole (YB-…, 23/11/2026) : vérifie
+ *                                                         sa signature avec la clé de son lien personnel, renvoie
+ *                                                         son nom, ses droits du jour et un passage (10 minutes)
+ *   { action: 'commander', ev, passage, lignes }         commande passée à la borne (lignes : [{ id, qty }]) ;
+ *                                                         un QR tournant encore valable (qr) convient aussi
  *   { action: 'commander', ev, code }                    code à 6 chiffres reçu dans l'espace bénévole
  * Commander, en un seul enregistrement : droits du jour décomptés, stock, réservation bénévole
  * remise (comptée dans le retour vers Event Manager), commande, valeur offerte (benev-retrait),
  * et code passé à « utilisé ». Un seul ticket, pour le stand coché « Stand des bénévoles ».
- * Limite d'essais sur les clés : la même que pour l'ouverture des pages publiques.
+ * Limite d'essais sur les QR : la même que pour l'ouverture des pages publiques.
+ * Sécurité (23/11/2026) : l'ancien QR qui contenait le lien personnel avec sa clé (« cle »), parfois
+ * imprimé, ne permet plus de commander : une photo suffisait pour commander à la place de la personne.
+ * Le lien personnel sert toujours à ouvrir l'espace sur le téléphone (api/session).
  *
  * Artistes (20/11/2026), même parcours :
- *   { action: 'ouvrir', artiste: true, ev, id: <créneau>, cle }       QR de l'espace artiste
- *   { action: 'commander', artiste: true, ev, id, cle, lignes }       commande à la borne
+ *   { action: 'ouvrir', artiste: true, ev, qr }                       QR tournant de l'espace artiste (YA-…)
+ *   { action: 'commander', artiste: true, ev, passage, lignes }       commande à la borne
  *   { action: 'commander', ev, code }                                 code d'origine 'artiste'
  * Avantages décomptés à l'impression (consommations artist-consumptions, une par article),
  * stock, commande, transaction « artist-gift », code utilisé. Un ticket par stand de l'article.
  */
-const { blockedMinutes, afterFailure, counterKey, PUBLIC_LIMIT, sameKey } = require('../_auth/core')
+const { blockedMinutes, afterFailure, counterKey, PUBLIC_LIMIT } = require('../_auth/core')
 const { admin, getDb, clientIp, verifyCaller } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { festDay } = require('../_em/retour')
 const { restants, preparerCommande, standBenevoles } = require('../_borne/benevole')
 const { avantagesDe, dejaPris, restantsArtiste, preparerCommandeArtiste } = require('../_borne/artiste')
+const { lireJetonEspace, jetonEspaceValable, nouveauPassage, passageValable } = require('../_qr/espace')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/
@@ -35,6 +41,8 @@ const parisTime = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', h
 const parisDate = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' })
 
 class Refus extends Error { constructor(status, message) { super(message); this.status = status } }
+
+const ANCIEN_QR = "Ce QR imprimé n'est plus accepté. Ouvrez votre espace sur votre téléphone et présentez le QR qui change toutes les 30 secondes."
 
 const nomDe = (b) => [b.prenom, b.nom].filter(Boolean).join(' ').trim() || b.nom || 'Bénévole'
 
@@ -54,18 +62,39 @@ module.exports = async (req, res) => {
   const now = Date.now()
   const jour = festDay(now)
 
-  // Vérifie la clé du lien personnel (QR du bénévole), avec la limite d'essais
-  const verifierLien = async (id, cle, kind = 'benevole') => {
-    if (!ID.test(id)) throw new Refus(400, 'QR incomplet.')
+  // Identifie le bénévole ou l'artiste (23/11/2026) : QR tournant (body.qr) ou passage remis par
+  // « ouvrir » (body.passage), vérifiés avec la clé de son lien personnel, avec la limite d'essais.
+  // L'ancien QR avec la clé du lien (body.cle) est refusé. Renvoie { id, passage }.
+  const identifier = async (kind) => {
+    if (body.qr == null && body.passage == null) {
+      if (body.cle != null) throw new Refus(410, ANCIEN_QR)
+      throw new Refus(400, 'QR attendu.')
+    }
     const ipRef = db.collection('securite-connexions').doc(counterKey('pub', clientIp(req)))
     const ipRec = (await ipRef.get()).data()
     const wait = blockedMinutes(ipRec, now)
     if (wait) throw new Refus(429, `Trop d'essais depuis cette borne. Réessayez dans ${wait} minutes.`)
-    const lien = await evRef.collection('liens').doc(`${kind}-${id}`).get()
-    if (!lien.exists || !sameKey(String(cle || '').toLowerCase(), lien.data().cle)) {
-      await ipRef.set(afterFailure(ipRec, now, PUBLIC_LIMIT))
-      throw new Refus(401, "Ce QR n'est pas ou plus valable. Demandez un nouveau lien à l'organisation.")
+    const echec = async (status, message) => { await ipRef.set(afterFailure(ipRec, now, PUBLIC_LIMIT)); throw new Refus(status, message) }
+    const cleDe = async (id) => {
+      const lien = await evRef.collection('liens').doc(`${kind}-${id}`).get()
+      return lien.exists ? String(lien.data().cle || '') : ''
     }
+    if (body.qr != null) {
+      const lu = lireJetonEspace(String(body.qr).slice(0, 400))
+      if (!lu || lu.kind !== kind) await echec(400, "Ce QR n'est pas reconnu. Présentez le QR de votre espace YllaCash.")
+      const cle = await cleDe(lu.id)
+      if (!jetonEspaceValable({ lu, cle, ev, ms: now })) {
+        await echec(401, "Ce QR n'est plus valable : il change toutes les 30 secondes. Présentez celui affiché en ce moment.")
+      }
+      return { id: lu.id, passage: nouveauPassage({ kind, cle, ev, id: lu.id, ms: now }) }
+    }
+    const p = body.passage && typeof body.passage === 'object' ? body.passage : {}
+    const id = String(p.id || '')
+    if (p.kind !== kind || !ID.test(id)) throw new Refus(400, 'Passage incomplet : présentez de nouveau votre QR.')
+    if (!passageValable({ passage: p, cle: await cleDe(id), ev, ms: now })) {
+      await echec(401, 'Délai dépassé : présentez de nouveau le QR de votre espace.')
+    }
+    return { id, passage: p }
   }
 
   // ── Artistes : fiche (planning ou Event Manager), articles offerts, déjà pris, restants ──
@@ -170,18 +199,16 @@ module.exports = async (req, res) => {
 
   try {
     if (body.action === 'ouvrir' && body.artiste) {
-      const id = String(body.id || '')
-      await verifierLien(id, body.cle, 'artiste')
+      const { id, passage } = await identifier('artiste')
       const etat = await etatArtiste(id)
       res.status(200).json({
-        artiste: { id, nom: etat.nom }, restants: etat.reste, total: etat.total, jour,
+        artiste: { id, nom: etat.nom }, passage, restants: etat.reste, total: etat.total, jour,
         articles: [...etat.typeDe.entries()].filter(([x]) => etat.menuById.has(x)).map(([x, type]) => ({ id: x, type })),
       })
       return
     }
     if (body.action === 'commander' && body.artiste) {
-      const id = String(body.id || '')
-      await verifierLien(id, body.cle, 'artiste')
+      const { id } = await identifier('artiste')
       res.status(200).json(await commanderArtiste({ cr: id, lignes: Array.isArray(body.lignes) ? body.lignes.slice(0, 30) : [] }))
       return
     }
@@ -198,11 +225,10 @@ module.exports = async (req, res) => {
     }
 
     if (body.action === 'ouvrir') {
-      const id = String(body.id || '')
-      await verifierLien(id, body.cle)
+      const { id, passage } = await identifier('benevole')
       const b = await evRef.collection('benevoles').doc(id).get()
       if (!b.exists) throw new Refus(404, 'Fiche bénévole introuvable.')
-      res.status(200).json({ benevole: { id, nom: nomDe(b.data()) }, restants: restants(b.data(), jour), jour })
+      res.status(200).json({ benevole: { id, nom: nomDe(b.data()) }, passage, restants: restants(b.data(), jour), jour })
       return
     }
 
@@ -216,8 +242,7 @@ module.exports = async (req, res) => {
         benevId = String(c.data().benevoleId || '')
         lignes = (c.data().items || []).map(i => ({ id: i.id, qty: i.qty }))
       } else {
-        benevId = String(body.id || '')
-        await verifierLien(benevId, body.cle)
+        benevId = (await identifier('benevole')).id
         lignes = Array.isArray(body.lignes) ? body.lignes.slice(0, 30) : []
       }
       if (!ID.test(benevId)) throw new Refus(400, 'Bénévole inconnu.')

@@ -59,12 +59,14 @@
   --nv-g2: #0B5E70;
   --nv-g3: #0A3346;
   --nv-base: #061820;
-  --nv-list: #000000;
+  /* 23/11/2026 : plus de noir ni de gris neutres, les écrans de liste et les cartes prennent
+     les bleu-vert de l'accueil (maquette validée) */
+  --nv-list: #061820;
   --nv-glass: rgba(255,255,255,.11);
   --nv-glass2: rgba(255,255,255,.17);
   --nv-line: rgba(255,255,255,.10);
-  --nv-card: #1C1C1E;
-  --nv-card2: #2C2C2E;
+  --nv-card: #0E3140;
+  --nv-card2: #184757;
   --nv-fg: #FFFFFF;
   --nv-mu: rgba(255,255,255,.62);
   --nv-pos: #4FD1A1;
@@ -79,7 +81,7 @@
   --nv-shadow: none;
   --nv-tab-shadow: none;
 
-  --bg3: #3A3A3C;
+  --bg3: #22566A;
   --border2: rgba(255,255,255,.18);
   color-scheme: dark;
 }
@@ -94,6 +96,12 @@
 }
 /* Écrans de liste (historique, commander, caisse…) */
 .nv-list { background: var(--nv-list); color: var(--nv-fg); }
+/* Sombre : même dégradé bleu-vert que l'accueil sur tous les écrans */
+.dark .nv-list, .nv.dark .nv-list, .nv-list.dark {
+  background:
+    linear-gradient(180deg, var(--nv-g1) 0px, var(--nv-g2) 300px, var(--nv-g3) 620px, var(--nv-base) 900px) top / 100% 900px no-repeat,
+    var(--nv-base);
+}
 
 /* ── Cartes ────────────────────────────────────────────────── */
 /* Carte de verre, sur dégradé */

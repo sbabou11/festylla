@@ -66,14 +66,15 @@
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* la colonne ne s'élargit pas pour un texte long */
   gap: var(--space-4);
 }
 /* Bandeau « session fermée » (20/11/2026) : enfant de la grille, ne doit pas l'élargir */
 .sessionBan { min-width: 0; }
 /* Contenu de l'onglet : la fenêtre position fixe du planning ne doit pas être piégée. L'animation
    .nv-in garde par défaut son état final (fill both) ; ici, rien ne reste appliqué après l'animation. */
-.wrap > .pane { display: grid; gap: 14px; min-width: 0; animation-fill-mode: backwards; }
-.stack { display: grid; gap: 14px; min-width: 0; }
+.wrap > .pane { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; animation-fill-mode: backwards; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .loading { padding: var(--space-8) 0; text-align: center; color: var(--nv-mu); }
 .hint { margin: 0; text-align: center; font-size: var(--fs-12); color: var(--nv-mu); line-height: 1.45; }
 .footer { display: grid; gap: 2px; text-align: center; font-size: var(--fs-12); color: var(--nv-mu); padding-top: var(--space-4); }
@@ -82,7 +83,7 @@
 .build { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .7; }
 
 /* ── Cartes ──────────────────────────────────────────────────── */
-.card { display: grid; gap: var(--space-3); min-width: 0; }
+.card { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); min-width: 0; }  /* un titre long ne doit pas élargir la carte (23/11/2026) */
 .cardHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .cardHead h2 { margin: 0; font-size: 17px; font-weight: 700; }
 .chev { color: var(--nv-mu); flex: none; }
@@ -149,6 +150,8 @@
 
 /* Dernières commandes (lignes .nv-row) */
 .resaList { margin: 0; padding: 0; list-style: none; }
+.resaList > li + li { border-top: 1px solid var(--nv-line); }
+.resaBtn { cursor: pointer; } /* ligne entière cliquable : ouvre le détail de la commande */
 
 /* ── Pointage (feuille) ──────────────────────────────────────── */
 .scanBody { display: grid; gap: var(--space-3); }
@@ -178,7 +181,7 @@
 .qrFull {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: 1000; /* au-dessus de la bulle discussion/talkie (998) */
   display: grid;
   place-items: center;
   align-content: center;

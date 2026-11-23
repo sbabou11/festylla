@@ -33,6 +33,7 @@ import BenevoleCommander, { MesCodes } from './BenevoleCommander'
 import BenevoleResas     from './BenevoleResas'
 import BenevoleProfil    from './BenevoleProfil'
 import QRCode from 'qrcode'
+import useQrEspace from '../../hooks/useQrEspace'
 import {
   UtensilsCrossed, Coffee, Droplets, ShoppingCart, Home, Bookmark, User, LogOut, CalendarDays,
   ScanLine, QrCode, Ticket, CheckCircle2, AlertCircle, Store, ChevronRight, MapPin, BellRing,
@@ -44,6 +45,7 @@ import ThemeToggle from '../../components/ThemeToggle'
 import BenevolePlanning from '../../components/BenevolePlanning'
 import QrScanner from '../../components/QrScanner'
 import EntreeControl from '../../components/EntreeControl'
+import CommandeDetail from '../../components/CommandeDetail'
 import { parisNow } from '../../billets/entree'
 import { festDay, quotasDuJour, isEmFiche, dayLabel, nextDay } from '../../em/jour'
 import useAuthStore from '../../store/useAuthStore'
@@ -227,16 +229,21 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     return () => unsub()
   }, [docId, eventId])
 
-  // QR code
+  // QR code tournant (23/11/2026) : il change toutes les 30 s, une photo ne permet plus de commander
+  // à la borne. Calculé avec la clé du lien personnel si l'appareil la connaît (ouverture par le
+  // lien) ; sinon demandé au serveur avec la session (hooks/useQrEspace).
+  const cleQr = (() => {
+    if (demo) return 'demo'
+    try { return (localStorage.getItem(`yllacash-lien-benevole-${eventId}-${docId}`) || '').toLowerCase() } catch { return '' }
+  })()
+  const qrEspace = useQrEspace({ kind: 'benevole', ev: demo ? 'demo' : eventId, id: docId, cle: cleQr })
   useEffect(() => {
-    if (!docId) return
-    // Lien personnel : avec sa clé si l'appareil la connaît (ouverture par le lien)
-    let cle = ''
-    try { cle = localStorage.getItem(`yllacash-lien-benevole-${eventId}-${docId}`) || '' } catch {}
-    const url = `${window.location.origin}/benevole?id=${docId}${eventId && !demo ? '&ev=' + eventId : ''}${cle && !demo ? '&k=' + cle : ''}`
-    QRCode.toDataURL(url, { width: 400, margin: 2, color: { dark: '#003048', light: '#fff' } })
-      .then(setQrDataUrl).catch(() => {})
-  }, [docId])
+    if (!qrEspace.texte) { setQrDataUrl(null); return }
+    let vivant = true
+    QRCode.toDataURL(qrEspace.texte, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#003048', light: '#fff' } })
+      .then(u => { if (vivant) setQrDataUrl(u) }).catch(() => {})
+    return () => { vivant = false }
+  }, [qrEspace.texte])
 
   const openQr = useCallback(() => setQrOpen(true), [])
   const closeQr = useCallback(() => setQrOpen(false), [])
@@ -857,11 +864,21 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       </Dialog>
 
       {/* QR plein écran : fond blanc pour la lecture */}
-      {qrOpen && qrDataUrl && (
+      {qrOpen && (
         <button type="button" className={s.qrFull} onClick={closeQr} aria-label="Fermer le QR code">
           <b>{benevNom}</b>
           <span>Bénévole · BNV-{docId?.slice(-6)}</span>
-          <img src={qrDataUrl} alt="Mon QR code bénévole"/>
+          {qrDataUrl ? (<>
+            <img src={qrDataUrl} alt="Mon QR code bénévole"/>
+            {/* QR tournant : barre de progression et compte à rebours */}
+            <i aria-hidden="true" style={{ display: 'block', width: 'min(82vw, 380px)', height: 6, borderRadius: 3, background: 'rgba(0,48,72,.12)', overflow: 'hidden' }}>
+              <i style={{ display: 'block', height: '100%', width: `${Math.round(qrEspace.reste / 30 * 100)}%`, background: '#009090', transition: 'width 1s linear' }}/>
+            </i>
+            <span>Nouveau QR dans {qrEspace.reste} s</span>
+            <span>Il change toutes les 30 secondes : une photo ne fonctionne pas.</span>
+          </>) : (
+            <span style={{ maxWidth: 320, margin: '24px 0' }}>{qrEspace.erreur || 'Préparation de votre QR…'}</span>
+          )}
           <span>Appuyez pour fermer</span>
         </button>
       )}
@@ -902,6 +919,7 @@ const fmtResaDate = (r) => {
 // nonChargees (20/11/2026) : session fermée, phrase affichée à la place de « Aucune commande »
 function DernieresCommandes({ resas, setTab, nonChargees = '' }) {
   const dernieres = resas.slice(0, 3)
+  const [ouverte, setOuverte] = useState(null)
   return (
     <section className={`nv-glass nv-pad ${s.card}`}>
       <div className={s.cardHead}>
@@ -930,19 +948,26 @@ function DernieresCommandes({ resas, setTab, nonChargees = '' }) {
             const titre = items.length === 0 ? 'Commande'
               : items.length === 1 ? items[0].nom
               : `${items[0].nom} +${items.length - 1}`
+            // Toute la ligne se touche et ouvre le détail (23/11/2026)
             return (
-              <li key={r.id} className="nv-row">
-                <span className="nv-ic neutre" aria-hidden="true"><ShoppingCart size={20}/></span>
-                <span className="nv-rt">
-                  <b>{titre}</b>
-                  <span>{fmtResaDate(r)}</span>
-                </span>
-                <Badge tone={statut.tone}>{statut.label}</Badge>
+              <li key={r.id}>
+                <button type="button" className={`nv-row nv-press ${s.resaBtn}`} onClick={() => setOuverte(r)}
+                  aria-label={`Détail de la commande ${titre}, ${statut.label}`}>
+                  <span className="nv-ic neutre" aria-hidden="true"><ShoppingCart size={20}/></span>
+                  <span className="nv-rt">
+                    <b>{titre}</b>
+                    <span>{fmtResaDate(r)}</span>
+                  </span>
+                  <Badge tone={statut.tone}>{statut.label}</Badge>
+                  <ChevronRight size={18} className={s.chev} aria-hidden="true"/>
+                </button>
               </li>
             )
           })}
         </ul>
       )}
+      <CommandeDetail commande={ouverte} benevole onClose={() => setOuverte(null)}
+        statut={ouverte ? (RESA_STATUTS[ouverte.status] || RESA_STATUTS.pending) : null}/>
     </section>
   )
 }

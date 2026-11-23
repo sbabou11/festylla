@@ -16,6 +16,7 @@ import BenevoleCommander, { MesCodes } from './BenevoleCommander'
 import { doc, getDoc, onSnapshot, collection, query, where } from 'firebase/firestore'
 import { Clock, MapPin, Gift, History, CalendarDays, Bookmark, ShoppingCart, AlertCircle, Mic, Mic2, Maximize2, Ban, Bell, BellOff } from 'lucide-react'
 import { QRCodeCanvas } from 'qrcode.react'
+import useQrEspace from '../../hooks/useQrEspace'
 import ThemeToggle from '../../components/ThemeToggle'
 import NotifBell from '../../components/NotifBell'
 import ArtistReminderPopup from '../../components/ArtistReminderPopup'
@@ -213,6 +214,16 @@ export default function EspaceArtiste() {
     return Date.now() > finMs
   })()
 
+  // QR tournant de l'espace (23/11/2026) : il change toutes les 30 s, une photo ne permet plus de
+  // commander à la borne. Calculé avec la clé du lien personnel (adresse ou appareil) ; sans clé,
+  // demandé au serveur avec la session (hooks/useQrEspace).
+  const cleLien = (() => {
+    const k = params.get('k')
+    if (k) return k.toLowerCase()
+    try { return (localStorage.getItem(`yllacash-lien-artiste-${eventId}-${creneauId}`) || '').toLowerCase() } catch { return '' }
+  })()
+  const qrEspace = useQrEspace({ kind: 'artiste', ev: eventId, id: creneauId, cle: cleLien, actif: !loading && !notFound })
+
   if (loading) {
     return (
       <div className={s.page} aria-busy="true">
@@ -283,15 +294,8 @@ export default function EspaceArtiste() {
   const cartTotal = cartItems.reduce((a, i) => a + i.qty, 0)
   const codesEnAttente = codes.filter(c => c.statut === 'en_attente').length
 
-  // QR de l'espace : le lien personnel (lu par la borne) ; à défaut de clé, l'ancien format (caisse)
-  const cleLien = (() => {
-    const k = params.get('k')
-    if (k) return k.toLowerCase()
-    try { return localStorage.getItem(`yllacash-lien-artiste-${eventId}-${creneauId}`) || '' } catch { return '' }
-  })()
-  const qrPayload = cleLien
-    ? `${window.location.origin}/artiste?ev=${encodeURIComponent(eventId)}&cr=${encodeURIComponent(creneauId)}&k=${cleLien}`
-    : JSON.stringify({ ev: eventId, cr: creneauId, type: 'artiste' })
+  // QR de l'espace : jeton tournant (lu par la borne et par la caisse), calculé plus haut
+  const qrPayload = qrEspace.texte
   const artCode   = 'ART-' + creneauId.slice(-6).toUpperCase()
 
   const isAnnule = creneau.statut === 'annule'
@@ -430,9 +434,12 @@ export default function EspaceArtiste() {
         <section className={clsx(s.card, s.qrCard)}>
           <h2 className={s.overline}>Présentez ce QR à la borne</h2>
           <button type="button" className={s.qrBtn} onClick={() => setShowQrFull(true)} aria-label="Agrandir mon QR code">
-            <QRCodeCanvas value={qrPayload} size={140} fgColor="#003048" bgColor="#FFFFFF"/>
+            {qrPayload
+              ? <QRCodeCanvas value={qrPayload} size={140} fgColor="#003048" bgColor="#FFFFFF"/>
+              : <span style={{ display: 'grid', placeItems: 'center', width: 140, height: 140, fontSize: 12, color: '#4A6580' }}>{qrEspace.erreur || 'Préparation du QR…'}</span>}
           </button>
           <span className={s.qrCode}>{artCode}</span>
+          {qrPayload && <span className={s.qrHint}>Nouveau QR dans {qrEspace.reste} s</span>}
           <span className={s.qrHint}><Maximize2 size={12} aria-hidden="true"/>Touchez le code pour l'agrandir</span>
         </section>
 
@@ -526,7 +533,17 @@ export default function EspaceArtiste() {
         <button type="button" className={s.qrFull} onClick={() => setShowQrFull(false)} aria-label="Fermer le QR code">
           <b>{creneau.artiste}</b>
           <span>Artiste · {artCode}</span>
-          <QRCodeCanvas value={qrPayload} size={Math.min(window.innerWidth - 100, 380)} fgColor="#000" bgColor="#fff" level="H"/>
+          {qrPayload ? (<>
+            <QRCodeCanvas value={qrPayload} size={Math.min(window.innerWidth - 100, 380)} fgColor="#000" bgColor="#fff" level="M"/>
+            {/* QR tournant : barre de progression et compte à rebours */}
+            <i aria-hidden="true" style={{ display: 'block', width: Math.min(window.innerWidth - 100, 380), maxWidth: '82vw', height: 6, borderRadius: 3, background: 'rgba(0,48,72,.12)', overflow: 'hidden' }}>
+              <i style={{ display: 'block', height: '100%', width: `${Math.round(qrEspace.reste / 30 * 100)}%`, background: '#009090', transition: 'width 1s linear' }}/>
+            </i>
+            <span>Nouveau QR dans {qrEspace.reste} s</span>
+            <span>Il change toutes les 30 secondes : une photo ne fonctionne pas.</span>
+          </>) : (
+            <span style={{ maxWidth: 320, margin: '24px 0' }}>{qrEspace.erreur || 'Préparation du QR…'}</span>
+          )}
           <span>Touchez l'écran pour fermer</span>
         </button>
       )}

@@ -12,6 +12,11 @@ import { db } from '../../firebase/config'
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore'
 import { serveArtistItem, watchArtistReservations, servirReservationArtiste } from '../../firebase/service'
 import QrScanner from '../../components/QrScanner'
+import { parseQrEspace } from '../../utils/qrEspace'
+
+// Texte lu par la caméra, transmis tel quel : la lecture par défaut le passe en majuscules,
+// ce qui abîme le lien ou le JSON de l'artiste (le QR tournant, lui, se lit dans les deux cas)
+const texteLu = (t) => String(t || '').trim() || null
 import { friendlyError } from '../../utils/errors'
 import {
   Search, X, Clock, MapPin, AlertCircle, Bell, Coffee, UtensilsCrossed, Droplets,
@@ -136,11 +141,16 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
     return unsub
   }, [eventId, creneau?.id])
 
-  // Décoder le QR : JSON {ev, cr, type:'artiste'} OU directement un creneauId
+  // Décoder le QR : QR tournant de l'espace artiste (YA-…, 23/11/2026), JSON {ev, cr, type:'artiste'}
+  // OU directement un creneauId. La caisse identifie seulement l'artiste (comme la recherche par
+  // nom) : la signature du QR tournant n'est vérifiée qu'à la borne.
   const handleScan = async (raw) => {
     setErr(''); setFeedback('')
     let crId = null
-    try {
+    const tournant = parseQrEspace(raw)
+    if (tournant && tournant.kind === 'artiste') crId = tournant.id
+    else if (tournant) { setErr("C'est le QR d'un bénévole, pas celui d'un artiste."); return }
+    else try {
       const parsed = JSON.parse(raw)
       if (parsed?.type === 'artiste' && parsed?.cr) crId = parsed.cr
     } catch {
@@ -304,7 +314,7 @@ export default function ArtistServeMode({ eventId, menu, staffNom, staffId }) {
 
       <section className={s.card}>
         <h3 className={s.cardTitle}>Scanner le QR de l'artiste</h3>
-        <QrScanner onScan={handleScan} />
+        <QrScanner onScan={handleScan} parse={texteLu} />
       </section>
 
       <section className={s.card}>

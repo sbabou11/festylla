@@ -368,6 +368,11 @@
 }
 .tileInfo:hover { color: var(--brand-dark); }
 .tileInfo:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+/* Bouton « + » (23/11/2026) : toucher la carte ouvre la fiche, ce bouton ajoute en un appui */
+.tileAdd { background: var(--nv-btn, var(--brand)); color: var(--nv-btn-fg, var(--on-brand)); }
+.tileAdd:hover:not(:disabled) { color: var(--nv-btn-fg, var(--on-brand)); filter: brightness(1.1); }
+.tileAdd:disabled { opacity: .35; cursor: not-allowed; }
+.tileWithAdd .tileName, .tileWithAdd .tilePrice { padding-right: 44px; }
 
 /* Photo d'article */
 .picPhoto { position: relative; height: 88px; overflow: hidden; background: #1a1a1a; }

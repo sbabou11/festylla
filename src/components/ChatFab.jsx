@@ -20,6 +20,12 @@ const MARGIN     = 12
 const LONG_PRESS_MS = 500
 const MOVE_THRESHOLD = 8
 
+// Téléphone (23/11/2026) : la barre d'onglets flottante occupe le bas de l'écran (~100 px) et,
+// à la caisse, la barre « Scanner le client » est juste au-dessus. La bulle ne descend jamais
+// sur la barre d'onglets et se place par défaut au-dessus des deux.
+const estTelephone = () => window.innerWidth < 641
+const reserveBas   = () => (estTelephone() ? 104 : MARGIN)
+
 function loadPos(uid) {
   try {
     const saved = localStorage.getItem('chat-fab-pos-' + (uid || 'guest'))
@@ -27,7 +33,7 @@ function loadPos(uid) {
   } catch {}
   return {
     x: window.innerWidth  - FAB_WIDTH - MARGIN,
-    y: window.innerHeight - FAB_HEIGHT - 80,
+    y: window.innerHeight - FAB_HEIGHT - (estTelephone() ? 164 : 80),
   }
 }
 
@@ -39,7 +45,7 @@ function clamp(pos) {
   const w = window.innerWidth, h = window.innerHeight
   return {
     x: Math.max(MARGIN, Math.min(w - FAB_WIDTH  - MARGIN, pos.x)),
-    y: Math.max(MARGIN, Math.min(h - FAB_HEIGHT - MARGIN, pos.y)),
+    y: Math.max(MARGIN, Math.min(h - FAB_HEIGHT - reserveBas(), pos.y)),
   }
 }
 

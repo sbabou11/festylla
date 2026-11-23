@@ -1,15 +1,16 @@
 /**
- * ProductGrid — tuiles d'articles : un appui ajoute 1 au ticket.
+ * ProductGrid — tuiles d'articles.
  * Stock restant affiché (or sous le seuil, brique en rupture).
  * Photo de l'article si renseignée, sinon initiales.
- * onInfo (facultatif) : petit bouton « i » qui ouvre la fiche composition / allergènes,
- * à côté de la tuile pour ne pas gêner l'ajout en un appui (visible aussi en rupture).
+ * onInfo fourni (23/11/2026, comme la borne) : toucher la tuile ouvre la fiche (composition,
+ * allergènes, quantité) ; le bouton rond « + » ajoute 1 au ticket en un appui.
+ * Sans onInfo : un appui sur la tuile ajoute 1 au ticket (comportement d'origine).
  * nv (téléphone, 23/11/2026) : tuile en carte, pastille ronde aux initiales, stock bas ou rupture
  * écrits sous le prix, quantité qui « saute » à chaque appui. Même logique d'ajout.
  */
 import React from 'react'
 import clsx from 'clsx'
-import { Info } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { fmt } from '../../../utils/helpers'
 import s from './pos.module.css'
 
@@ -40,10 +41,10 @@ export default function ProductGrid({ items, qtys, onAdd, onInfo, big = false, n
           <div key={m.id} className={s.tileWrap}>
             <button
               type="button"
-              className={clsx(s.tile, qty > 0 && s.tileOn, (rupture || full) && s.tileOff)}
-              onClick={(e) => onAdd(m, e.currentTarget)}
-              disabled={rupture || full}
-              aria-label={`${m.nom}, ${fmt(m.prix || 0)}${qty ? `, ${qty} au ticket` : ''}${rupture ? ', en rupture' : ''}`}
+              className={clsx(s.tile, qty > 0 && s.tileOn, (rupture || full) && s.tileOff, onInfo && s.tileWithAdd)}
+              onClick={(e) => (onInfo ? onInfo(m) : onAdd(m, e.currentTarget))}
+              disabled={!onInfo && (rupture || full)}
+              aria-label={`${onInfo ? 'Fiche de ' : ''}${m.nom}, ${fmt(m.prix || 0)}${qty ? `, ${qty} au ticket` : ''}${rupture ? ', en rupture' : ''}`}
             >
               {m.photoUrl
                 ? (
@@ -72,9 +73,11 @@ export default function ProductGrid({ items, qtys, onAdd, onInfo, big = false, n
                 : <span className={s.qtyBadge}>{qty}</span>)}
             </button>
             {onInfo && (
-              <button type="button" className={s.tileInfo} onClick={() => onInfo(m)}
-                aria-label={`Voir la composition de ${m.nom}`} title="Voir la composition">
-                <Info size={15} aria-hidden="true" />
+              <button type="button" className={clsx(s.tileInfo, s.tileAdd)}
+                onClick={(e) => onAdd(m, e.currentTarget.parentElement.firstElementChild)}
+                disabled={rupture || full}
+                aria-label={`Ajouter ${m.nom}`} title="Ajouter au ticket">
+                <Plus size={18} aria-hidden="true" />
               </button>
             )}
           </div>

@@ -43,6 +43,9 @@ import { useImpressionTickets } from '../../hooks/useImpression'
 import { BoutonImprimante, Progression } from './borne/BorneImprimante'
 import { apiFetch } from '../../firebase/session'
 
+// Ancien QR de l'espace bénévole ou artiste (lien personnel avec sa clé) : plus accepté (23/11/2026)
+const QR_IMPRIME_REFUSE = "Ce QR imprimé n'est plus accepté. Ouvrez votre espace sur votre téléphone et présentez le QR qui change toutes les 30 secondes."
+
 // ─── Étapes du flux ─────────────────────────────────────────────────────
 // Codé en const pour pouvoir étendre facilement (lots suivants : 'menu',
 // 'panier', 'ticket').
@@ -262,18 +265,20 @@ export default function Borne() {
   }, [spec?._docId])
 
   // ─── Bénévoles (19/11/2026) : QR de l'espace bénévole ou code à 6 chiffres ──
-  // La borne n'a aucun accès direct aux fiches : le serveur vérifie la clé, décompte les droits
+  // La borne n'a aucun accès direct aux fiches : le serveur vérifie le QR, décompte les droits
   // du jour et crée la commande (api/borne.js). Un seul ticket, pour le stand des bénévoles.
-  const [benev, setBenev] = useState(null)          // { id, cle, nom, restants }
+  // QR tournant (23/11/2026) : le serveur vérifie le jeton (YB-… / YA-…) et renvoie un passage
+  // signé, valable 10 minutes, qui sert à commander. L'ancien QR imprimé (lien avec clé) est refusé.
+  const [benev, setBenev] = useState(null)          // { id, passage, nom, restants }
   const [benevBusy, setBenevBusy] = useState(false)
   const [benevErr, setBenevErr] = useState('')
   const evParam = () => new URLSearchParams(window.location.search).get('ev')
 
-  const ouvrirBenevole = useCallback(async ({ id, cle }) => {
+  const ouvrirBenevole = useCallback(async ({ jeton }) => {
     setError(''); setLoading(true); setStep(STEP.IDENTIFICATION)
     try {
-      const r = await apiFetch('/api/borne', { body: { action: 'ouvrir', ev: evParam(), id, cle } })
-      setBenev({ id, cle, nom: r.benevole?.nom || 'Bénévole', restants: r.restants || {} })
+      const r = await apiFetch('/api/borne', { body: { action: 'ouvrir', ev: evParam(), qr: jeton } })
+      setBenev({ id: r.benevole?.id, passage: r.passage, nom: r.benevole?.nom || 'Bénévole', restants: r.restants || {} })
       setCart({}); setBenevErr('')
       setStep(STEP.MENU)
     } catch (e) {
@@ -283,14 +288,14 @@ export default function Borne() {
 
   // Artistes (20/11/2026) : même parcours ; le serveur renvoie les articles de ses avantages
   // (type meal / drink / eau) et ses restants. Chaque article sort au stand de cet article.
-  const ouvrirArtiste = useCallback(async ({ id, cle }) => {
+  const ouvrirArtiste = useCallback(async ({ jeton }) => {
     setError(''); setLoading(true); setStep(STEP.IDENTIFICATION)
     try {
-      const r = await apiFetch('/api/borne', { body: { action: 'ouvrir', artiste: true, ev: evParam(), id, cle } })
+      const r = await apiFetch('/api/borne', { body: { action: 'ouvrir', artiste: true, ev: evParam(), qr: jeton } })
       const VERS = { meal: 'repas', drink: 'boisson', eau: 'eau' }
       const rs = r.restants || {}
       setBenev({
-        kind: 'artiste', id, cle, nom: r.artiste?.nom || 'Artiste',
+        kind: 'artiste', id: r.artiste?.id, passage: r.passage, nom: r.artiste?.nom || 'Artiste',
         restants: { repas: rs.meal || 0, boisson: rs.drink || 0, eau: rs.eau || 0 },
         articles: Object.fromEntries((r.articles || []).map(a => [a.id, VERS[a.type]])),
       })
@@ -339,13 +344,16 @@ export default function Borne() {
     const wedge = createWedge({
       onTournant: (jeton) => { setStep(STEP.IDENTIFICATION); validateRef.current({ qr: jeton }) },
       // QR du billet (« FY-… » ou ancien lien) : il sert à l'entrée, pas à payer
+      // QR tournant de l'espace bénévole ou artiste (23/11/2026)
+      onEspace: (q) => { if (q.kind === 'artiste') artisteRef.current(q); else benevRef.current(q) },
       onScan: () => { setStep(STEP.IDENTIFICATION); setError('C\'est le QR de votre billet : il sert à l\'entrée. Pour payer, ouvrez votre espace YllaCash sur votre téléphone et présentez le QR qui s\'y affiche.') },
       onUnknown: (texte, lectureCodes, lectureTouches) => {
-        const b = parseBenevoleQr(lectureTouches, lectureCodes, texte)
-        if (b) { benevRef.current(b); return }
-        const a = parseArtisteQr(lectureTouches, lectureCodes, texte)
-        if (a) { artisteRef.current(a); return }
         setStep(STEP.IDENTIFICATION)
+        // Ancien QR bénévole ou artiste (lien personnel avec sa clé, parfois imprimé) : refusé (23/11/2026)
+        if (parseBenevoleQr(lectureTouches, lectureCodes, texte) || parseArtisteQr(lectureTouches, lectureCodes, texte)) {
+          setError(QR_IMPRIME_REFUSE)
+          return
+        }
         setError('Ce QR code n\'est pas reconnu. Présentez le QR de votre espace YllaCash (spectateur, bénévole ou artiste).')
       },
     })
@@ -424,7 +432,7 @@ export default function Borne() {
           benev={benev}
           benevBusy={benevBusy}
           benevErr={benevErr}
-          onBenevoleCommande={(lignes) => commanderBenevole({ ...(benev.kind === 'artiste' ? { artiste: true } : {}), id: benev.id, cle: benev.cle, lignes }).catch(() => {})}
+          onBenevoleCommande={(lignes) => commanderBenevole({ ...(benev.kind === 'artiste' ? { artiste: true } : {}), passage: benev.passage, lignes }).catch(() => {})}
           carte={carte}
           categories={categories}
           onErreurLecture={signalerErreurLecture}/>

@@ -15,7 +15,7 @@ import QRCode from 'qrcode'
 import {
   Wallet, Clock, Bookmark, CalendarDays, UtensilsCrossed,
   Plus, Minus, Undo2, ShoppingBag, ChevronRight, ChevronLeft, Mic, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote, Heart, UserRound,
-  QrCode, MoreHorizontal, Euro, X, Info, Check, Delete, ArrowLeftRight, Moon,
+  QrCode, MoreHorizontal, Euro, X, Check, Delete, ArrowLeftRight, Moon,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
@@ -24,6 +24,7 @@ import { getSettings, creerCodeEnLigne, annulerCodeEnLigne } from '../../firebas
 import { watchCarte } from '../../menu/carte'
 import { apiFetch } from '../../firebase/session'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
+import CommandeDetail from '../../components/CommandeDetail'
 import { organiserCarte } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
 import {
@@ -168,6 +169,7 @@ export default function SoldePage({ demo = null }) {
   const [catKey, setCatKey]           = useState(null)
   const [cancelCode, setCancelCode]   = useState(null)
   const [fiche, setFiche]             = useState(null)   // fiche article ouverte (20/11/2026)
+  const [cmdOuverte, setCmdOuverte]   = useState(null)   // détail d'une commande au toucher (23/11/2026) : { c, statut }
   // Recharge en ligne par Stripe (19/11/2026) : retour de la page de paiement avec ?recharge=<session> ou ?annule=1
   const [montantRecharge, setMontantRecharge] = useState(2000)
   const [autreMontant, setAutreMontant]       = useState('')
@@ -1185,30 +1187,44 @@ export default function SoldePage({ demo = null }) {
                 </div>
               )}
               {cat ? (
-                <section className={clsx('nv-card nv-padx', sp.mt12)} aria-label={cat.nom}>
-                  <div className="nv-st">
-                    {cat.items.map(m => {
-                      const stock = m.stock || 0
-                      const q = qtys[m.id] || 0
-                      return (
-                        <div key={m.id} className={clsx('nv-row', sp.itemRow, stock === 0 && sp.out)}>
-                          <span className={clsx('nv-ic neutre', sp.itemPic)}>
-                            {m.photoUrl ? <img src={m.photoUrl} alt="" /> : (m.nom || '?').charAt(0)}
-                          </span>
-                          <span className="nv-rt">
-                            <b>{m.nom}</b>
-                            <span>{fmt(m.prix || 0)}{stock === 0 ? <em className={sp.stockOut}> · Rupture</em> : stock <= 10 ? <em className={sp.stockLow}> · {stock} restant{stock > 1 ? 's' : ''}</em> : null}</span>
-                          </span>
-                          <button type="button" className={clsx(sp.infoBtn, 'nv-press')} onClick={() => setFiche(m)} aria-label={`Fiche de ${m.nom}`}><Info size={20} aria-hidden="true" /></button>
+                /* Cartes cliquables comme à la borne (23/11/2026, maquette validée) : toucher la carte
+                   ouvre la fiche, « + » ajoute, puis « − » et la quantité apparaissent */
+                <section className={clsx(sp.menuGrid, sp.mt12, 'nv-st')} aria-label={cat.nom}>
+                  {cat.items.map(m => {
+                    const stock = m.stock || 0
+                    const q = qtys[m.id] || 0
+                    const photo = m.photoUrl || m.image
+                    const teinte = (m.nom || '').split('').reduce((a, c) => a + c.charCodeAt(0), 0) % 360
+                    return (
+                      <div key={m.id} className={clsx(sp.mCard, q > 0 && sp.mCardOn, stock === 0 && sp.mCardOut)}>
+                        <button type="button" className={clsx(sp.mOpen, 'nv-press')} onClick={() => setFiche(m)}
+                          aria-label={`Fiche de ${m.nom}, ${fmt(m.prix || 0)}${q ? `, ${q} au panier` : ''}${stock === 0 ? ', en rupture' : ''}`}>
+                          {photo ? (<>
+                            <span className={sp.mBlur} style={{ backgroundImage: `url(${photo})` }} aria-hidden="true" />
+                            <img className={sp.mImg} src={photo} alt="" />
+                          </>) : (
+                            <span className={sp.mPh} aria-hidden="true"
+                              style={{ background: `linear-gradient(135deg, hsl(${teinte},35%,55%), hsl(${(teinte + 30) % 360},45%,30%))` }}>
+                              {(m.nom || '?').charAt(0).toUpperCase()}
+                            </span>
+                          )}
+                          <span className={sp.mShade} aria-hidden="true" />
+                          {stock === 0 && <span className={sp.mTag}>Rupture</span>}
+                          {stock > 0 && stock <= 10 && <span className={clsx(sp.mTag, sp.mTagLow)}>{stock} restant{stock > 1 ? 's' : ''}</span>}
+                          {q > 0 && <span className={clsx(sp.mQty, 'nv-pop')} key={q}>{q}</span>}
+                          <span className={sp.mName}>{m.nom}</span>
+                          <span className={sp.mPrice}>{fmt(m.prix || 0)}</span>
+                        </button>
+                        <div className={sp.mActs}>
                           {q > 0 && <>
-                            <button type="button" className="nv-round nv-press" onClick={() => changeQty(m.id, -1)} aria-label={`Retirer un ${m.nom}`}><Minus size={18} aria-hidden="true" /></button>
-                            <b className={clsx(sp.stepQ, 'nv-pop')} key={q} aria-live="polite">{q}</b>
+                            <button type="button" className={clsx(sp.mBtn, sp.mBtnMoins, 'nv-press')} onClick={() => changeQty(m.id, -1)} aria-label={`Retirer un ${m.nom}`}><Minus size={18} aria-hidden="true" /></button>
+                            <b className={sp.mQ} aria-live="polite">{q}</b>
                           </>}
-                          <button type="button" className={clsx('nv-round nv-press', sp.plusBtn)} onClick={() => changeQty(m.id, 1)} disabled={stock === 0 || q >= stock} aria-label={`Ajouter un ${m.nom}`}><Plus size={18} aria-hidden="true" /></button>
+                          <button type="button" className={clsx(sp.mBtn, 'nv-press')} onClick={() => changeQty(m.id, 1)} disabled={stock === 0 || q >= stock} aria-label={`Ajouter un ${m.nom}`}><Plus size={18} aria-hidden="true" /></button>
                         </div>
-                      )
-                    })}
-                  </div>
+                      </div>
+                    )
+                  })}
                 </section>
               ) : (
                 <div className="nv-card nv-pad">
@@ -1249,14 +1265,15 @@ export default function SoldePage({ demo = null }) {
                         const look = ETAT_LOOK[c.statut] || ETAT_LOOK.pending
                         const Icon = look.icon
                         return (
-                          <div key={c.code} className={clsx('nv-row', sp.resaRow)}>
+                          <button type="button" key={c.code} className={clsx('nv-row nv-press', sp.resaRow, sp.rowBtn)} onClick={() => setCmdOuverte({ c, statut: st })}
+                            aria-label={`Détail de la commande ${c.code}, ${st.label}`}>
                             <span className={clsx('nv-ic', sp.opBg, sp[look.cls])}><Icon size={20} aria-hidden="true" /></span>
                             <span className="nv-rt">
                               <b>{String(c.code).slice(0, 3)} {String(c.code).slice(3)} · {(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')}</b>
                               <span>{st.label}{c.statut === 'utilise' && c.commandeNumero ? ` · commande n° ${c.commandeNumero}` : ''}{c.timestamp ? ` · ${new Date(c.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}</span>
                             </span>
                             <span className={clsx('nv-amt', sp.opAmt)}>{fmt(c.total || 0)}</span>
-                          </div>
+                          </button>
                         )
                       })}
                       {resaSlice.map(r => {
@@ -1265,14 +1282,15 @@ export default function SoldePage({ demo = null }) {
                         const Icon = look.icon
                         return (
                           <div key={r.id} className={sp.resaBlock}>
-                            <div className={clsx('nv-row', sp.resaRow)}>
+                            <button type="button" className={clsx('nv-row nv-press', sp.resaRow, sp.rowBtn)} onClick={() => setCmdOuverte({ c: r, statut: st })}
+                              aria-label={`Détail de la commande ${r.code}, ${st.label}`}>
                               <span className={clsx('nv-ic', sp.opBg, sp[look.cls])}><Icon size={20} aria-hidden="true" /></span>
                               <span className="nv-rt">
                                 <b>#{r.code} · {(r.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')}</b>
                                 <span>{st.label}{r.status === 'ready' ? ' · présentez-vous au stand' : ''}{r.date ? ` · ${r.date}` : ''}</span>
                               </span>
                               <span className={clsx('nv-amt', sp.opAmt)}>{fmt(r.total || 0)}</span>
-                            </div>
+                            </button>
                             {r.status === 'pending' && (
                               <button type="button" className={clsx('nv-btn-sec nv-press', sp.resaCancel)} onClick={() => setCancelId(r.id)}>Annuler la commande</button>
                             )}
@@ -1301,6 +1319,9 @@ export default function SoldePage({ demo = null }) {
           <CheckUpdateButton variant="compact"/>
         </footer>
       </main>
+
+      {/* Détail d'une commande (23/11/2026) */}
+      <CommandeDetail commande={cmdOuverte?.c || null} statut={cmdOuverte?.statut || null} onClose={() => setCmdOuverte(null)} />
 
       {/* Fiche article (20/11/2026), hors de la liste animée */}
       {fiche && (

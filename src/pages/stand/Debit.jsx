@@ -393,7 +393,9 @@ export default function Debit() {
         <ArticleInfoModal
           item={selectedInfoItem}
           qty={qtys[selectedInfoItem.id] || 0}
-          onAdd={() => changeQty(selectedInfoItem.id, +1)}
+          onAddQty={(n) => changeQty(selectedInfoItem.id, n)}
+          maxAdd={Math.max(0, (selectedInfoItem.stock || 0) - (qtys[selectedInfoItem.id] || 0))}
+          raisonBloque={(selectedInfoItem.stock || 0) === 0 ? 'Rupture de stock' : 'Tout le stock est déjà au ticket'}
           onClose={() => setSelectedInfoItem(null)}
         />
       )}

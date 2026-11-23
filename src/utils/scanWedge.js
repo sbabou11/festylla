@@ -11,6 +11,7 @@
  */
 import { SPEC_CODE } from './specCode'
 import { parseQrTournant } from './qrTournant'
+import { parseQrEspace } from './qrEspace'
 
 // Touche physique → caractère sur un clavier QWERTY américain : [sans Maj, avec Maj]
 const US = {
@@ -39,8 +40,10 @@ export function parseSpectatorCode(text) {
  * quand une rafale se termine par Entrée (ou après un silence) et contient un code valide.
  * onUnknown(texte, lectureCodes, lectureTouches) : rafale lue mais sans code spectateur (QR d'un autre usage).
  * onTournant(jeton) : QR tournant d'un espace spectateur (20/11/2026), reconnu avant tout le reste.
+ * onEspace({ kind, id, jeton }) : QR tournant d'un espace bénévole ou artiste (23/11/2026), reconnu
+ * avant les codes spectateur (un jeton peut contenir par hasard une suite qui ressemble à « FY-… »).
  */
-export function createWedge({ onScan, onUnknown, onTournant, maxGapMs = 60, minLength = 6, idleMs = 150, now = () => Date.now() }) {
+export function createWedge({ onScan, onUnknown, onTournant, onEspace, maxGapMs = 60, minLength = 6, idleMs = 150, now = () => Date.now() }) {
   let byKey = '', byCode = '', last = 0, timer = null
 
   const reset = () => { byKey = ''; byCode = ''; clearTimeout(timer); timer = null }
@@ -50,6 +53,8 @@ export function createWedge({ onScan, onUnknown, onTournant, maxGapMs = 60, minL
     if (Math.max(keyText.length, codeText.length) < minLength) return false
     const jeton = onTournant ? parseQrTournant(codeText, keyText) : null
     if (jeton) { onTournant(jeton); return true }
+    const espace = onEspace ? parseQrEspace(codeText, keyText) : null
+    if (espace) { onEspace(espace); return true }
     const code = parseSpectatorCode(keyText) || parseSpectatorCode(codeText)
     if (code) onScan?.(code)
     else onUnknown?.(keyText || codeText, codeText, keyText)

@@ -2,10 +2,16 @@
  * pages/public/BenevoleResas.jsx — v8 debug modernisé
  * Onglet "Mes réservations" de l'espace bénévole
  */
-import React from 'react'
-import { CheckCircle, AlertCircle, Clock, X, Sparkles } from 'lucide-react'
+import React, { useState } from 'react'
+import { CheckCircle, AlertCircle, Clock, X, Sparkles, ChevronRight } from 'lucide-react'
+import CommandeDetail from '../../components/CommandeDetail'
+
+// Statut → ton du badge du détail (23/11/2026)
+const TON = { collected: 'success', ready: 'warning', cancelled: 'danger', processing: 'brand', pending: 'neutral' }
 
 export default function BenevoleResas({ resas, BRAND, AMBER, AMBER_L, cancelResa }) {
+  const [ouverte, setOuverte] = useState(null)
+  const [ouverteLabel, setOuverteLabel] = useState('')
   return (
     <div style={{
       background: 'var(--bg)',
@@ -57,6 +63,10 @@ export default function BenevoleResas({ resas, BRAND, AMBER, AMBER_L, cancelResa
                 padding: 12,
                 borderLeft: `3px solid ${st.color}`,
               }}>
+                {/* Toucher la carte ouvre le détail de la commande (23/11/2026) */}
+                <button type="button" onClick={() => { setOuverte(r); setOuverteLabel(st.label) }}
+                  aria-label={`Détail de la commande ${r.code}, ${st.label}`}
+                  style={{ display: 'block', width: '100%', padding: 0, border: 0, background: 'none', color: 'inherit', font: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
                 <div style={{
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                   marginBottom: 8, gap: 8,
@@ -72,7 +82,7 @@ export default function BenevoleResas({ resas, BRAND, AMBER, AMBER_L, cancelResa
                     fontSize: 11, fontFamily: 'monospace', color: 'var(--muted)',
                     flexShrink: 0,
                   }}>
-                    #{r.code}
+                    #{r.code} <ChevronRight size={14} style={{ verticalAlign: -2 }} aria-hidden="true"/>
                   </span>
                 </div>
                 <div style={{
@@ -82,6 +92,7 @@ export default function BenevoleResas({ resas, BRAND, AMBER, AMBER_L, cancelResa
                 }}>
                   {(r.items || []).map(i => `${i.nom} ×${i.qty}`).join(', ')}
                 </div>
+                </button>
                 {canCancel && (
                   <button onClick={() => cancelResa(r.id, r.code)}
                     style={{
@@ -105,6 +116,8 @@ export default function BenevoleResas({ resas, BRAND, AMBER, AMBER_L, cancelResa
           })}
         </div>
       )}
+      <CommandeDetail commande={ouverte} benevole onClose={() => setOuverte(null)}
+        statut={ouverte ? { label: ouverteLabel, tone: TON[ouverte.status] || 'neutral' } : null}/>
     </div>
   )
 }
