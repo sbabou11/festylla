@@ -109,7 +109,7 @@ export default function UpdateDiagnostic() {
       <button onClick={handleCheck} disabled={checking}
         style={{
           display:'flex', alignItems:'center', gap:6, padding:'10px 14px',
-          background:'var(--brand)', color:'#fff', border:'none', borderRadius:8,
+          background:'var(--brand)', color:'var(--on-brand, #fff)', border:'none', borderRadius:8,
           fontSize:13, fontWeight:600, cursor: checking ? 'wait' : 'pointer',
           fontFamily:'var(--font)', minHeight:40, opacity: checking ? 0.7 : 1,
         }}>

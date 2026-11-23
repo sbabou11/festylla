@@ -174,7 +174,7 @@ function GestionArtistesYllaCash({ onNavigate }) {
           </div>
           <button onClick={() => onNavigate && onNavigate('planning', 'gestion-artistes')}
             style={{
-              padding: '10px 16px', background: 'var(--brand)', color: '#fff',
+              padding: '10px 16px', background: 'var(--brand)', color: 'var(--on-brand, #fff)',
               border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700,
               cursor: 'pointer', fontFamily: 'inherit', minHeight: 44,
               WebkitTapHighlightColor: 'transparent',

@@ -6,6 +6,7 @@
 import { pageRetiree } from './em/pages'
 import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { flushSync } from 'react-dom'
+import clsx from 'clsx'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { Sun, Moon, Palette, WifiOff, Search, X, HandHeart, ArrowLeft } from 'lucide-react'
 import CommandPalette from './components/CommandPalette'
@@ -124,7 +125,7 @@ const Loader = ({ msg = 'Chargement…' }) => {
       <div style={{ fontSize: 13, color: 'var(--muted)' }}>{displayMsg}</div>
       {phase === 2 && (
         <button onClick={() => window.location.reload()}
-          style={{ padding: '8px 16px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
+          style={{ padding: '8px 16px', background: 'var(--brand)', color: 'var(--on-brand, #fff)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font)' }}>
           Recharger la page
         </button>
       )}
@@ -298,6 +299,15 @@ function StaffApp() {
     if (evId) setCurrentEvent(evId)
   }, [evId])
   useEffect(() => { if (!isMobile) setMobileMenuOpen(false) }, [isMobile])
+  // Nouveau style téléphone (23/11/2026) : les feuilles et fenêtres (src/ui) s'affichent dans <body>
+  // par un portail, hors de la racine `.nv` ; on pose donc aussi `nv` sur <body> tant que l'espace équipe
+  // est affiché sur téléphone (pas sur la connexion ni l'espace bénévole), et on la retire sinon.
+  const nvBody = isMobile && staffSession && !user?.isBenevole && espaceChoisi !== 'benev'
+  useEffect(() => {
+    if (!nvBody) return
+    document.body.classList.add('nv')
+    return () => document.body.classList.remove('nv')
+  }, [nvBody])
 
   // Recherche globale : Ctrl K (Windows) ou ⌘ K (Mac)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -394,8 +404,15 @@ function StaffApp() {
   const isAdmin     = user.role === 'admin' || user.role === 'super_admin'
   const currentEv   = evStore.events?.find(e => e.id === evStore.currentEventId)
 
+  // Nouveau style téléphone (23/11/2026) : classe `nv` sous 641 px seulement.
+  // L'accueil a le fond en dégradé et sa barre du haut (pastille, recherche « Chercher une page ») ;
+  // la caisse et le flux affichent leur propre grand titre (celui de la barre reste pour les lecteurs d'écran).
+  const nvAccueil = isMobile && currentPage === 'accueil'
+  const nvOwnTitle = isMobile && (currentPage === 'debit' || currentPage === 'transactions')
+  const themeLabel = theme.isDark ? 'Passer en mode clair' : 'Passer en mode sombre'
+
   return (
-    <div className={shell.app}>
+    <div className={clsx(shell.app, isMobile && 'nv')}>
       <UrlSync pageId={currentPage} />
 
       {/* Bandeau hors-ligne */}
@@ -406,7 +423,7 @@ function StaffApp() {
         </div>
       )}
 
-      <div className={shell.shell}>
+      <div className={clsx(shell.shell, isMobile && (nvAccueil ? 'nv-grad' : 'nv-list'))}>
         <Sidebar
           view={user.role}
           currentPage={currentPage}
@@ -428,12 +445,24 @@ function StaffApp() {
           {/* Barre du haut : titre, événement, état, recherche, actions */}
           <header className={shell.bar}>
             {parentPage && (
-              <button type="button" onClick={() => navigate(parentPage)} className={shell.iconBtn}
+              <button type="button" onClick={() => navigate(parentPage)} className={isMobile ? 'nv-round nv-press' : shell.iconBtn}
                 title={`Retour à ${PAGE_TITLES[parentPage] || parentPage}`} aria-label={`Retour à ${PAGE_TITLES[parentPage] || parentPage}`}>
-                <ArrowLeft size={18} />
+                <ArrowLeft size={isMobile ? 20 : 18} />
               </button>
             )}
-            <h1 className={shell.title}>{PAGE_TITLES[currentPage] || currentPage}</h1>
+            {/* Accueil sur téléphone (23/11/2026) : pastille aux initiales (vers Mon profil) */}
+            {nvAccueil && (
+              <button type="button" onClick={() => navigate('mon-profil')} className={clsx(shell.nvAvatar, 'nv-press')} aria-label="Mon profil">
+                <Avatar nom={user.nom} src={staffPerson?.avatar || user.avatar} size={44} />
+              </button>
+            )}
+            <h1 className={clsx(shell.title, (nvAccueil || nvOwnTitle) && shell.srOnly)}>{PAGE_TITLES[currentPage] || currentPage}</h1>
+            {nvAccueil && (
+              <button type="button" className={clsx('nv-search', 'nv-press', shell.nvSearch)} onClick={() => setPaletteOpen(true)} aria-label="Chercher une page (Ctrl K)">
+                <Search size={18} aria-hidden="true" />
+                <span className={shell.searchText}>Chercher une page</span>
+              </button>
+            )}
             {currentEv && !isMobile && (
               <span className={shell.event}>
                 {currentEv.logoSrc && <img src={currentEv.logoSrc} alt="" />}
@@ -446,14 +475,23 @@ function StaffApp() {
               </span>
             )}
 
-            <button type="button" className={isMobile ? `${shell.iconBtn} ${shell.pushRight}` : shell.search} onClick={() => setPaletteOpen(true)} aria-label="Rechercher (Ctrl K)">
-              <Search size={16} aria-hidden="true" />
-              {!isMobile && <span className={shell.searchText}>Chercher un spectateur, un article…</span>}
-              {!isMobile && <kbd className={shell.kbd}>Ctrl K</kbd>}
-            </button>
+            {!nvAccueil && (
+              <button type="button" className={isMobile ? `nv-round nv-press ${shell.pushRight}` : shell.search} onClick={() => setPaletteOpen(true)} aria-label="Rechercher (Ctrl K)">
+                <Search size={isMobile ? 20 : 16} aria-hidden="true" />
+                {!isMobile && <span className={shell.searchText}>Chercher un spectateur, un article…</span>}
+                {!isMobile && <kbd className={shell.kbd}>Ctrl K</kbd>}
+              </button>
+            )}
 
             <div className={shell.actions}>
               <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu} />
+              {/* Téléphone (23/11/2026, demande du propriétaire) : bascule clair / sombre toujours dans la barre du haut,
+                  à côté des notifications, sur toutes les pages. La ligne « Mode sombre » du menu reste. */}
+              {isMobile && (
+                <button type="button" onClick={toggleDark} className="nv-round nv-press" title={themeLabel} aria-label={themeLabel}>
+                  {theme.isDark ? <Sun size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}
+                </button>
+              )}
               {!isMobile && (
                 <button type="button" onClick={toggleDark} className={shell.iconBtn} title={theme.isDark ? 'Mode clair' : 'Mode sombre'} aria-label={theme.isDark ? 'Mode clair' : 'Mode sombre'}>
                   {theme.isDark ? <Sun size={16} /> : <Moon size={16} />}
@@ -465,13 +503,15 @@ function StaffApp() {
                 </button>
               )}
               {user.benevoleDocId && (
-                <button type="button" onClick={() => setEspaceChoisi('benev')} className={shell.iconBtn} title="Basculer vers mon espace bénévole" aria-label="Basculer vers mon espace bénévole">
-                  <HandHeart size={16} />
+                <button type="button" onClick={() => setEspaceChoisi('benev')} className={isMobile ? 'nv-round nv-press' : shell.iconBtn} title="Basculer vers mon espace bénévole" aria-label="Basculer vers mon espace bénévole">
+                  <HandHeart size={isMobile ? 20 : 16} />
                 </button>
               )}
-              <button type="button" onClick={() => navigate('mon-profil')} className={shell.avatarBtn} aria-label="Mon profil">
-                <Avatar nom={user.nom} src={staffPerson?.avatar || user.avatar} size={32} />
-              </button>
+              {!nvAccueil && (
+                <button type="button" onClick={() => navigate('mon-profil')} className={shell.avatarBtn} aria-label="Mon profil">
+                  <Avatar nom={user.nom} src={staffPerson?.avatar || user.avatar} size={32} />
+                </button>
+              )}
             </div>
           </header>
 

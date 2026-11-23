@@ -69,7 +69,7 @@ export default function CheckUpdateButton({ variant = 'card' }) {
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '8px 14px',
-            background: 'var(--brand)', color: '#fff',
+            background: 'var(--brand)', color: 'var(--on-brand, #fff)',
             border: 'none', borderRadius: 8,
             fontSize: 12, fontWeight: 700,
             cursor: checking ? 'wait' : 'pointer',
@@ -118,7 +118,7 @@ export default function CheckUpdateButton({ variant = 'card' }) {
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '8px 14px',
-          background: 'var(--brand)', color: '#fff',
+          background: 'var(--brand)', color: 'var(--on-brand, #fff)',
           border: 'none', borderRadius: 8,
           fontSize: 12, fontWeight: 700,
           cursor: checking ? 'wait' : 'pointer',

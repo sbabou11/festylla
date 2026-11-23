@@ -42,6 +42,9 @@
   padding: 10px 12px; border-radius: var(--radius-lg); background: var(--text); color: var(--bg);
   font-size: var(--fs-13); font-weight: 600; box-shadow: 0 8px 24px rgba(0,48,72,.25);
 }
+/* Nouveau style (23/11/2026) : dans l'espace bénévole (.nv), la barre d'onglets flotte à 14 px du bas
+   sur 70 px ; le panier se cale au-dessus. L'espace artiste, qui réutilise ce composant, ne change pas. */
+:global(.nv) .bar { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 .bar button { min-height: 44px; padding: 0 16px; border: none; border-radius: var(--radius-md); background: var(--coral); color: #fff; font: 800 var(--fs-14, 14px) var(--font); cursor: pointer; }
 
 .done { justify-items: center; text-align: center; padding: var(--space-5) var(--space-4); }

@@ -156,3 +156,73 @@
   .switch { width: 48px; height: 30px; border-radius: 15px; }
   .switch::after { width: 24px; height: 24px; }
 }
+
+/* ── Nouveau style téléphone (23/11/2026, maquette « eq-accueil ») ──────────────
+   Ces classes ne sont posées que sous 641 px (isMobile) et les règles sont en plus
+   limitées à max-width: 640px. Fond en dégradé : `.nv-grad` posé par la coquille (App.jsx). */
+@media (max-width: 640px) {
+  .nvPage { gap: 14px; }
+  /* En-tête : gros montant animé */
+  .nvHero { text-align: center; padding: 18px 0 4px; }
+  .nvHeroLabel { margin: 0; font-size: 15px; font-weight: 500; color: var(--nv-mu); overflow-wrap: anywhere; }
+  .nvHeroValue { margin: 6px 0 4px; font-size: 56px; color: var(--nv-fg); }
+  .nvHeroDelta { margin: 6px 0 0; font-size: 14px; font-weight: 600; color: var(--nv-mu); }
+  .nvHeroHello { margin: 0 0 4px; }
+
+  /* Actions rondes */
+  .nvActs { row-gap: 16px; padding: 8px 0 4px; }
+  .nvActLabel { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nvActs :global(.nv-act) { min-height: 44px; font-family: 'Inter', system-ui, sans-serif; }
+  .nvActs :global(.nv-act):focus-visible { outline: 2px solid var(--nv-acc); outline-offset: 2px; border-radius: 12px; }
+  .nvActs :global(.nv-act) > i { color: var(--nv-fg); }
+
+  /* Indicateurs : cartes de verre sur deux colonnes */
+  .nvKpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .nvKpi { display: flex; flex-direction: column; gap: 2px; padding: 16px; min-width: 0; }
+  .nvKpiLabel { font-size: 14px; color: var(--nv-mu); }
+  .nvKpiValue { display: block; font-size: 24px; font-weight: 800; letter-spacing: -.02em; color: var(--nv-fg); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nvKpiSub { font-size: 14px; color: var(--nv-mu); }
+  .nvDelta { font-size: 14px; font-weight: 600; color: var(--nv-mu); }
+  .nvBars { display: flex; align-items: flex-end; gap: 5px; height: 54px; margin-top: 10px; }
+  .nvBars i { flex: 1; min-height: 2px; background: var(--nv-fg); opacity: .85; border-radius: 3px; }
+  .nvBars-pos i { background: var(--nv-pos); }
+
+  /* Cartes en lignes (« À traiter », dernières transactions) */
+  .nvCard { padding: 4px 18px; }
+  .nvCardHead { margin: 12px 0 4px; }
+  .nvCardHead h2 { font-size: 18px; }
+  .nvEmpty { margin: 0; padding: 14px 0 16px; font-size: 15px; color: var(--nv-mu); }
+  .nvChev { flex: none; color: var(--nv-mu); }
+  .nvSign { font-size: 20px; font-weight: 800; line-height: 1; }
+  .nvCard :global(.nv-row) { cursor: pointer; }
+  .nvCard div:global(.nv-row) { cursor: default; }
+  .nvCard :global(.nv-row):focus-visible { outline: 2px solid var(--nv-acc); outline-offset: 2px; border-radius: 12px; }
+  .nvSee {
+    display: block; width: 100%; min-height: 48px; padding: 0;
+    border: 0; border-top: 1px solid var(--nv-line); background: none;
+    color: var(--nv-fg); font: 600 15px 'Inter', system-ui, sans-serif; cursor: pointer;
+  }
+
+  /* Autres blocs (cartes de l'appli) : habillage carte de verre */
+  .nvBlock > section {
+    background: var(--nv-glass);
+    border: 1px solid var(--nv-line);
+    border-radius: 26px;
+    box-shadow: var(--nv-shadow);
+    -webkit-backdrop-filter: blur(22px);
+    backdrop-filter: blur(22px);
+  }
+  .nvBlock > section > header { border-bottom-color: var(--nv-line); padding: 14px 18px; }
+  .nvBlock > section > header h3 { font-size: 18px; color: var(--nv-fg); }
+
+  /* Raccourcis : titre de section et tuiles de verre */
+  .nvShortcuts .sectionTitle { font-size: 20px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--nv-fg); margin: 8px 4px 2px; }
+  .nvShortcuts .tile {
+    background: var(--nv-glass); border-color: var(--nv-line); border-radius: 22px;
+    -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px);
+  }
+  .nvShortcuts .tileText b { font-size: 16px; }
+  .nvShortcuts .tileText > span, .nvShortcuts .tileStats { font-size: 14px; }
+
+  .nvCustomize { margin-top: 4px; }
+}

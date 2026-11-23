@@ -13,6 +13,7 @@ export default function ThemeToggle({ style = {}, variant = 'auto' }) {
   return (
     <button
       onClick={toggleDark}
+      aria-label={theme.isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
       title={theme.isDark ? 'Passer en mode clair' : 'Passer en mode sombre'}
       style={{
         width: 34, height: 34,

@@ -7,6 +7,9 @@
  * sur un ruban horaire et pointe son arrivée en scannant le QR du poste.
  *
  * demo : données d'exemple (route /ui/benevole en développement), aucune écriture Firestore.
+ *
+ * Nouveau style (23/11/2026, maquette validée) : classe `nv` (styles/nouveau.css), accueil sur
+ * dégradé avec cartes de verre, barre d'onglets flottante. Logique inchangée.
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { db } from '../../firebase/config'
@@ -20,7 +23,6 @@ import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleT
 import { watchCarte } from '../../menu/carte'
 import { APP_VERSION_LABEL, APP_FULL_LABEL } from '../../utils/buildInfo'
 import CheckUpdateButton from '../../components/CheckUpdateButton'
-import PageTransition from '../../components/PageTransition'
 import { apiFetch } from '../../firebase/session'
 import { friendlyError } from '../../utils/errors'
 import {
@@ -66,6 +68,11 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const params    = new URLSearchParams(window.location.search)
   const docId     = demo ? demo.benev._id : (docIdProp  || params.get('id')  || null)
   const eventId   = demo ? 'demo' : (eventIdProp || params.get('ev') || null)
+  // Nouveau style (23/11/2026) : les feuilles et fenêtres s'affichent dans <body>, hors de la racine .nv
+  useEffect(() => {
+    document.body.classList.add('nv')
+    return () => document.body.classList.remove('nv')
+  }, [])
 
   const benevCol  = () => eventId
     ? collection(db, 'events', eventId, 'benevoles')
@@ -496,48 +503,77 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     { id: 'mes-resas', label: 'Résas',    icon: Bookmark, badge: readyResas.length || pendingResas || 0 },
     ...(em ? [] : [{ id: 'profil',    label: 'Profil',   icon: User }]),           // entrée par lien, sans mot de passe
   ]
+  // Nouveau style (23/11/2026) : la pastille de l'onglet actif glisse d'un onglet à l'autre
+  // (transition sur transform, l'élément reste monté)
+  const navIndex = NAV.findIndex(n => n.id === tab)
+  // Accueil sur dégradé ; les autres onglets sur le fond de liste (disposition inchangée)
+  const surDegrade = tab === 'accueil'
+  // Créneau : « Mon prochain créneau · dans 18 min » ou « Mon créneau · en cours · fin dans 1h10 »
+  const slotKicker = slot
+    ? `${slot.range.start.getTime() <= now ? 'Mon créneau' : 'Mon prochain créneau'}${rel?.text ? ' · ' + rel.text.charAt(0).toLowerCase() + rel.text.slice(1) : ''}`
+    : ''
+  const slotDate = slot
+    ? (() => { const d = slot.range.start.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }); return d.charAt(0).toUpperCase() + d.slice(1) })()
+    : ''
+
+  // Compte (23/11/2026) : la bascule vers l'espace équipe et la déconnexion, auparavant dans
+  // l'en-tête, sont en bas de l'Accueil (présent pour tous, fiche Event Manager comprise) pour
+  // laisser la barre du haut à la cloche, au thème et au QR
+  const compte = (onSwitchToStaff || !demo) ? (
+    <section className={`nv-glass nv-pad ${s.card}`}>
+      <div className={s.cardHead}>
+        <h2>Mon compte</h2>
+        <span className={s.muted}>BNV-{docId?.slice(-6)}</span>
+      </div>
+      {onSwitchToStaff && (
+        <button type="button" className={`nv-btn-sec nv-press ${s.accountBtn}`} onClick={onSwitchToStaff}>
+          <Store size={20}/> Basculer vers l'espace équipe
+        </button>
+      )}
+      {!demo && (
+        <button type="button" className={`nv-btn-sec nv-press ${s.accountBtn}`} onClick={logout}>
+          <LogOut size={20}/> Se déconnecter
+        </button>
+      )}
+    </section>
+  ) : null
 
   return (
-    <div className={s.page}>
-      {/* En-tête */}
-      <header className={s.head}>
-        <div className={s.headInner}>
-          <div className={s.logo}><img src="/logo.png" alt="" onError={e => { e.currentTarget.style.display = 'none' }} /></div>
-          {/* Refonte téléphone (20/11/2026) : l'en-tête salue le bénévole et porte le bouton « Mon QR » */}
-          {benev ? (
+    <div className={`nv ${surDegrade ? 'nv-grad' : 'nv-list'} ${s.page}`}>
+      {/* Barre du haut (nouveau style, 23/11/2026) : pastille aux initiales, salutation, cloche,
+          bascule clair/sombre et bouton rond « Mon QR », présents sur tous les onglets */}
+      <header className={`${s.top} ${surDegrade ? s.topGrad : ''}`}>
+        <div className={s.topInner}>
+          {benev ? (<>
+            <span className={s.av} aria-hidden="true">{initialsOf(benev)}</span>
             <div className={s.headWho}>
               <b>Bonjour {benev.prenom || benev.nom}</b>
               <span>Bénévole{eventMeta?.nom ? ` · ${eventMeta.nom}` : ''}</span>
             </div>
-          ) : (<>
-            <span className={s.brandName}>YllaCash</span>
-            {eventMeta?.nom && (
-              <span className={s.event}>
-                {eventMeta.logoSrc ? <img src={eventMeta.logoSrc} alt="" /> : <span>{eventMeta.emoji || '🎵'}</span>}
-                {eventMeta.nom}
-              </span>
-            )}
+          </>) : (<>
+            <div className={s.logo}><img src="/logo.png" alt="" onError={e => { e.currentTarget.style.display = 'none' }} /></div>
+            <div className={s.headWho}>
+              <b>YllaCash</b>
+              {eventMeta?.nom && <span>{eventMeta.nom}</span>}
+            </div>
           </>)}
           <div className={s.headActions}>
             <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu}/>
-            {benev
-              ? <button type="button" className={s.headQr} onClick={openQr} aria-label="Afficher mon QR code"><QrCode size={18}/> Mon QR</button>
-              : <ThemeToggle variant="light" style={{ width: 36, height: 36, minHeight: 0 }}/>}
-            {onSwitchToStaff && (
-              <button type="button" className={s.headBtn} onClick={onSwitchToStaff} title="Basculer vers l'espace staff" aria-label="Basculer vers l'espace staff">
-                <Store size={16}/>
-              </button>
-            )}
-            {!demo && (
-              <button type="button" className={s.headBtn} onClick={logout} title="Se déconnecter" aria-label="Se déconnecter">
-                <LogOut size={16}/>
+            <ThemeToggle style={{
+              width: 44, height: 44, minHeight: 0, borderRadius: '50%',
+              background: surDegrade ? 'var(--nv-glass)' : 'var(--nv-card2)',
+              border: surDegrade ? '1px solid var(--nv-line)' : '1px solid transparent',
+            }}/>
+            {benev && (
+              <button type="button" className="nv-round nv-press" onClick={openQr} aria-label="Mon QR" title="Mon QR">
+                <QrCode size={20}/>
               </button>
             )}
           </div>
         </div>
       </header>
 
-      <main className={s.wrap}>
+      <main className={`nv-under-tabbar ${s.wrap}`}>
         {/* Session fermée (20/11/2026) : on le dit sur tous les onglets ; « Réessayer » recharge la
             page, ce qui rouvre l'espace à partir du lien personnel */}
         {fermee && (
@@ -546,52 +582,40 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             Il a été fermé sur ce téléphone, par exemple parce qu'un autre lien YllaCash y a été ouvert. Réessayez, ou rouvrez votre lien personnel de bénévole.
           </SessionBanner>
         )}
-        {/* Animation entre les onglets */}
-        <PageTransition pageKey={tab}>
+        {/* Animation entre les onglets (23/11/2026) : .nv-in rejouée à chaque changement d'onglet */}
+        <div key={tab} className={`nv-in ${s.pane}`}>
         {tab === 'accueil' && (
           benev ? (
-            <>
-              <p className={s.helloLine}>
-                {em ? dayLabel(jour) : benev.poste ? benev.poste : 'Bénévole'} · <span className={s.helloId}>BNV-{docId?.slice(-6)}</span>
-              </p>
-
-              {!em && (<>
-              {/* Mon créneau sur le ruban horaire */}
-              <section className={s.card}>
-                <div className={s.cardHead}>
-                  <h2>Mon créneau</h2>
-                  {rel?.text && <Badge tone={presence ? 'success' : rel.tone}>{presence ? 'Arrivée pointée' : rel.text}</Badge>}
-                </div>
-                {slot && ribbon ? (
-                  <>
-                    <TimeRibbon start={ribbon.start} end={ribbon.end} items={ribbon.items} now={now}/>
-                    <div className={s.slotInfo}>
-                      <MapPin size={14}/>
-                      <span>
-                        <b>{postName(slot.postId)}</b> · {slot.shift.label ? slot.shift.label + ' · ' : ''}
-                        {slot.range.start.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}, {fmtHour(slot.range.start)}–{fmtHour(slot.range.end)}
-                      </span>
+            <div className={`nv-st ${s.stack}`}>
+              {!em && (
+              /* Mon créneau : carte de verre principale (nouveau style, 23/11/2026) */
+                slot && ribbon ? (
+                  <section className={`nv-glass nv-pad ${s.slotCard}`}>
+                    <p className={s.slotKicker}>{slotKicker}</p>
+                    <h2 className={`nv-big ${s.slotTitle}`}>{postName(slot.postId)} · {fmtHour(slot.range.start)} – {fmtHour(slot.range.end)}</h2>
+                    <p className={s.slotDate}>{slotDate}{slot.shift.label ? ` · ${slot.shift.label}` : ''}</p>
+                    {/* Frise horaire gardée dans la carte : en mode « tient dans la largeur », elle ne déborde pas */}
+                    <div className={s.ribbon}>
+                      <TimeRibbon start={ribbon.start} end={ribbon.end} items={ribbon.items} now={now}/>
                     </div>
-                    {presence ? (
-                      <div className={s.checked}>
-                        <CheckCircle2 size={18}/>
-                        <span>Arrivée enregistrée à {fmtHour(new Date(presence.at))}{presence.retardMin > 0 ? ` · ${presence.retardMin} min après le début` : ''}</span>
+                    {presence ? (<>
+                      <div className={`nv-btn ${s.pointed}`} role="status">
+                        <CheckCircle2 size={20}/> Arrivée pointée à {fmtHour(new Date(presence.at))}
                       </div>
-                    ) : (
-                      <button type="button" className={s.scanAction} onClick={openScan} disabled={!checkInOpen}>
-                        <span className={s.scanIcon}><ScanLine size={20}/></span>
-                        <span>
-                          <b>Pointer mon arrivée</b>
-                          <span>{checkInOpen ? 'Scanner le QR du poste' : `Ouvre ${CHECKIN_EARLY_MIN} min avant le début du créneau`}</span>
-                        </span>
-                        <ChevronRight size={18} className={s.chev}/>
+                      {presence.retardMin > 0 && <p className={s.slotNote}>{presence.retardMin} min après le début du créneau</p>}
+                    </>) : (<>
+                      <button type="button" className={`nv-btn nv-press ${s.pointBtn}`} onClick={openScan} disabled={!checkInOpen}>
+                        <ScanLine size={20}/> Pointer mon arrivée
                       </button>
-                    )}
-                    <button type="button" className={s.textLink} onClick={() => setTab('planning')}>
-                      Voir tout mon planning <ChevronRight size={14}/>
+                      <p className={s.slotNote}>{checkInOpen ? 'Scannez le QR affiché au poste' : `Ouvre ${CHECKIN_EARLY_MIN} min avant le début du créneau`}</p>
+                    </>)}
+                    <button type="button" className={`nv-press ${s.textLink}`} onClick={() => setTab('planning')}>
+                      Voir tout mon planning <ChevronRight size={16}/>
                     </button>
-                  </>
+                  </section>
                 ) : (
+                  <section className={`nv-glass nv-pad ${s.card}`}>
+                    <div className={s.cardHead}><h2>Mon créneau</h2></div>
                   <div className={s.noSlot}>
                     <p>{shifts.length ? 'Aucun créneau à venir pour vous.' : "L'organisation n'a pas encore publié les créneaux."}</p>
                     {shifts.length > 0 && <Button variant="secondary" size="sm" icon={CalendarDays} onClick={() => setTab('planning')}>Choisir un créneau</Button>}
@@ -607,40 +631,39 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                       )
                     })}
                   </div>
-                )}
-              </section>
-
-              </>)}
+                  </section>
+                )
+              )}
 
               {/* Commande prête */}
               {readyResas.length > 0 && (
-                <button type="button" className={s.ready} onClick={() => setTab('mes-resas')}>
-                  <BellRing size={18}/>
-                  <span>
+                <button type="button" className={`nv-glass nv-press ${s.notice}`} onClick={() => setTab('mes-resas')}>
+                  <span className={`nv-ic ${s.icReady}`}><BellRing size={20}/></span>
+                  <span className={s.noticeText}>
                     <b>{readyResas.length > 1 ? `${readyResas.length} commandes prêtes` : 'Votre commande est prête'}</b>
                     <span>Code #{readyResas[0].code} · présentez-vous au stand</span>
                   </span>
-                  <ChevronRight size={18}/>
+                  <ChevronRight size={18} className={s.chev}/>
                 </button>
               )}
 
               {/* Contrôle des billets aujourd'hui (Event Manager) */}
               {em && canControl && (
-                <button type="button" className={s.ready} onClick={() => setTab('entree')}>
-                  <Ticket size={18}/>
-                  <span>
+                <button type="button" className={`nv-glass nv-press ${s.notice}`} onClick={() => setTab('entree')}>
+                  <span className={`nv-ic ${s.icBillets}`}><Ticket size={20}/></span>
+                  <span className={s.noticeText}>
                     <b>Vous contrôlez les billets aujourd'hui</b>
                     <span>Ouvrez l'onglet Entrée pour scanner les billets</span>
                   </span>
-                  <ChevronRight size={18}/>
+                  <ChevronRight size={18} className={s.chev}/>
                 </button>
               )}
 
-              {/* Quotas en bocaux */}
-              <section className={s.card}>
+              {/* Ce qu'il me reste : barres de quotas qui se remplissent (nouveau style, 23/11/2026) */}
+              <section className={`nv-glass nv-pad ${s.card}`}>
                 <div className={s.cardHead}>
-                  <h2>{em ? 'Mes quotas du jour' : 'Mes quotas'}</h2>
-                  <span className={s.muted}>Ce qu'il vous reste</span>
+                  <h2>Ce qu'il me reste</h2>
+                  {em && <span className={s.muted}>{dayLabel(jour)}</span>}
                 </div>
                 {fermee ? quotasNonCharges : (<>
                 <div className={s.bars}>
@@ -650,7 +673,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                     return (
                       <div key={type} className={s.barRow}>
                         <span className={s.barName}>{cfg.label}</span>
-                        <span className={s.barTrack}><i style={{ width: max ? `${Math.round(v / max * 100)}%` : 0 }}/></span>
+                        <span className={s.barTrack}><i className="nv-grow-x" style={{ width: max ? `${Math.round(v / max * 100)}%` : 0 }}/></span>
                         <b className={v ? s.barVal : s.barOut}>{max ? (v ? `${v} sur ${max}` : 'Épuisé') : '—'}</b>
                       </div>
                     )
@@ -659,13 +682,16 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                 {em && !(quotas.droits.repas || quotas.droits.boisson || quotas.droits.eau) && (
                   <p className={s.muted}>Pas de repas ni de boissons prévus aujourd'hui.</p>
                 )}
-                {em && <p className={s.hint}>Valables jusqu'à 6 h du matin. Ce qui n'est pas utilisé ne passe pas au lendemain.</p>}
+                {em && <p className={s.muted}>Valables jusqu'à 6 h du matin. Ce qui n'est pas utilisé ne passe pas au lendemain.</p>}
                 </>)}
+                <button type="button" className={`nv-btn-sec nv-press ${s.orderBtn}`} onClick={() => setTab('commander')}>
+                  <UtensilsCrossed size={20}/> Commander mon repas
+                </button>
+                <p className={s.hint}>Présentez votre QR code à la borne pour commander. Le bouton QR, en haut, l'agrandit.</p>
               </section>
 
-
               {em && (
-                <section className={s.card}>
+                <section className={`nv-glass nv-pad ${s.card}`}>
                   <div className={s.cardHead}>
                     <h2>Demain</h2>
                     <span className={s.muted}>{dayLabel(nextDay(jour))}</span>
@@ -678,26 +704,27 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                 </section>
               )}
 
-              <Button variant="secondary" size="lg" block icon={UtensilsCrossed} onClick={() => setTab('commander')}>Commander mon repas</Button>
-              <p className={s.hint}>Présentez votre QR code à la borne pour commander. Le bouton « Mon QR », en haut, l'agrandit.</p>
-
               <DernieresCommandes resas={resas} setTab={setTab}
                 nonChargees={fermee ? 'Votre QR bénévole reste utilisable.' : ''}/>
 
-              <div className={s.themeRow}><span>Thème clair ou sombre</span><ThemeToggle variant="light" style={{ width: 44, height: 44, minHeight: 0 }}/></div>
-            </>
+              {compte}
+            </div>
           ) : fermee ? (
             /* Session fermée avant que la fiche soit chargée (20/11/2026) : plus de « Chargement… » sans fin */
-            <>
-              <section className={s.card}>
-                <div className={s.cardHead}><h2>Mes quotas</h2></div>
+            <div className={`nv-st ${s.stack}`}>
+              <section className={`nv-glass nv-pad ${s.card}`}>
+                <div className={s.cardHead}><h2>Ce qu'il me reste</h2></div>
                 {quotasNonCharges}
               </section>
               <DernieresCommandes resas={resas} setTab={setTab}
                 nonChargees="Elles réapparaîtront dès que votre espace sera rouvert."/>
-            </>
+              {compte}
+            </div>
           ) : (
-            <div className={s.loading}>Chargement…</div>
+            <div className={s.stack}>
+              <div className={s.loading}>Chargement…</div>
+              {compte}
+            </div>
           )
         )}
 
@@ -723,7 +750,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         {tab === 'mes-resas' && <MesCodes codes={codes} onCancel={setCancelCode}/>}
         {/* Session fermée (20/11/2026) : une liste vide n'est pas présentée comme « aucune réservation » */}
         {tab === 'mes-resas' && fermee && resas.length === 0 && (
-          <section className={s.card}>
+          <section className={`nv-card nv-pad ${s.card}`}>
             <div className={s.cardHead}><h2>Mes réservations</h2></div>
             <div className={s.noSlot}>
               <b>Réservations non chargées</b>
@@ -745,7 +772,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             pwdMsg={pwdMsg} pwdLoading={pwdLoading} changePwd={changePwd}
           />
         )}
-        </PageTransition>
+        </div>
 
         <footer className={s.footer}>
           <b>{APP_FULL_LABEL}</b>
@@ -755,18 +782,20 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         </footer>
       </main>
 
-      {/* Barre d'onglets */}
-      <nav className={s.nav} aria-label="Navigation">
+      {/* Barre d'onglets flottante (nouveau style, 23/11/2026) : la pastille glisse vers l'onglet choisi */}
+      <nav className={`nv-tabbar ${s.tabbar}`} aria-label="Navigation">
+        {navIndex >= 0 && (
+          <span className="nv-tab-ind" aria-hidden="true"
+            style={{ width: `calc((100% - 12px) / ${NAV.length})`, transform: `translateX(${navIndex * 100}%)` }}/>
+        )}
         {NAV.map(item => {
           const Icon = item.icon
           const on = tab === item.id
           return (
-            <button key={item.id} type="button" className={`${s.navItem} ${on ? s.navOn : ''}`}
+            <button key={item.id} type="button" className="nv-press"
               onClick={() => setTab(item.id)} aria-current={on ? 'page' : undefined}>
-              <span className={s.navIcon}>
-                <Icon size={20}/>
-                {item.badge > 0 && <span className={s.navBadge}>{item.badge}</span>}
-              </span>
+              <Icon size={22} aria-hidden="true"/>
+              {item.badge > 0 && <span className="nv-tab-badge" aria-label={`${item.badge} en cours`}>{item.badge}</span>}
               {item.label}
             </button>
           )
@@ -874,12 +903,12 @@ const fmtResaDate = (r) => {
 function DernieresCommandes({ resas, setTab, nonChargees = '' }) {
   const dernieres = resas.slice(0, 3)
   return (
-    <section className={s.card}>
+    <section className={`nv-glass nv-pad ${s.card}`}>
       <div className={s.cardHead}>
         <h2>Mes dernières commandes</h2>
         {resas.length > 3 && (
-          <button type="button" className={s.textLink} onClick={() => setTab('mes-resas')}>
-            Voir tout <ChevronRight size={14}/>
+          <button type="button" className={`nv-press ${s.textLink}`} onClick={() => setTab('mes-resas')}>
+            Voir tout <ChevronRight size={16}/>
           </button>
         )}
       </div>
@@ -902,8 +931,9 @@ function DernieresCommandes({ resas, setTab, nonChargees = '' }) {
               : items.length === 1 ? items[0].nom
               : `${items[0].nom} +${items.length - 1}`
             return (
-              <li key={r.id} className={s.resaRow}>
-                <span className={s.resaText}>
+              <li key={r.id} className="nv-row">
+                <span className="nv-ic neutre" aria-hidden="true"><ShoppingCart size={20}/></span>
+                <span className="nv-rt">
                   <b>{titre}</b>
                   <span>{fmtResaDate(r)}</span>
                 </span>

@@ -4,6 +4,8 @@
  * Photo de l'article si renseignée, sinon initiales.
  * onInfo (facultatif) : petit bouton « i » qui ouvre la fiche composition / allergènes,
  * à côté de la tuile pour ne pas gêner l'ajout en un appui (visible aussi en rupture).
+ * nv (téléphone, 23/11/2026) : tuile en carte, pastille ronde aux initiales, stock bas ou rupture
+ * écrits sous le prix, quantité qui « saute » à chaque appui. Même logique d'ajout.
  */
 import React from 'react'
 import clsx from 'clsx'
@@ -22,12 +24,12 @@ const initials = (nom = '') => {
   return (words[0][0] + words[1][0]).toUpperCase()
 }
 
-export default function ProductGrid({ items, qtys, onAdd, onInfo, big = false }) {
+export default function ProductGrid({ items, qtys, onAdd, onInfo, big = false, nv = false }) {
   if (items.length === 0) {
     return <p className={s.gridEmpty}>Aucun article dans cette catégorie.</p>
   }
   return (
-    <div className={clsx(s.grid, big && s.gridBig)}>
+    <div className={clsx(s.grid, big && s.gridBig, nv && s.nvGrid)}>
       {items.map(m => {
         const stock   = m.stock || 0
         const qty     = qtys[m.id] || 0
@@ -53,11 +55,21 @@ export default function ProductGrid({ items, qtys, onAdd, onInfo, big = false })
                 )
                 : <span className={clsx(s.pic, s[toneFor(m.cat)])} data-pic>{initials(m.nom)}</span>}
               <span className={s.tileName}>{m.nom}</span>
-              <span className={s.tilePrice}>{fmt(m.prix || 0)}</span>
-              <span className={clsx(s.stock, low && s.stockLow, rupture && s.stockOut)}>
-                {rupture ? 'Rupture' : stock}
-              </span>
-              {qty > 0 && <span className={s.qtyBadge}>{qty}</span>}
+              {nv ? (
+                <span className={clsx(s.tilePrice, s.nvPrice)}>
+                  {rupture ? <span className={s.nvOut}>Rupture de stock</span> : fmt(m.prix || 0)}
+                  {low && <span className={s.nvLow}> · {stock} restant{stock > 1 ? 's' : ''}</span>}
+                </span>
+              ) : (<>
+                <span className={s.tilePrice}>{fmt(m.prix || 0)}</span>
+                <span className={clsx(s.stock, low && s.stockLow, rupture && s.stockOut)}>
+                  {rupture ? 'Rupture' : stock}
+                </span>
+              </>)}
+              {/* nv : la clé change à chaque appui, la pastille rejoue son animation */}
+              {qty > 0 && (nv
+                ? <span key={qty} className={clsx(s.nvQty, 'nv-pop')}>{qty}</span>
+                : <span className={s.qtyBadge}>{qty}</span>)}
             </button>
             {onInfo && (
               <button type="button" className={s.tileInfo} onClick={() => onInfo(m)}

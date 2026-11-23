@@ -185,7 +185,7 @@ function BenevoleDayGrids({ shifts, posts, myId, onCellClick }) {
                 </div>
               </div>
               {myCount > 0 && (
-                <span style={{ background:'var(--brand)', color:'#fff', fontSize:10, fontWeight:800, padding:'3px 8px', borderRadius:5, display:'inline-flex', alignItems:'center', gap:3, flexShrink:0 }}>
+                <span style={{ background:'var(--brand)', color:'var(--on-brand, #fff)', fontSize:10, fontWeight:800, padding:'3px 8px', borderRadius:5, display:'inline-flex', alignItems:'center', gap:3, flexShrink:0 }}>
                   <Check size={10}/> {myCount}
                 </span>
               )}

@@ -10,12 +10,14 @@ import useAppStore from '../../store/useAppStore'
 import useAuthStore from '../../store/useAuthStore'
 import { fmt } from '../../utils/helpers'
 import { friendlyError } from '../../utils/errors'
-import { Undo2, Receipt, ArrowUp, ArrowDown, ArrowUpDown, Search, SearchX, X } from 'lucide-react'
+import { Undo2, Receipt, ArrowUp, ArrowDown, ArrowUpDown, Search, SearchX, X, SlidersHorizontal } from 'lucide-react'
 import { annulerTransaction } from '../../firebase/service'
 import { planAnnulation } from '../../utils/annulationTx'
 import { db } from '../../firebase/config'
 import useEventStore from '../../store/useEventStore'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+import { txTime } from '../../utils/dashboardData'
+import { pastilleTx } from '../../utils/nvPastilles'
 import { Button, Badge, Table, Empty, Dialog, HoldButton, toast } from '../../ui'
 import s from './transactions/transactions.module.css'
 
@@ -40,6 +42,22 @@ const TAB_COLS = [
   ['montant',    'Montant',    true],
 ]
 
+// Téléphone (23/11/2026) : regroupement par jour (heure de l'opération, sinon début du champ date)
+const jourDe = (ms) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime() }
+const nvDayKey = (t) => {
+  const ms = txTime(t)
+  return ms != null ? `j${jourDe(ms)}` : `d${String(t.date || '').split(/[ ,T]/)[0] || '?'}`
+}
+const nvDayLabel = (key) => {
+  if (key.startsWith('d')) return key === 'd?' ? 'Sans date' : key.slice(1)
+  const j = Number(key.slice(1)), auj = jourDe(Date.now())
+  const ecart = Math.round((auj - j) / 86400000)
+  if (ecart === 0) return "Aujourd'hui"
+  if (ecart === 1) return 'Hier'
+  const txt = new Date(j).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+  return txt.charAt(0).toUpperCase() + txt.slice(1)
+}
+
 const normalize = (str) => (str || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 export default function Transactions({ onNavigate }) {
@@ -63,6 +81,7 @@ export default function Transactions({ onNavigate }) {
   // Tablette (20/11/2026) : de 641 à 1024 px, quatre colonnes et la même ligne dépliable
   const { isMobile, isTablet } = useBreakpoint()
   const [openKey, setOpenKey] = useState(null)
+  const [filtersOpen, setFiltersOpen] = useState(false) // téléphone (23/11/2026) : filtres derrière le bouton rond
 
   const specMap = Object.fromEntries(spectateurs.map(s => [s.id, s.nom]))
 
@@ -242,83 +261,114 @@ export default function Transactions({ onNavigate }) {
 
   // Disposition téléphone (20/11/2026) : mêmes données et mêmes actions que le tableau,
   // le détail complet et l'annulation sont dans la partie dépliée.
+  // Nouveau style (23/11/2026, maquette « eq-flux ») : grand titre, recherche en pilule, filtres derrière
+  // un bouton rond, transactions groupées par jour (tri par date) ; ligne dépliable et annulation inchangées.
+  const nvShown = isMobile ? displayTx.slice(0, visible) : []
+  const nvGroups = []
+  if (isMobile) {
+    if (sortKey !== 'date') nvGroups.push({ key: 'tri', label: `Triées par ${(SORTS.find(x => x[0] === sortKey)?.[1] || '').toLowerCase()}`, items: nvShown })
+    else nvShown.forEach(tx => {
+      const k = nvDayKey(tx)
+      const last = nvGroups[nvGroups.length - 1]
+      if (last && last.key === k) last.items.push(tx)
+      else nvGroups.push({ key: k, label: nvDayLabel(k), items: [tx] })
+    })
+  }
+  const nbFiltres = (filterType ? 1 : 0) + (filterStaff ? 1 : 0) + (sortKey !== 'date' || sortDir !== 'desc' ? 1 : 0)
   const mobileView = isMobile && (
     <>
-      <div className={s.mFilters}>
-        <label className={s.mField}>
-          <span className={s.mLabel}>Rechercher dans le détail</span>
-          <span className={s.mSearch}>
-            <Search size={18} className={s.searchIcon} aria-hidden="true"/>
-            <input type="search" value={searchDetail} onChange={e => setSearchDetail(e.target.value)}
-              placeholder="Article, stand, recharge…" className={s.mInput}/>
-            {searchDetail && (
-              <button type="button" onClick={() => setSearchDetail('')} className={s.mClear} aria-label="Effacer la recherche">
-                <X size={18}/>
-              </button>
-            )}
-          </span>
-        </label>
-        <div className={s.mRow}>
-          <label className={s.mField}>
-            <span className={s.mLabel}>Type</span>
-            <select className={s.mSelect} value={filterType} onChange={e => setFilterType(e.target.value)}>
-              <option value="">Tous les types</option>
-              {typeOptions.map(t => <option key={t} value={t}>{TYPE_LABEL[t] || t}</option>)}
-            </select>
-          </label>
-          {isAdmin && staffOptions.length > 0 && (
-            <label className={s.mField}>
-              <span className={s.mLabel}>Staff</span>
-              <select className={s.mSelect} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
-                <option value="">Tout le staff</option>
-                {staffOptions.map(nom => <option key={nom} value={nom}>{nom}</option>)}
-              </select>
-            </label>
+      <p className="nv-title" aria-hidden="true">Transactions</p>
+      <div className={s.nvTools}>
+        <label className={clsx('nv-search', s.nvSearch)}>
+          <Search size={20} aria-hidden="true"/>
+          <input type="search" value={searchDetail} onChange={e => setSearchDetail(e.target.value)}
+            placeholder="Article, stand, recharge…" aria-label="Rechercher dans le détail" className={s.nvInput}/>
+          {searchDetail && (
+            <button type="button" onClick={() => setSearchDetail('')} className={s.nvClear} aria-label="Effacer la recherche">
+              <X size={18}/>
+            </button>
           )}
-        </div>
-        <div className={s.mRow}>
-          <label className={s.mField}>
-            <span className={s.mLabel}>Trier par</span>
-            <select className={s.mSelect} value={sortKey} onChange={e => changeSort(e.target.value)}>
-              {SORTS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
-            </select>
-          </label>
-          <Button variant="secondary" iconOnly icon={sortDir === 'asc' ? ArrowUp : ArrowDown} className={s.mSortBtn}
-            aria-label={sortDir === 'asc' ? 'Tri croissant, passer en décroissant' : 'Tri décroissant, passer en croissant'}
-            onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}/>
-        </div>
-        {hasFilters && (
-          <Button variant="ghost" icon={X} block onClick={resetFilters}>Réinitialiser les filtres</Button>
-        )}
+        </label>
+        <button type="button" className={clsx('nv-round', 'nv-press', s.nvFilterBtn, (filtersOpen || nbFiltres > 0) && s.nvFilterOn)}
+          aria-expanded={filtersOpen} aria-controls="tx-filtres" onClick={() => setFiltersOpen(o => !o)}
+          aria-label={nbFiltres ? `Filtres et tri, ${nbFiltres} actif${nbFiltres > 1 ? 's' : ''}` : 'Filtres et tri'}>
+          <SlidersHorizontal size={20} aria-hidden="true"/>
+          {nbFiltres > 0 && <span className={s.nvFilterCount} aria-hidden="true">{nbFiltres}</span>}
+        </button>
       </div>
 
-      {displayTx.length === 0 ? emptyFiltre : (
-        <ul className={s.mList}>
-          {displayTx.slice(0, visible).map(t => {
-            const open = openKey === t._k
-            const tone = TYPE_TONE[t.type] || 'neutral'
-            const quand = t.heure ? String(t.heure).slice(0, 5) : t.date
-            return (
-              <li key={t._k} className={s.mItem}>
-                <button type="button" className={s.mLine} aria-expanded={open}
-                  onClick={() => setOpenKey(open ? null : t._k)}>
-                  <span className={clsx(s.mDot, s[`dot_${tone}`])} aria-hidden="true">{sign(t) || '•'}</span>
-                  <span className={s.mMain}>
-                    <span className={s.mName}>{t.snom}</span>
-                    <span className={s.mSub}>{t.annulee ? 'Annulée · ' : ''}{t.label || '—'}{quand ? ` · ${quand}` : ''}</span>
-                  </span>
-                  <span className={clsx(s.amount, s.mAmount, s[`amt_${tone}`], t.annulee && s.mStruck)}>{sign(t)}{fmt(t.montant || 0)}</span>
-                </button>
-                {open && (
-                  <div className={s.mMore}>
-                    {detailDeplie(t, tone)}
-                  </div>
-                )}
-              </li>
-            )
-          })}
-        </ul>
+      {filtersOpen && (
+        <div id="tx-filtres" className={clsx(s.mFilters, s.nvFilters, 'nv-card', 'nv-in')}>
+          <div className={s.mRow}>
+            <label className={s.mField}>
+              <span className={s.mLabel}>Type</span>
+              <select className={s.mSelect} value={filterType} onChange={e => setFilterType(e.target.value)}>
+                <option value="">Tous les types</option>
+                {typeOptions.map(t => <option key={t} value={t}>{TYPE_LABEL[t] || t}</option>)}
+              </select>
+            </label>
+            {isAdmin && staffOptions.length > 0 && (
+              <label className={s.mField}>
+                <span className={s.mLabel}>Staff</span>
+                <select className={s.mSelect} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
+                  <option value="">Tout le staff</option>
+                  {staffOptions.map(nom => <option key={nom} value={nom}>{nom}</option>)}
+                </select>
+              </label>
+            )}
+          </div>
+          <div className={s.mRow}>
+            <label className={s.mField}>
+              <span className={s.mLabel}>Trier par</span>
+              <select className={s.mSelect} value={sortKey} onChange={e => changeSort(e.target.value)}>
+                {SORTS.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+              </select>
+            </label>
+            <Button variant="secondary" iconOnly icon={sortDir === 'asc' ? ArrowUp : ArrowDown} className={s.mSortBtn}
+              aria-label={sortDir === 'asc' ? 'Tri croissant, passer en décroissant' : 'Tri décroissant, passer en croissant'}
+              onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}/>
+          </div>
+        </div>
       )}
+      {hasFilters && (
+        <button type="button" className={clsx('nv-btn-sec', 'nv-press')} onClick={resetFilters}>
+          <X size={18} aria-hidden="true"/> Réinitialiser les filtres
+        </button>
+      )}
+
+      {displayTx.length === 0 ? emptyFiltre : nvGroups.map(g => (
+        <section key={g.key} className={s.nvGroup} aria-label={g.label}>
+          <div className="nv-sec">
+            <h2>{g.label}</h2>
+            <span>{g.items.length} opération{g.items.length > 1 ? 's' : ''}</span>
+          </div>
+          <ul className={clsx('nv-card', s.nvList)}>
+            {g.items.map(t => {
+              const open = openKey === t._k
+              const tone = TYPE_TONE[t.type] || 'neutral'
+              const quand = t.heure ? String(t.heure).slice(0, 5) : t.date
+              return (
+                <li key={t._k} className={s.nvItem}>
+                  <button type="button" className={clsx('nv-row', s.nvLine)} aria-expanded={open}
+                    onClick={() => setOpenKey(open ? null : t._k)}>
+                    <span className={clsx('nv-ic', s.nvSign)} style={{ background: pastilleTx(t.type) }} aria-hidden="true">{sign(t) || '•'}</span>
+                    <span className="nv-rt">
+                      <b>{t.snom}</b>
+                      <span>{t.annulee ? 'Annulée · ' : ''}{t.label || '—'}{quand ? ` · ${quand}` : ''}</span>
+                    </span>
+                    <span className={clsx('nv-amt', t.type === 'credit' && !t.annulee && 'nv-pos', t.annulee && s.mStruck)}>{sign(t)}{fmt(t.montant || 0)}</span>
+                  </button>
+                  {open && (
+                    <div className={clsx(s.mMore, s.nvMore)}>
+                      {detailDeplie(t, tone)}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ))}
     </>
   )
 

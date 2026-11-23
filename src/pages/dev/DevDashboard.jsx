@@ -198,8 +198,8 @@ export default function DevDashboard() {
 
   if (!ready) return null
   return (
-    <div className={shell.app}>
-      <div className={shell.shell}>
+    <div className={isMobile ? `${shell.app} nv` : shell.app}>{/* 23/11/2026 : nouveau style téléphone, comme StaffApp */}
+      <div className={isMobile ? `${shell.shell} ${page === 'accueil' ? 'nv-grad' : 'nv-list'}` : shell.shell}>
         <Sidebar view="admin" currentPage={page} onNavigate={setPage} alertCount={2} onLogout={() => {}} onToggleDark={() => document.body.classList.toggle('dark')}
           mobileOpen={drawer} onMobileClose={() => setDrawer(false)} />
         <div className={shell.main}>

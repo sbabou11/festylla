@@ -1,177 +1,156 @@
-/* Espace bénévole — mobile d'abord, colonne de 520px max, onglets en bas (même ossature que l'espace spectateur) */
-.page { min-height: 100vh; min-height: 100dvh; background: var(--page, var(--bg2)); color: var(--text); font-family: var(--font); }
-.muted { margin: 0; color: var(--muted); font-size: var(--fs-12); line-height: 1.5; }
+/* Espace bénévole — mobile d'abord, colonne de 520 px max.
+ * Nouveau style (23/11/2026, maquette validée) : la racine porte `.nv` (styles/nouveau.css) ;
+ * accueil sur dégradé (`.nv-grad`) et cartes de verre, autres onglets sur fond de liste (`.nv-list`),
+ * barre d'onglets flottante. Couleurs : jetons `--nv-*` et jetons de l'appli uniquement. */
+.page { min-height: 100vh; min-height: 100dvh; font-family: var(--font); }
+.muted { margin: 0; color: var(--nv-mu); font-size: var(--fs-13); line-height: 1.5; }
 
-/* En-tête */
-.head {
+/* ── Barre du haut (sur tous les onglets) ─────────────────────── */
+.top {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
   padding-top: env(safe-area-inset-top, 0px);
+  background: var(--nv-list);
 }
-.headInner {
+/* Sur l'accueil, le haut du même dégradé que la page : aucune couture au repos */
+.topGrad {
+  background: linear-gradient(180deg, var(--nv-g1) 0px, var(--nv-g2) 300px, var(--nv-g3) 620px, var(--nv-base) 900px) top / 100% 900px no-repeat;
+}
+.topInner {
   max-width: 520px;
   margin: 0 auto;
-  height: 56px;
+  min-height: 64px;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
+  gap: 10px;
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) 6px max(16px, env(safe-area-inset-left, 0px));
 }
-.logo { width: 32px; height: 32px; border-radius: 9px; background: var(--grad-marine-teal); overflow: hidden; display: grid; place-items: center; flex-shrink: 0; }
-.logo img { width: 100%; height: 100%; object-fit: cover; }
-.brandName { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-18); }
-.event {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  font-size: var(--fs-11);
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--brand-light);
-  color: var(--brand-dark);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.event img { width: 12px; height: 12px; border-radius: 3px; object-fit: cover; }
-.headActions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.headBtn {
-  width: 36px;
-  height: 36px;
-  min-height: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg2);
-  color: var(--text);
+/* Pastille aux initiales */
+.av {
+  width: 44px;
+  height: 44px;
+  flex: none;
   display: grid;
   place-items: center;
-  cursor: pointer;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--coral), var(--coral-dark));
+  color: var(--on-coral);
+  font-weight: 700;
+  font-size: 15px;
 }
+.logo { width: 44px; height: 44px; border-radius: 50%; background: var(--grad-marine-teal); overflow: hidden; display: grid; place-items: center; flex: none; }
+.logo img { width: 100%; height: 100%; object-fit: cover; }
+.headWho { flex: 1; display: grid; min-width: 0; line-height: 1.2; }
+.headWho b { font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.headWho span { font-size: var(--fs-13); color: var(--nv-mu); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.headActions { display: flex; align-items: center; gap: 8px; flex: none; }
+/* Cloche des notifications : même bouton rond que .nv-round (44 px) */
+.top .headActions :global(.nav-btn) {
+  width: 44px;
+  height: 44px;
+  min-height: 0;
+  border-radius: 50%;
+  background: var(--nv-glass);
+  border: 1px solid var(--nv-line);
+  color: var(--nv-fg);
+}
+:global(.nv-list) .top .headActions :global(.nav-btn) { background: var(--nv-card2); border-color: transparent; }
+.top .headActions :global(.nav-btn) svg { width: 20px; height: 20px; }
 
+/* ── Colonne ─────────────────────────────────────────────────── */
 .wrap {
   max-width: 520px;
   margin: 0 auto;
-  padding: var(--space-4) max(16px, env(safe-area-inset-right, 0px)) calc(96px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  padding-top: var(--space-3);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid;
   gap: var(--space-4);
 }
 /* Bandeau « session fermée » (20/11/2026) : enfant de la grille, ne doit pas l'élargir */
 .sessionBan { min-width: 0; }
-.loading { padding: var(--space-8) 0; text-align: center; color: var(--muted); }
-.hint { margin: -6px 0 0; text-align: center; font-size: var(--fs-12); color: var(--muted); }
-.footer { display: grid; gap: 2px; text-align: center; font-size: var(--fs-11); color: var(--muted); padding-top: var(--space-4); }
-.footer b { font-size: var(--fs-12); }
+/* Contenu de l'onglet : la fenêtre position fixe du planning ne doit pas être piégée. L'animation
+   .nv-in garde par défaut son état final (fill both) ; ici, rien ne reste appliqué après l'animation. */
+.wrap > .pane { display: grid; gap: 14px; min-width: 0; animation-fill-mode: backwards; }
+.stack { display: grid; gap: 14px; min-width: 0; }
+.loading { padding: var(--space-8) 0; text-align: center; color: var(--nv-mu); }
+.hint { margin: 0; text-align: center; font-size: var(--fs-12); color: var(--nv-mu); line-height: 1.45; }
+.footer { display: grid; gap: 2px; text-align: center; font-size: var(--fs-12); color: var(--nv-mu); padding-top: var(--space-4); }
+.footer b { font-size: var(--fs-13); }
+.footer > button { justify-self: center; }
+.build { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .7; }
 
-/* Bonjour */
-.hello { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.helloText { min-width: 0; }
-.helloText span { font-size: var(--fs-12); color: var(--muted); font-weight: 600; }
-.helloText h1 { margin: 0; font: 800 var(--fs-24)/1.15 var(--font-display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.avatar {
-  position: relative;
-  width: 48px;
-  height: 48px;
-  min-height: 0;
-  flex-shrink: 0;
-  border: none;
-  border-radius: 50%;
-  background: var(--coral);
-  color: var(--on-coral);
-  font: 800 var(--fs-15) var(--font-display);
-  cursor: pointer;
-  box-shadow: var(--shadow-md);
-}
-.avatarQr {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border2);
-}
-
-/* Commande prête */
-.ready {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: 12px 14px;
-  border: none;
-  border-radius: var(--radius-lg);
-  background: var(--green);
-  color: #fff;
-  font-family: var(--font);
-  text-align: left;
-  cursor: pointer;
-  animation: readyPulse 2.4s var(--ease) infinite;
-}
-.ready > span { flex: 1; min-width: 0; display: grid; gap: 1px; }
-.ready b { font-size: var(--fs-15); }
-.ready span span { font-size: var(--fs-12); opacity: .9; }
-@keyframes readyPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(14, 141, 122, .45); } 50% { box-shadow: 0 0 0 8px rgba(14, 141, 122, 0); } }
-@media (prefers-reduced-motion: reduce) { .ready { animation: none; } }
-
-/* Cartes */
-.card { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg); }
+/* ── Cartes ──────────────────────────────────────────────────── */
+.card { display: grid; gap: var(--space-3); min-width: 0; }
 .cardHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.cardHead h2 { margin: 0; font-size: var(--fs-15); font-weight: 700; }
-.jars { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); justify-items: center; }
-
-.slotInfo { display: flex; align-items: flex-start; gap: 6px; font-size: var(--fs-12); color: var(--muted); line-height: 1.5; }
-.slotInfo svg { flex-shrink: 0; margin-top: 2px; }
-.slotInfo b { color: var(--text); }
-.checked {
-  display: flex;
+.cardHead h2 { margin: 0; font-size: 17px; font-weight: 700; }
+.chev { color: var(--nv-mu); flex: none; }
+.textLink {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  background: var(--green-light);
-  color: var(--green-dark);
-  font-size: var(--fs-13);
-  font-weight: 600;
-}
-.scanAction {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  min-height: 60px;
-  padding: 10px 12px;
-  border: 1.5px solid var(--border2);
-  border-radius: var(--radius-lg);
-  background: var(--bg2);
-  color: var(--text);
-  font-family: var(--font);
-  text-align: left;
+  justify-self: start;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--nv-fg);
+  font: 600 14px var(--font);
   cursor: pointer;
 }
-.scanAction:not(:disabled):hover { border-color: var(--brand); }
-.scanAction:disabled { cursor: not-allowed; opacity: .6; }
-.scanAction > span:nth-child(2) { flex: 1; min-width: 0; display: grid; gap: 1px; }
-.scanAction b { font-size: var(--fs-13); }
-.scanAction > span:nth-child(2) span { font-size: var(--fs-12); color: var(--muted); }
-.scanIcon { width: 40px; height: 40px; flex-shrink: 0; display: grid; place-items: center; border-radius: 12px; background: var(--brand-light); color: var(--brand-dark); }
-.chev { color: var(--muted); flex-shrink: 0; }
+
+/* Mon créneau : carte principale */
+.slotCard { display: grid; min-width: 0; }
+.slotKicker { margin: 0; color: var(--nv-mu); font-size: 14px; }
+.slotTitle { margin: 4px 0 2px; font-size: 26px; overflow-wrap: anywhere; }
+.slotDate { margin: 0; color: var(--nv-mu); font-size: 15px; }
+.ribbon { margin-top: 14px; min-width: 0; }
+.pointBtn, .pointed { margin-top: 16px; }
+.slotCard .pointBtn:disabled { opacity: .45; cursor: not-allowed; }
+.slotCard .pointBtn:disabled:active { transform: none; }
+.pointed { cursor: default; }
+.slotNote { margin: 8px 0 0; text-align: center; color: var(--nv-mu); font-size: var(--fs-13); }
+.slotCard .textLink { margin-top: 4px; justify-self: center; }
 .noSlot { display: grid; gap: var(--space-2); justify-items: start; }
-.noSlot p { margin: 0; font-size: var(--fs-13); color: var(--muted); }
-.legacy { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-12); }
+.noSlot p { margin: 0; font-size: var(--fs-13); color: var(--nv-mu); }
+.legacy { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-13); }
 .legacy b { min-width: 64px; }
 
-/* Pointage */
+/* Commande prête, contrôle des billets : carte de verre cliquable */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 72px;
+  padding: 16px 18px;
+  color: var(--nv-fg);
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.noticeText { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.noticeText b { font-size: 17px; font-weight: 600; }
+.noticeText span { font-size: 14px; color: var(--nv-mu); }
+.icReady { background: var(--green); }
+.icBillets { background: var(--brand); }
+
+/* Ce qu'il me reste : barres de quotas */
+.bars { display: grid; }
+.barRow { display: flex; align-items: center; gap: 12px; min-height: 40px; }
+.barName { width: 72px; flex: none; font-weight: 600; }
+.barTrack { flex: 1; height: 10px; border-radius: 5px; background: var(--nv-trk); overflow: hidden; }
+.barTrack i { display: block; height: 100%; border-radius: 5px; background: var(--nv-fg); }
+.barVal, .barOut { width: 72px; flex: none; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.barOut { color: var(--nv-mu); }
+.orderBtn { margin-top: 4px; }
+.accountBtn { font-size: 16px; }
+
+/* Dernières commandes (lignes .nv-row) */
+.resaList { margin: 0; padding: 0; list-style: none; }
+
+/* ── Pointage (feuille) ──────────────────────────────────────── */
 .scanBody { display: grid; gap: var(--space-3); }
 .scanErr {
   display: flex;
@@ -191,57 +170,11 @@
 .scanDone b { font: 800 var(--fs-18) var(--font-display); }
 .scanDone > span { font-size: var(--fs-13); color: var(--muted); margin-bottom: var(--space-3); }
 
-/* Barre d'onglets */
-.nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 30;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  padding: 0 max(4px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(4px, env(safe-area-inset-left, 0px));
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-top: 1px solid var(--border);
-}
-.navItem {
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  gap: 2px;
-  height: 64px;
-  min-height: 0;
-  min-width: 0;
-  border: none;
-  background: none;
-  color: var(--muted);
-  font-family: var(--font);
-  font-size: var(--fs-11);
-  font-weight: 600;
-  cursor: pointer;
-}
-.navOn { color: var(--brand-dark); font-weight: 800; }
-.navIcon { position: relative; display: grid; place-items: center; width: 48px; height: 28px; border-radius: 14px; transition: background var(--dur-base); }
-.navOn .navIcon { background: var(--brand-light); }
-.navBadge {
-  position: absolute;
-  top: -4px;
-  right: 4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background: var(--coral);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
-  display: grid;
-  place-items: center;
-}
+/* ── Barre d'onglets flottante : centrée sur la colonne de 520 px ── */
+.tabbar { max-width: 492px; margin-inline: auto; }
+.tabbar > button { min-height: 0; }
 
-/* QR plein écran : toujours fond blanc pour la lecture */
+/* QR plein écran : fond blanc pour la lecture (jetons de l'appli) */
 .qrFull {
   position: fixed;
   inset: 0;
@@ -252,71 +185,16 @@
   gap: var(--space-2);
   padding: var(--space-6);
   border: none;
-  background: #fff;
-  color: #003048;
+  background: #FFFFFF; /* exception gardée : le QR se lit sur blanc, quel que soit le thème */
+  color: #003048;      /* idem, encre du QR */
   font-family: var(--font);
   text-align: center;
   cursor: pointer;
 }
 .qrFull b { font: 800 var(--fs-18) var(--font-display); }
-.qrFull span { font-size: var(--fs-12); color: #4A6580; }
+.qrFull span { font-size: var(--fs-13); opacity: .75; }
 .qrFull img { width: min(82vw, 380px); height: min(82vw, 380px); margin: var(--space-3) 0; border-radius: 16px; }
 
 .invalid { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg2); color: var(--muted); font-family: var(--font); text-align: center; }
 .invalid b { font-size: var(--fs-15); color: var(--text); }
 .invalid p { margin: 4px 0 0; font-size: var(--fs-13); }
-
-/* Transition entre onglets : garde l'espacement de la colonne (will-change retiré : il piègerait la fenêtre position fixe du planning) */
-.wrap > :global(.page-transition) { display: grid; gap: var(--space-4); min-width: 0; will-change: auto; }
-
-/* Identifiant, build, liens */
-.helloId { display: block; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-11); color: var(--muted); }
-.build { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .7; }
-.footer > button { justify-self: center; }
-.textLink {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  gap: 2px;
-  min-height: 32px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--brand-dark);
-  font-family: var(--font);
-  font-size: var(--fs-12);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-/* Dernières commandes */
-.resaList { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.resaRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 10px 12px; border-radius: var(--radius); background: var(--bg2); }
-.resaText { min-width: 0; display: grid; gap: 1px; }
-.resaText b { font-size: var(--fs-13); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.resaText span { font-size: var(--fs-11); color: var(--muted); }
-
-/* Refonte téléphone du 20/11/2026 (maquette validée, repères Ylla Event Manager) */
-.headWho { display: grid; min-width: 0; line-height: 1.15; }
-.headWho b { font-family: var(--font-display); font-weight: 800; font-size: var(--fs-18); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.headWho span { font-size: var(--fs-12); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.headQr { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 99px; background: var(--bg); color: var(--text); font: 700 var(--fs-13) var(--font); cursor: pointer; white-space: nowrap; }
-.helloLine { font-size: var(--fs-12); color: var(--muted); margin: 0; }
-.bars { display: grid; gap: 2px; }
-.barRow { display: flex; align-items: center; gap: var(--space-3); min-height: 40px; }
-.barName { width: 72px; font-weight: 600; }
-.barTrack { flex: 1; height: 12px; border-radius: 6px; background: var(--brand-light); overflow: hidden; }
-.barTrack i { display: block; height: 100%; border-radius: 6px; background: var(--brand); transition: width var(--dur-slow) var(--ease); }
-.barVal, .barOut { width: 78px; text-align: right; font-variant-numeric: tabular-nums; }
-.barOut { color: var(--muted); font-weight: 600; }
-.themeRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 56px; color: var(--muted); font-size: var(--fs-13); }
-.scanAction { background: var(--brand); border-color: transparent; color: var(--on-brand); border-radius: var(--radius-lg); }
-.scanAction b, .scanAction span, .scanAction .chev { color: inherit; }
-.scanAction .scanIcon { background: rgba(255,255,255,.18); color: inherit; }
-.scanAction:disabled { background: var(--bg3); color: var(--muted); }
-.navOn { color: var(--text); }
-.navOn .navIcon { background: var(--marine); color: var(--bg); }
-.navIcon { width: 40px; height: 40px; border-radius: 13px; }
-
-.scanAction span span { color: var(--on-brand); opacity: .9; }
-.helloLine .helloId { display: inline; }

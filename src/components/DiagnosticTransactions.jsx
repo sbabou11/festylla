@@ -151,7 +151,7 @@ export default function DiagnosticTransactions() {
       </p>
       <button onClick={run} disabled={running}
         style={{
-          padding: '7px 14px', background: 'var(--brand, #1a6b7a)', color: '#fff',
+          padding: '7px 14px', background: 'var(--brand, #1a6b7a)', color: 'var(--on-brand, #fff)',
           border: 'none', borderRadius: 6, fontSize: 12, cursor: running ? 'wait' : 'pointer',
           fontFamily: 'inherit',
         }}>

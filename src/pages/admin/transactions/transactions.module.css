@@ -262,3 +262,35 @@
   /* Pagination : cibles de 44 px */
   .pager button { min-height: 44px; }
 }
+
+/* ── Nouveau style téléphone (23/11/2026, maquette « eq-flux ») ──────────────
+   Classes rendues seulement sous 641 px (isMobile) ; règles en plus limitées à max-width: 640px. */
+@media (max-width: 640px) {
+  .nvTools { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .nvSearch { position: relative; }
+  .nvSearch:focus-within { box-shadow: 0 0 0 2px var(--nv-acc); }
+  .nvInput { height: 100%; }
+  .nvInput::-webkit-search-cancel-button { display: none; }
+  .nvClear {
+    flex: none; width: 44px; height: 44px; margin-right: -14px;
+    display: grid; place-items: center; border: 0; background: none; color: var(--nv-mu); cursor: pointer;
+  }
+  .nvFilterBtn { position: relative; }
+  .page .nvTools .nvFilterOn { background: var(--nv-btn); color: var(--nv-btn-fg); }
+  .nvFilterCount {
+    position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px;
+    border-radius: 10px; background: var(--nv-acc); color: var(--nv-btn-fg);
+    font-size: 12px; font-weight: 700; line-height: 20px; text-align: center;
+  }
+  .nvFilters { padding: 14px; }
+  .nvFilters .mSelect { border-radius: 14px; background: var(--nv-card2); border-color: transparent; }
+  .nvGroup { min-width: 0; }
+  .nvGroup :global(.nv-sec) { margin-top: 10px; }
+  .nvList { list-style: none; margin: 0; padding: 0 18px; min-width: 0; }
+  .nvItem + .nvItem { border-top: 1px solid var(--nv-line); }
+  .nvLine { cursor: pointer; }
+  .nvLine:focus-visible { outline: 2px solid var(--nv-acc); outline-offset: 2px; border-radius: 12px; }
+  .nvSign { font-size: 20px; font-weight: 800; line-height: 1; }
+  .nvMore { padding-left: 56px; }
+  .nvMore .mKv, .nvMore .mItems { font-size: 14px; }
+}

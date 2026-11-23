@@ -153,7 +153,9 @@ export default function TimelineView({ planning, conflicts, onEdit, onUpdateDebu
         const hourLabels = []
         const startH = new Date(minTime); startH.setMinutes(0, 0, 0)
         for (let t = startH.getTime(); t <= maxTime + hourStep; t += hourStep) {
-          const p = pct(t)
+          // Position brute (sans le bornage de pct) : une heure avant le début de l'axe
+          // était ramenée à 0 % et se superposait à la suivante (« 09:0010:00 »)
+          const p = ((t - minTime) / totalMs) * 100
           if (p >= 0 && p <= 100) {
             hourLabels.push({ pct: p, label: new Date(t).toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' }) })
           }

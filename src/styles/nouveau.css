@@ -1,0 +1,229 @@
+/**
+ * styles/nouveau.css — nouveau style des écrans téléphone (23/11/2026, maquette validée)
+ *
+ * S'applique à tout élément portant la classe `.nv` : espace spectateur, espace bénévole,
+ * espace équipe sur téléphone (sous 641 px). Ailleurs, rien ne change.
+ * Deux modes : clair (par défaut) et sombre (`body.dark`, réglage « Thème clair ou sombre »).
+ * Les durées et la courbe des animations sont celles de l'appli (index.css).
+ *
+ * Jetons propres (`--nv-*`) + réaffectation des jetons de l'appli (`--bg`, `--text`…)
+ * pour que les composants existants suivent sans être réécrits.
+ */
+
+/* ── Jetons — CLAIR ─────────────────────────────────────────── */
+.nv {
+  --nv-g1: #7AD5CE;          /* haut du dégradé (vert d'eau YllaCash, clair) */
+  --nv-g2: #BFEAE6;
+  --nv-g3: #E5F3F2;
+  --nv-base: #F2F5F5;        /* fond sous le dégradé */
+  --nv-list: #F2F5F5;        /* fond des écrans de liste */
+  --nv-glass: rgba(255,255,255,.72);
+  --nv-glass2: rgba(255,255,255,.94);
+  --nv-line: rgba(6,34,47,.08);
+  --nv-card: #FFFFFF;
+  --nv-card2: #E6EEEF;
+  --nv-fg: #06222F;
+  --nv-mu: rgba(6,34,47,.64);
+  --nv-pos: #0A7F5A;
+  --nv-neg: #C63A34;
+  --nv-warn: #9A5B00;
+  --nv-acc: #0E7F7F;
+  --nv-tab: rgba(255,255,255,.9);
+  --nv-icg: rgba(6,34,47,.07);   /* fond des pastilles neutres */
+  --nv-trk: rgba(6,34,47,.12);   /* pistes (barres, jauges) */
+  --nv-btn: #06222F;             /* bouton plein */
+  --nv-btn-fg: #FFFFFF;
+  --nv-shadow: 0 1px 2px rgba(6,34,47,.04), 0 10px 28px rgba(6,34,47,.06);
+  --nv-tab-shadow: 0 8px 28px rgba(6,34,47,.12);
+
+  /* Jetons de l'appli réaffectés */
+  --page: var(--nv-base);
+  --bg: var(--nv-card);
+  --bg2: var(--nv-card2);
+  --bg3: #DCE6E8;
+  --text: var(--nv-fg);
+  --muted: var(--nv-mu);
+  --border: var(--nv-line);
+  --border2: rgba(6,34,47,.16);
+  --marine: var(--nv-btn);
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+
+  color: var(--nv-fg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ── Jetons — SOMBRE ────────────────────────────────────────── */
+.dark .nv, .nv.dark {
+  --nv-g1: #0E8C8C;
+  --nv-g2: #0B5E70;
+  --nv-g3: #0A3346;
+  --nv-base: #061820;
+  --nv-list: #000000;
+  --nv-glass: rgba(255,255,255,.11);
+  --nv-glass2: rgba(255,255,255,.17);
+  --nv-line: rgba(255,255,255,.10);
+  --nv-card: #1C1C1E;
+  --nv-card2: #2C2C2E;
+  --nv-fg: #FFFFFF;
+  --nv-mu: rgba(255,255,255,.62);
+  --nv-pos: #4FD1A1;
+  --nv-neg: #FF7A7A;
+  --nv-warn: #FFC266;
+  --nv-acc: #5FE0D8;
+  --nv-tab: rgba(8,40,52,.82);
+  --nv-icg: rgba(255,255,255,.16);
+  --nv-trk: rgba(255,255,255,.18);
+  --nv-btn: #FFFFFF;
+  --nv-btn-fg: #000000;
+  --nv-shadow: none;
+  --nv-tab-shadow: none;
+
+  --bg3: #3A3A3C;
+  --border2: rgba(255,255,255,.18);
+  color-scheme: dark;
+}
+
+/* ── Fonds ─────────────────────────────────────────────────── */
+/* Dégradé plein écran (accueils, compte) */
+.nv-grad {
+  background:
+    linear-gradient(180deg, var(--nv-g1) 0px, var(--nv-g2) 300px, var(--nv-g3) 620px, var(--nv-base) 900px) top / 100% 900px no-repeat,
+    var(--nv-base);
+  color: var(--nv-fg);
+}
+/* Écrans de liste (historique, commander, caisse…) */
+.nv-list { background: var(--nv-list); color: var(--nv-fg); }
+
+/* ── Cartes ────────────────────────────────────────────────── */
+/* Carte de verre, sur dégradé */
+.nv-glass {
+  background: var(--nv-glass);
+  border: 1px solid var(--nv-line);
+  border-radius: 26px;
+  box-shadow: var(--nv-shadow);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+}
+/* Carte pleine, sur fond de liste */
+.nv-card { background: var(--nv-card); border-radius: 26px; }
+.nv-pad { padding: 18px; }
+.nv-padx { padding: 6px 18px; }
+
+/* ── Montants ──────────────────────────────────────────────── */
+.nv-big {
+  font-weight: 800;
+  letter-spacing: -.035em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.nv-big small { font-size: .52em; letter-spacing: -.01em; font-weight: 700; }
+.nv-pos { color: var(--nv-pos); }
+.nv-neg { color: var(--nv-neg); }
+.nv-mu { color: var(--nv-mu); }
+.nv-title { font-size: 32px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; margin: 8px 0 4px; }
+
+/* ── Boutons ───────────────────────────────────────────────── */
+.nv-press { transition: transform var(--dur-fast) ease, background var(--dur-base); -webkit-tap-highlight-color: transparent; }
+.nv-press:active { transform: scale(.96); }
+/* Bouton rond (barre du haut) */
+.nv-round {
+  width: 44px; height: 44px; border-radius: 50%; flex: none;
+  display: grid; place-items: center;
+  background: var(--nv-glass); border: 1px solid var(--nv-line); color: var(--nv-fg);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  cursor: pointer;
+}
+.nv-list .nv-round { background: var(--nv-card2); border-color: transparent; }
+/* Rangée d'actions rondes avec libellé */
+.nv-acts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; text-align: center; }
+.nv-act { display: grid; justify-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--nv-fg); background: none; border: 0; cursor: pointer; min-width: 0; }
+.nv-act > i { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--nv-glass2); font-style: normal; box-shadow: var(--nv-shadow); }
+/* Bouton plein (pilule) */
+.nv-btn {
+  width: 100%; min-height: 52px; border-radius: 99px; border: 0;
+  background: var(--nv-btn); color: var(--nv-btn-fg);
+  font: 600 16px 'Inter', system-ui, sans-serif;
+  display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+}
+.nv-btn:disabled, .nv-btn-sec:disabled { opacity: .45; cursor: not-allowed; }
+.nv-btn-sec {
+  width: 100%; min-height: 52px; border-radius: 99px; border: 0;
+  background: var(--nv-glass2); color: var(--nv-fg);
+  font: 600 16px 'Inter', system-ui, sans-serif;
+  display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+}
+.nv-list .nv-btn-sec, .nv-card .nv-btn-sec { background: var(--nv-card2); }
+/* Pastilles de filtre */
+.nv-pills { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
+.nv-pills::-webkit-scrollbar { display: none; }
+.nv-pill { height: 44px; padding: 0 16px; border-radius: 99px; border: 0; background: var(--nv-card2); color: var(--nv-fg); font: 600 14px 'Inter', system-ui, sans-serif; flex: none; cursor: pointer; }
+.nv-grad .nv-pill { background: var(--nv-glass2); }
+.nv-pill[aria-pressed="true"], .nv-pill.on { background: var(--nv-btn); color: var(--nv-btn-fg); }
+/* Recherche en pilule */
+.nv-search { flex: 1; min-width: 0; height: 44px; border-radius: 99px; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: var(--nv-glass); border: 1px solid var(--nv-line); color: var(--nv-mu); }
+.nv-list .nv-search { background: var(--nv-card2); border-color: transparent; }
+.nv-search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--nv-fg); font: 400 16px 'Inter', system-ui, sans-serif; outline: none; }
+
+/* ── Lignes de liste ───────────────────────────────────────── */
+.nv-row { display: flex; align-items: center; gap: 14px; min-height: 66px; padding: 10px 0; width: 100%; text-align: left; background: none; border: 0; color: inherit; font: inherit; }
+button.nv-row { cursor: pointer; }
+.nv-row + .nv-row { border-top: 1px solid var(--nv-line); }
+.nv-ic { width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center; color: #FFFFFF; position: relative; }
+.nv-ic.neutre { background: var(--nv-icg); color: var(--nv-fg); }
+.nv-rt { flex: 1; min-width: 0; }
+.nv-rt b { display: block; font-weight: 500; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nv-rt span { display: block; color: var(--nv-mu); font-size: 14px; }
+.nv-amt { font-weight: 500; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nv-sec { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 4px 10px; }
+.nv-sec h2, .nv-sec h3 { margin: 0; font-size: 20px; font-weight: 700; }
+.nv-sec span { color: var(--nv-mu); font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* ── Barre d'onglets flottante ─────────────────────────────── */
+.nv-tabbar {
+  position: fixed; z-index: 30;
+  left: max(14px, env(safe-area-inset-left, 0px)); right: max(14px, env(safe-area-inset-right, 0px));
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  height: 70px; border-radius: 36px; padding: 6px;
+  display: flex; background: var(--nv-tab); border: 1px solid var(--nv-line); box-shadow: var(--nv-tab-shadow);
+  -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px);
+}
+.nv-tabbar > button {
+  flex: 1; min-width: 0; position: relative; z-index: 1; border: 0; background: none; cursor: pointer;
+  display: grid; justify-items: center; align-content: center; gap: 3px;
+  font: 600 12px 'Inter', system-ui, sans-serif; color: var(--nv-mu);
+}
+.nv-tabbar > button[aria-current="page"] { color: var(--nv-fg); }
+/* Pastille de l'onglet actif : elle glisse d'un onglet à l'autre (transform seulement) */
+.nv-tab-ind { position: absolute; top: 6px; bottom: 6px; left: 6px; border-radius: 30px; background: var(--nv-icg); transition: transform 260ms var(--ease); pointer-events: none; }
+.nv-tab-badge { position: absolute; top: 2px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: #E0454B; color: #FFFFFF; font-size: 12px; font-weight: 700; line-height: 18px; text-align: center; }
+/* Place réservée sous le contenu pour la barre flottante */
+.nv-under-tabbar { padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)); }
+
+/* ── Animations (durées et courbe de l'appli) ──────────────── */
+/* « backwards » et non « both » : une animation de transform qui reste appliquée après sa fin
+   piégerait les fenêtres en position fixe placées à l'intérieur (retour du 23/11/2026) */
+.nv-in { animation: nv-in var(--dur-slow) var(--ease) backwards; }
+@keyframes nv-in { from { opacity: 0; transform: translateY(8px); } }
+.nv-push { animation: nv-push var(--dur-slow) var(--ease) backwards; }
+@keyframes nv-push { from { opacity: .4; transform: translateX(36px); } }
+.nv-up { animation: nv-up 300ms var(--ease) backwards; }
+@keyframes nv-up { from { opacity: 0; transform: translateY(60px); } }
+/* Apparition en cascade des enfants */
+.nv-st > * { animation: nv-in var(--dur-slow) var(--ease) backwards; }
+.nv-st > :nth-child(2) { animation-delay: 50ms; }
+.nv-st > :nth-child(3) { animation-delay: 100ms; }
+.nv-st > :nth-child(4) { animation-delay: 150ms; }
+.nv-st > :nth-child(5) { animation-delay: 200ms; }
+.nv-st > :nth-child(n+6) { animation-delay: 250ms; }
+/* Jauges qui se remplissent */
+.nv-grow-x { transform-origin: left; animation: nv-grow-x 700ms var(--ease) both; }
+@keyframes nv-grow-x { from { transform: scaleX(0); } }
+.nv-grow-y { transform-origin: bottom; animation: nv-grow-y 600ms var(--ease) both; }
+@keyframes nv-grow-y { from { transform: scaleY(0); } }
+.nv-pop { animation: nv-pop 220ms var(--ease); }
+@keyframes nv-pop { from { transform: scale(.4); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .nv *, .nv *::before, .nv *::after { animation: none !important; transition: none !important; }
+}

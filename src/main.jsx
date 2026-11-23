@@ -12,6 +12,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App      from './App.jsx'
 import './index.css'
+import './styles/nouveau.css'   // nouveau style des écrans téléphone (23/11/2026)
 import { installApiAuth } from './firebase/session'
 
 // Sécurité, lot 1 : les appels aux fonctions serveur portent la session de la personne connectée

@@ -180,7 +180,7 @@ export default function AnalysisTables({ operations }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <button onClick={() => createTable()}
           style={{
-            background: 'var(--brand, #0F6E56)', color: '#fff', border: 'none',
+            background: 'var(--brand, #0F6E56)', color: 'var(--on-brand, #fff)', border: 'none',
             borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600,
             cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
             fontFamily: 'inherit',

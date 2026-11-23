@@ -1,9 +1,9 @@
 /**
  * pages/public/spectateur/SoldeChart.jsx — graphe interactif de l'évolution du solde.
- * Déplacé tel quel depuis SoldePage.jsx (lot 3).
+ * Déplacé tel quel depuis SoldePage.jsx (lot 3). Couleurs et tailles de texte du nouveau style (23/11/2026).
  */
 import React, { useEffect } from 'react'
-import { BRAND, AMBER, RED, GREEN, GREEN_L } from './colors'
+
 
 // ── Composant graphe interactif ───────────────────────────────
 function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fmt }) {
@@ -18,7 +18,7 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
   const n = timeline.length
 
   if (n < 2) return (
-    <div style={{ textAlign:'center', padding:24, color:'var(--muted)', fontSize:13 }}>
+    <div style={{ textAlign:'center', padding:24, color:'var(--muted)', fontSize:14 }}>
       Au moins 2 transactions nécessaires pour afficher le graphe
     </div>
   )
@@ -42,15 +42,14 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
   // Aire sous la courbe
   const areaPoints = `${cx(0)},${PT + innerH} ${points} ${cx(n-1)},${PT + innerH}`
 
-  const GREEN  = '#065f46'
-  const GREEN_L= '#d1fae5'
-  const RED    = '#A32D2D'
-  const BRAND  = '#1a6b7a'
-  const AMBER  = '#BA7517'
+  // Nouveau style (23/11/2026) : couleurs prises dans les jetons (clair et sombre), textes de 12 px au moins
+  const GREEN  = 'var(--nv-pos)'
+  const RED    = 'var(--nv-neg)'
+  const BRAND  = 'var(--brand)'
 
   const typeColor = (type) =>
     type === 'credit' ? GREEN :
-    type === 'annulation' ? '#94a3b8' :
+    type === 'annulation' ? 'var(--nv-mu)' :
     RED
 
   const svgContent = (
@@ -71,10 +70,10 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
         <g key={i}>
           <line
             x1={PL} y1={yOf(val)} x2={totalW - PR} y2={yOf(val)}
-            stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 3"
+            stroke="var(--nv-line)" strokeWidth="1" strokeDasharray="4 3"
           />
           <text x={PL - 6} y={yOf(val) + 4} textAnchor="end"
-            fontSize="10" fill="#94a3b8" fontFamily="system-ui">
+            fontSize="12" fill="var(--nv-mu)" fontFamily="Inter, system-ui, sans-serif">
             {(val / 100).toFixed(0)}€
           </text>
         </g>
@@ -83,7 +82,7 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
       {/* Ligne de base (0€) */}
       <line
         x1={PL} y1={yOf(0)} x2={totalW - PR} y2={yOf(0)}
-        stroke="#cbd5e1" strokeWidth="1.5"
+        stroke="var(--nv-trk)" strokeWidth="1.5"
       />
 
       {/* Courbe principale */}
@@ -120,7 +119,7 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
             <circle
               cx={cx(i)} cy={yOf(t.balanceAfter)}
               r={isHover ? 7 : 5}
-              fill={col} stroke="#fff" strokeWidth="2"
+              fill={col} stroke="var(--nv-card)" strokeWidth="2"
               style={{ transition:'r .1s' }}
             />
           </g>
@@ -133,26 +132,26 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
         const x   = cx(hoverIdx)
         const y   = yOf(t.balanceAfter)
         const col = typeColor(t.type)
-        const TW  = 120
+        const TW  = 150
         const TH  = 52
         const tx  = Math.min(Math.max(x - TW/2, PL), totalW - PR - TW)
         const ty  = y - TH - 12 < PT ? y + 14 : y - TH - 12
         return (
           <g>
             <rect x={tx} y={ty} width={TW} height={TH}
-              rx="8" fill="white" stroke={col} strokeWidth="1.5"
+              rx="8" fill="var(--nv-card)" stroke={col} strokeWidth="1.5"
               filter="url(#shadow)"
             />
             <text x={tx + TW/2} y={ty + 16} textAnchor="middle"
-              fontSize="11" fontWeight="700" fill={col} fontFamily="system-ui">
+              fontSize="12" fontWeight="700" fill={col} fontFamily="Inter, system-ui, sans-serif">
               {t.type === 'credit' ? '+' : t.type === 'annulation' ? '—' : '−'}{(t.montant||0)/100 < 0.005 ? '0.00' : ((t.montant||0)/100).toFixed(2)}€
             </text>
             <text x={tx + TW/2} y={ty + 30} textAnchor="middle"
-              fontSize="10" fill="#64748b" fontFamily="system-ui">
+              fontSize="12" fill="var(--nv-mu)" fontFamily="Inter, system-ui, sans-serif">
               Solde après : {(t.balanceAfter/100).toFixed(2)}€
             </text>
             <text x={tx + TW/2} y={ty + 45} textAnchor="middle"
-              fontSize="9" fill="#94a3b8" fontFamily="system-ui">
+              fontSize="12" fill="var(--nv-mu)" fontFamily="Inter, system-ui, sans-serif">
               {t.date}{t.heure ? ' · '+t.heure : ''}
             </text>
           </g>
@@ -172,7 +171,7 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
         if (i % skip !== 0 && i !== n - 1) return null
         return (
           <text key={i} x={cx(i)} y={H - 6} textAnchor="middle"
-            fontSize="9" fill="#94a3b8" fontFamily="system-ui">
+            fontSize="12" fill="var(--nv-mu)" fontFamily="Inter, system-ui, sans-serif">
             {(t.date||'').slice(0,5)}
           </text>
         )
@@ -185,37 +184,37 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
       {/* Bouton agrandir */}
       <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:6 }}>
         <button onClick={() => setZoom(true)}
-          style={{ fontSize:11, color:'var(--muted)', background:'none', border:'0.5px solid var(--border)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontFamily:'system-ui' }}>
+          style={{ minHeight:44, fontSize:14, fontWeight:600, color:'var(--nv-fg)', background:'var(--nv-card2)', border:0, borderRadius:99, padding:'0 16px', cursor:'pointer', fontFamily:'inherit' }}>
           ⛶ Agrandir
         </button>
       </div>
 
       {/* Graphe scrollable */}
-      <div style={{ overflowX:'auto', background:'var(--bg2)', borderRadius:10, padding:'10px 4px 4px' }}>
+      <div style={{ overflowX:'auto', background:'var(--nv-card2)', borderRadius:18, padding:'10px 4px 4px' }}>
         {svgContent}
       </div>
 
       {/* Légende */}
-      <div style={{ display:'flex', gap:14, marginTop:8, fontSize:11, color:'var(--muted)', flexWrap:'wrap' }}>
+      <div style={{ display:'flex', gap:14, marginTop:8, fontSize:12, color:'var(--nv-mu)', flexWrap:'wrap' }}>
         <span><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:GREEN, marginRight:4 }}/>Recharge</span>
         <span><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:RED, marginRight:4 }}/>Dépense</span>
-        <span><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'#94a3b8', marginRight:4 }}/>Annulation</span>
+        <span><span style={{ display:'inline-block', width:8, height:8, borderRadius:'50%', background:'var(--nv-mu)', marginRight:4 }}/>Annulation</span>
       </div>
-      <div style={{ fontSize:11, color:'var(--muted)', marginTop:6, fontStyle:'italic' }}>
+      <div style={{ fontSize:12, color:'var(--nv-mu)', marginTop:6, fontStyle:'italic' }}>
         💡 Touchez un point pour voir le détail
       </div>
 
       {/* Modale zoom plein écran */}
       {zoom && (
-        <div style={{ position:'fixed', inset:0, zIndex:400, background:'var(--bg)', display:'flex', flexDirection:'column', padding:16 }}>
+        <div style={{ position:'fixed', inset:0, zIndex:400, background:'var(--nv-list)', display:'flex', flexDirection:'column', padding:16 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
             <div style={{ fontSize:15, fontWeight:700, color:'var(--text)' }}>📈 Évolution du solde</div>
             <button onClick={() => setZoom(false)}
-              style={{ padding:'6px 16px', background:BRAND, color:'#fff', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'system-ui' }}>
+              style={{ minHeight:44, padding:'0 18px', background:'var(--nv-btn)', color:'var(--nv-btn-fg)', border:'none', borderRadius:99, fontSize:15, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>
               Fermer ✕
             </button>
           </div>
-          <div style={{ flex:1, overflowX:'auto', overflowY:'auto', background:'var(--bg2)', borderRadius:12, padding:12 }}>
+          <div style={{ flex:1, overflowX:'auto', overflowY:'auto', background:'var(--nv-card2)', borderRadius:18, padding:12 }}>
             <svg
               width={totalW * 1.4}
               height={H * 2}
@@ -226,14 +225,14 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
               {/* Grille */}
               {gridVals.map((val, i) => (
                 <g key={i}>
-                  <line x1={PL} y1={yOf(val)} x2={totalW-PR} y2={yOf(val)} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 3"/>
-                  <text x={PL-6} y={yOf(val)+4} textAnchor="end" fontSize="10" fill="#94a3b8" fontFamily="system-ui">
+                  <line x1={PL} y1={yOf(val)} x2={totalW-PR} y2={yOf(val)} stroke="var(--nv-line)" strokeWidth="1" strokeDasharray="4 3"/>
+                  <text x={PL-6} y={yOf(val)+4} textAnchor="end" fontSize="12" fill="var(--nv-mu)" fontFamily="Inter, system-ui, sans-serif">
                     {(val/100).toFixed(0)}€
                   </text>
                 </g>
               ))}
               <polygon points={areaPoints} fill={BRAND} opacity="0.08"/>
-              <line x1={PL} y1={yOf(0)} x2={totalW-PR} y2={yOf(0)} stroke="#cbd5e1" strokeWidth="1.5"/>
+              <line x1={PL} y1={yOf(0)} x2={totalW-PR} y2={yOf(0)} stroke="var(--nv-trk)" strokeWidth="1.5"/>
               <polyline fill="none" stroke={BRAND} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" points={points}/>
               {timeline.map((t,i) => {
                 const isHover = hoverIdx === i
@@ -244,7 +243,7 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
                       onMouseEnter={()=>setHoverIdx(i)} onMouseLeave={()=>setHoverIdx(null)}
                       onTouchStart={()=>setHoverIdx(i)} onTouchEnd={()=>setTimeout(()=>setHoverIdx(null),2000)}/>
                     {isHover && <line x1={cx(i)} y1={PT} x2={cx(i)} y2={PT+innerH} stroke={col} strokeWidth="1" strokeDasharray="3 3" opacity="0.6"/>}
-                    <circle cx={cx(i)} cy={yOf(t.balanceAfter)} r={isHover?7:5} fill={col} stroke="#fff" strokeWidth="2"/>
+                    <circle cx={cx(i)} cy={yOf(t.balanceAfter)} r={isHover?7:5} fill={col} stroke="var(--nv-card)" strokeWidth="2"/>
                   </g>
                 )
               })}
@@ -253,19 +252,19 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
                 const x = cx(hoverIdx)
                 const y = yOf(t.balanceAfter)
                 const col = typeColor(t.type)
-                const TW2=130; const TH2=56
+                const TW2=160; const TH2=58
                 const tx = Math.min(Math.max(x-TW2/2,PL), totalW-PR-TW2)
                 const ty = y-TH2-12 < PT ? y+14 : y-TH2-12
                 return (
                   <g>
-                    <rect x={tx} y={ty} width={TW2} height={TH2} rx="8" fill="white" stroke={col} strokeWidth="1.5" filter="url(#shadow2)"/>
-                    <text x={tx+TW2/2} y={ty+17} textAnchor="middle" fontSize="12" fontWeight="700" fill={col} fontFamily="system-ui">
+                    <rect x={tx} y={ty} width={TW2} height={TH2} rx="8" fill="var(--nv-card)" stroke={col} strokeWidth="1.5" filter="url(#shadow2)"/>
+                    <text x={tx+TW2/2} y={ty+17} textAnchor="middle" fontSize="12" fontWeight="700" fill={col} fontFamily="Inter, system-ui, sans-serif">
                       {t.type==='credit'?'+':t.type==='annulation'?'—':'−'}{((t.montant||0)/100).toFixed(2)}€
                     </text>
-                    <text x={tx+TW2/2} y={ty+32} textAnchor="middle" fontSize="10" fill="#64748b" fontFamily="system-ui">
+                    <text x={tx+TW2/2} y={ty+32} textAnchor="middle" fontSize="12" fill="var(--nv-mu)" fontFamily="Inter, system-ui, sans-serif">
                       Solde après : {(t.balanceAfter/100).toFixed(2)}€
                     </text>
-                    <text x={tx+TW2/2} y={ty+47} textAnchor="middle" fontSize="9" fill="#94a3b8" fontFamily="system-ui">
+                    <text x={tx+TW2/2} y={ty+47} textAnchor="middle" fontSize="12" fill="var(--nv-mu)" fontFamily="Inter, system-ui, sans-serif">
                       {t.date}{t.heure?' · '+t.heure:''}
                     </text>
                   </g>
@@ -279,16 +278,16 @@ function SoldeChart({ timeline, maxBal, hoverIdx, setHoverIdx, zoom, setZoom, fm
               {timeline.map((t,i) => {
                 const skip = n>10 ? Math.ceil(n/8) : 1
                 if (i%skip!==0 && i!==n-1) return null
-                return <text key={i} x={cx(i)} y={H-6} textAnchor="middle" fontSize="9" fill="#94a3b8" fontFamily="system-ui">{(t.date||'').slice(0,5)}</text>
+                return <text key={i} x={cx(i)} y={H-6} textAnchor="middle" fontSize="12" fill="var(--nv-mu)" fontFamily="Inter, system-ui, sans-serif">{(t.date||'').slice(0,5)}</text>
               })}
             </svg>
           </div>
-          <div style={{ display:'flex', gap:14, marginTop:10, fontSize:12, color:'var(--muted)', flexWrap:'wrap' }}>
+          <div style={{ display:'flex', gap:14, marginTop:10, fontSize:12, color:'var(--nv-mu)', flexWrap:'wrap' }}>
             <span><span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', background:GREEN, marginRight:4 }}/>Recharge</span>
             <span><span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', background:RED, marginRight:4 }}/>Dépense</span>
-            <span><span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', background:'#94a3b8', marginRight:4 }}/>Annulation</span>
+            <span><span style={{ display:'inline-block', width:9, height:9, borderRadius:'50%', background:'var(--nv-mu)', marginRight:4 }}/>Annulation</span>
           </div>
-          <div style={{ fontSize:11, color:'var(--muted)', marginTop:6, fontStyle:'italic' }}>💡 Touchez un point pour voir le détail</div>
+          <div style={{ fontSize:12, color:'var(--nv-mu)', marginTop:6, fontStyle:'italic' }}>💡 Touchez un point pour voir le détail</div>
         </div>
       )}
     </>

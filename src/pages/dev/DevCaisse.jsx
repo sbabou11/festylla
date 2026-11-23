@@ -6,6 +6,7 @@
 import React, { useEffect, useState } from 'react'
 import useAppStore from '../../store/useAppStore'
 import Debit from '../stand/Debit'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import shell from '../../App.module.css'
 
 const MENU = [
@@ -17,6 +18,7 @@ const MENU = [
 
 export default function DevCaisse() {
   const [ready, setReady] = useState(false)
+  const { isMobile } = useBreakpoint() // 23/11/2026 : nouveau style téléphone, comme StaffApp
   useEffect(() => {
     const { debiter } = useAppStore.getState()
     useAppStore.setState({
@@ -43,7 +45,7 @@ export default function DevCaisse() {
 
   if (!ready) return null
   return (
-    <div className={shell.app}>
+    <div className={isMobile ? `${shell.app} nv nv-list` : shell.app}>
       <div className={shell.main}>
         <header className={shell.bar}><h1 className={shell.title}>Encaisser · aperçu</h1></header>
         <main className={shell.content}><Debit /></main>

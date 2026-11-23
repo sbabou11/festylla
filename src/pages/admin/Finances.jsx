@@ -222,7 +222,7 @@ export default function Finances({ onNavigate }) {
         <StatCard label="Recettes (payées)" value={fmtEur(stats.recettes)} color="var(--green-dark, #065f46)"/>
         <StatCard label="Dépenses (payées)" value={fmtEur(stats.depenses)} color="var(--red-dark, #a32d2d)"/>
         <StatCard label="Solde réalisé" value={fmtEur(stats.solde)} color={stats.solde >= 0 ? 'var(--green-dark, #065f46)' : 'var(--red-dark, #a32d2d)'}/>
-        <StatCard label="En attente" value={`${stats.enAttente} mvt${stats.enAttente > 1 ? 's' : ''}`} color="var(--amber-dark, #ba7517)"/>
+        <StatCard label="En attente" value={`${stats.enAttente} mvt${stats.enAttente > 1 ? 's' : ''}`} color="var(--gold-dark, #ba7517)"/>
       </div>
 
       {/* Barre d'outils */}
@@ -303,7 +303,7 @@ export default function Finances({ onNavigate }) {
 
 function StatCard({ label, value, color }) {
   return (
-    <div style={{ background: 'var(--bg, #f8f9fa)', borderRadius: 8, padding: '10px 12px' }}>
+    <div style={{ background: 'var(--bg2, #f8f9fa)', borderRadius: 8, padding: '10px 12px' }}>
       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: color || 'inherit' }}>{value}</div>
     </div>
@@ -434,20 +434,21 @@ function Field({ label, children }) {
 }
 
 // ── Styles ──
-const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'var(--brand, #1a6b7a)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }
+const btnPrimary = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', background: 'var(--brand, #1a6b7a)', color: 'var(--on-brand, #fff)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }
 const btnSecondary = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 16px', background: 'transparent', color: 'var(--text, #1a1a1a)', border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const seg = { display: 'flex', border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 8, overflow: 'hidden' }
 const segBtn = { border: 'none', borderRadius: 0, padding: '7px 14px', fontSize: 12, background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text, #1a1a1a)' }
-const segBtnOn = { background: 'var(--brand, #1a6b7a)', color: '#fff' }
-const selectStyle = { padding: '7px 10px', fontSize: 12, border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 8, background: '#fff', fontFamily: 'inherit' }
-const inputStyle = { width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 8, background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }
-const listBox = { background: '#fff', border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 12, overflow: 'hidden' }
+const segBtnOn = { background: 'var(--brand, #1a6b7a)', color: 'var(--on-brand, #fff)' }
+// Fonds et textes suivent le thème (mode sombre corrigé le 23/11/2026)
+const selectStyle = { padding: '7px 10px', fontSize: 12, border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 8, background: 'var(--bg, #fff)', color: 'var(--text)', fontFamily: 'inherit' }
+const inputStyle = { width: '100%', padding: '8px 10px', fontSize: 13, border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 8, background: 'var(--bg, #fff)', color: 'var(--text)', fontFamily: 'inherit', boxSizing: 'border-box' }
+const listBox = { background: 'var(--bg, #fff)', border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 12, overflow: 'hidden' }
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderBottom: '0.5px solid var(--border, #e2e8f0)' }
 const iconBox = { width: 28, height: 28, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }
 const pill = { fontSize: 10, padding: '2px 8px', borderRadius: 10, whiteSpace: 'nowrap' }
 const pillPaye = { background: 'var(--green-light, #e1f5ee)', color: 'var(--green-dark, #065f46)' }
-const pillPrevu = { background: 'var(--amber-light, #faeeda)', color: 'var(--amber-dark, #ba7517)' }
+const pillPrevu = { background: 'var(--amber-light, #faeeda)', color: 'var(--gold-dark, #ba7517)' }
 const iconBtn = { width: 28, height: 26, padding: 0, background: 'transparent', border: '0.5px solid var(--border, #e2e8f0)', borderRadius: 6, cursor: 'pointer', color: 'var(--brand-dark, #134e5a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }
 const emptyBox = { padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--muted)', fontStyle: 'italic', border: '0.5px dashed var(--border, #e2e8f0)', borderRadius: 12 }
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }
-const modal = { background: '#fff', borderRadius: 14, padding: 20, width: '100%', maxWidth: 460, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', boxSizing: 'border-box' }
+const modal = { background: 'var(--bg, #fff)', color: 'var(--text)', borderRadius: 14, padding: 20, width: '100%', maxWidth: 460, maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', boxSizing: 'border-box' }

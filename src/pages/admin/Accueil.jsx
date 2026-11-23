@@ -37,6 +37,7 @@ import ResaKanban from './dashboard/ResaKanban'
 import {
   TopArticlesBlock, StocksBlock, DepensesBlock, CachetsBlock, PlanningBlock, SpectateursBlock, BenevolesBlock,
 } from './accueil/Blocks'
+import { pastilleTx, pastilleAlerte } from '../../utils/nvPastilles'
 import d from './dashboard/Dashboard.module.css'
 import s from './accueil/Accueil.module.css'
 
@@ -81,6 +82,41 @@ const TX_STYLE = {
   'benev-retrait':    { tone: 'brand',   sign: ''  },
   reservation:        { tone: 'warning', sign: ''  },
   'benev-reservation':{ tone: 'warning', sign: ''  },
+}
+
+// Nouveau style téléphone (23/11/2026) : libellés courts des actions rondes,
+// blocs rendus en carte de verre tels quels (les autres ont un rendu téléphone dédié)
+const ACTION_SHORT = { credit: 'Créditer', debit: 'Encaisser', 'commande-sur-place': 'Sur place', remboursement: 'Rembourser', nouveau: 'Secours' }
+const NV_GLASS = new Set(['flow', 'goal', 'resas', 'top-articles', 'cachets', 'planning', 'stocks', 'depenses', 'spectateurs', 'benevoles'])
+const ALERT_TONE = { danger: 'Critique', warning: 'Attention', info: 'Information' }
+// Gros montant : euros en grand, centimes et symbole plus petits
+const bigEuros = (c) => {
+  const v = Math.round(c || 0)
+  const [e, cts] = (Math.abs(v) / 100).toFixed(2).split('.')
+  return <>{v < 0 ? '−' : ''}{Number(e).toLocaleString('fr-FR')}<small>,{cts} €</small></>
+}
+// Petites barres qui se remplissent (rien si aucune donnée)
+function NvBars({ values = [], tone }) {
+  const max = Math.max(0, ...values)
+  if (!(max > 0)) return null
+  return (
+    <span className={clsx(s.nvBars, tone && s[`nvBars-${tone}`])} aria-hidden="true">
+      {values.map((v, i) => (
+        <i key={i} className="nv-grow-y" style={{ height: `${Math.max(4, Math.round((v / max) * 100))}%`, animationDelay: `${i * 50}ms` }} />
+      ))}
+    </span>
+  )
+}
+function NvKpi({ label, value, sub, delta, bars, barsTone }) {
+  return (
+    <div className={clsx('nv-glass', s.nvKpi)}>
+      <span className={s.nvKpiLabel}>{label}</span>
+      <b className={s.nvKpiValue}>{value}</b>
+      {delta && <span className={clsx(s.nvDelta, delta.dir === 'up' && 'nv-pos', delta.dir === 'down' && 'nv-neg')}>{delta.text}</span>}
+      {sub && <span className={s.nvKpiSub}>{sub}</span>}
+      {bars && <NvBars values={bars} tone={barsTone} />}
+    </div>
+  )
 }
 
 const signed = (n) => (n > 0 ? `+${n}` : `${n}`)
@@ -285,6 +321,12 @@ export default function Accueil({ onNavigate, view }) {
   // Refonte téléphone (20/11/2026) : sur téléphone, les actions rapides passent avant les chiffres,
   // tant que l'ordre n'a pas été personnalisé (un ordre choisi par l'utilisateur est respecté)
   const { isMobile } = useBreakpoint()
+  // Téléphone (23/11/2026) : recharges heure par heure d'aujourd'hui pour les petites barres (7 dernières heures)
+  const creditBars = useMemo(() => {
+    if (!isMobile || !globalView) return null
+    const f = hourlyFlow(allTx, now, 0)
+    return f.buckets.slice(0, f.nowIndex + 1).slice(-7).map(b => b.credits)
+  }, [isMobile, globalView, allTx, now])
   const shownBase = prefs.order.filter(id => allowed[id] && !prefs.hidden.includes(id))
   const ordreParDefaut = prefs.order.join() === DEFAULTS.order.join()
   const shown = isMobile && ordreParDefaut && shownBase.includes('actions')
@@ -351,7 +393,135 @@ export default function Accueil({ onNavigate, view }) {
     .sort((a, b) => (txTime(b) || 0) - (txTime(a) || 0))
     .slice(0, 7), [recentSource])
 
+  // ─── Téléphone, nouveau style (23/11/2026) ──────────────────────────
+  // Mêmes données, mêmes droits et mêmes destinations que les blocs ci-dessous ; seul le dessin change.
+  // Le gros montant de l'en-tête reprend le premier chiffre des indicateurs (recettes du jour pour
+  // la vue événement, sinon le chiffre personnel du poste) ; les cartes montrent les autres.
+  const heroFig = !allowed.kpis ? null
+    : globalView ? {
+      label: 'Recettes du jour', value: day.revenue,
+      delta: day.revenueDelta != null
+        ? { dir: day.revenueDelta > 0 ? 'up' : day.revenueDelta < 0 ? 'down' : 'flat', text: `${day.revenueDelta > 0 ? '▲' : day.revenueDelta < 0 ? '▼' : '='} ${signed(day.revenueDelta)} % par rapport à hier même heure` }
+        : { dir: 'flat', text: `${plural(day.salesCount, 'vente')} depuis 6h` },
+    }
+    : canSell ? { key: 'ventes', label: 'Encaissé du jour', value: mine.ventes, delta: { dir: 'flat', text: plural(mine.ventesCount, 'vente') } }
+    : { key: 'credits', label: 'Vos crédits du jour', value: mine.credits, delta: { dir: 'flat', text: plural(mine.creditsCount, 'recharge') } }
+
+  const renderNv = (id) => {
+    switch (id) {
+      case 'kpis': return (
+        <div className={s.nvKpis}>
+          {globalView ? (<>
+            <NvKpi label="Rechargé" value={<AnimatedNumber value={day.credits} format={fmt} />} bars={creditBars} />
+            <NvKpi label="En circulation" value={<AnimatedNumber value={kpis.totalSoldes} format={fmt} />}
+              sub={`${wallets} portefeuille${wallets > 1 ? 's' : ''}`} />
+            <NvKpi label="Panier moyen" value={<AnimatedNumber value={Math.round(day.basket)} format={fmt} />}
+              delta={day.basketDiff != null
+                ? { dir: day.basketDiff > 0 ? 'up' : day.basketDiff < 0 ? 'down' : 'flat', text: `${day.basketDiff > 0 ? '▲' : day.basketDiff < 0 ? '▼' : '='} ${day.basketDiff >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(day.basketDiff)))}` }
+                : undefined}
+              sub={day.basketDiff == null ? plural(day.salesCount, 'encaissement') : undefined} />
+            <NvKpi label="Réservations" value={<AnimatedNumber value={kpis.activeResas.length} />}
+              sub={kpis.resaReady > 0 ? `${kpis.resaReady} prête${kpis.resaReady > 1 ? 's' : ''} à retirer` : kpis.resaPending > 0 ? `${kpis.resaPending} en attente` : 'Aucune en cours'} />
+          </>) : (<>
+            {canCredit && heroFig?.key !== 'credits' && <NvKpi label="Vos crédits du jour" value={<AnimatedNumber value={mine.credits} format={fmt} />} sub={plural(mine.creditsCount, 'recharge')} />}
+            <NvKpi label="Vos transactions" value={<AnimatedNumber value={mine.txCount} />} sub="Depuis minuit" />
+            {canCredit && !canSell && <NvKpi label="Nouveaux inscrits" value={<AnimatedNumber value={mine.nouveaux} />} sub={`${spectateurs.length} spectateurs au total`} />}
+            {canSell && <NvKpi label="Résas à retirer" value={<AnimatedNumber value={mine.resasPretes} />} sub={mine.resasAttente ? `${mine.resasAttente} en attente` : 'Aucune en attente'} />}
+            {canSell && !canCredit && <NvKpi label="Panier moyen" value={mine.ventesCount ? <AnimatedNumber value={Math.round(mine.ventes / mine.ventesCount)} format={fmt} /> : '—'} sub="Sur vos ventes du jour" />}
+          </>)}
+        </div>
+      )
+
+      case 'actions': return (
+        <nav className={clsx('nv-acts', s.nvActs)} aria-label="Actions rapides">
+          {actions.map(a => {
+            const Icon = a.icon
+            return (
+              <button key={a.key} type="button" className="nv-act nv-press" aria-label={a.label}
+                onClick={() => { if (isAdmin) actionUsage.recordUse(a.key); go(a.key) }}>
+                <i aria-hidden="true"><Icon size={24} /></i>
+                <span className={s.nvActLabel}>{ACTION_SHORT[a.key] || a.label}</span>
+              </button>
+            )
+          })}
+        </nav>
+      )
+
+      case 'alertes': return (
+        <section className={clsx('nv-glass', s.nvCard)} aria-labelledby="acc-todo">
+          <div className={clsx('nv-sec', s.nvCardHead)}>
+            <h2 id="acc-todo">À traiter</h2>
+            <span>{alerts.length}</span>
+          </div>
+          {alerts.length === 0 ? (
+            <p className={s.nvEmpty}>Rien à signaler</p>
+          ) : alerts.slice(0, 4).map(a => (
+            <button key={a.id} type="button" className="nv-row nv-press" onClick={() => go(a.page)}>
+              <span className="nv-ic" style={{ background: pastilleAlerte(a.tone) }} aria-hidden="true"><AlertTriangle size={20} /></span>
+              <span className="nv-rt">
+                <b>{a.title}</b>
+                <span>
+                  {ALERT_TONE[a.tone] || 'Information'}
+                  {a.detail != null && ` · ${fmt(a.detail)}`}
+                  {a.stock != null && a.stock > 0 && ` · reste ${a.stock}`}
+                </span>
+              </span>
+              <ChevronRight size={20} className={s.nvChev} aria-hidden="true" />
+            </button>
+          ))}
+          {(watch.busy > 0 || watch.big > 0) && (
+            <button type="button" className="nv-row nv-press" onClick={() => go('alertes')}>
+              <span className="nv-ic neutre" aria-hidden="true"><Eye size={20} /></span>
+              <span className="nv-rt">
+                <b>À surveiller</b>
+                <span>{[
+                  watch.busy > 0 && `${plural(watch.busy, 'compte')} à 5 opérations ou plus`,
+                  watch.big > 0 && `${plural(watch.big, 'achat')} de plus de 50 €`,
+                ].filter(Boolean).join(' · ')}</span>
+              </span>
+              <ChevronRight size={20} className={s.nvChev} aria-hidden="true" />
+            </button>
+          )}
+          <button type="button" className={clsx(s.nvSee, 'nv-press')} onClick={() => go('alertes')}>
+            {alerts.length > 4 ? `Tout voir (${alerts.length})` : 'Tout voir'}
+          </button>
+        </section>
+      )
+
+      case 'transactions': return (
+        <section className={clsx('nv-glass', s.nvCard)} aria-labelledby="acc-tx">
+          <div className={clsx('nv-sec', s.nvCardHead)}>
+            <h2 id="acc-tx">{globalView ? 'Dernières transactions' : 'Vos dernières transactions'}</h2>
+            <span>{mine.txCount} aujourd'hui</span>
+          </div>
+          {recentTx.length === 0 ? (
+            <p className={s.nvEmpty}>Les recharges et encaissements apparaîtront ici.</p>
+          ) : recentTx.map((t, i) => {
+            const st = TX_STYLE[t.type] || { tone: 'danger', sign: '−' }
+            return (
+              <div key={t.id || i} className="nv-row">
+                <span className={clsx('nv-ic', s.nvSign)} style={{ background: pastilleTx(t.type) }} aria-hidden="true">{st.sign || '•'}</span>
+                <span className="nv-rt">
+                  <b>{t.label}</b>
+                  <span>{t.benevoleNom || specMap[t.specId] || t.specNom || '—'} · {t.heure || t.date}</span>
+                </span>
+                <span className={clsx('nv-amt', t.type === 'credit' && 'nv-pos')}>{st.sign}{fmt(t.montant || 0)}</span>
+              </div>
+            )
+          })}
+          <button type="button" className={clsx(s.nvSee, 'nv-press')} onClick={() => go('transactions')}>Tout voir</button>
+        </section>
+      )
+
+      default: return undefined
+    }
+  }
+
   const renderBlock = (id) => {
+    if (isMobile) {
+      const nv = renderNv(id)
+      if (nv !== undefined) return nv
+    }
     switch (id) {
       case 'kpis': return globalView ? (
         <div className={d.stats}>
@@ -536,12 +706,27 @@ export default function Accueil({ onNavigate, view }) {
   }
 
   return (
-    <div className={d.page}>
+    <div className={clsx(d.page, isMobile && s.nvPage)}>
       {theme.bannerSrc && (
         <div className={d.banner}><img src={theme.bannerSrc} alt="" /></div>
       )}
 
-      {/* Salutation + événement */}
+      {/* Téléphone (23/11/2026) : l'en-tête en dégradé remplace la salutation.
+          La pastille aux initiales et la recherche sont dans la barre du haut (App.jsx). */}
+      {isMobile ? (
+        <header className={clsx(s.nvHero, 'nv-in')}>
+          {heroFig ? (<>
+            <p className={s.nvHeroLabel}>{event?.nom ? `${event.nom} · ` : ''}{heroFig.label}</p>
+            <p className={clsx('nv-big', s.nvHeroValue)}><AnimatedNumber value={heroFig.value} format={bigEuros} /></p>
+            {heroFig.delta && (
+              <p className={clsx(s.nvHeroDelta, heroFig.delta.dir === 'up' && 'nv-pos', heroFig.delta.dir === 'down' && 'nv-neg')}>{heroFig.delta.text}</p>
+            )}
+          </>) : (<>
+            <p className={clsx('nv-title', s.nvHeroHello)}>{greeting} {prenom}</p>
+            <p className={s.nvHeroLabel}>{event?.nom || 'Aucun événement actif'}{event?.lieu && ` · ${event.lieu}`}</p>
+          </>)}
+        </header>
+      ) : (
       <header className={s.hello}>
         <span className={s.avatar} aria-hidden="true">{initiales}</span>
         <div className={s.helloText}>
@@ -554,6 +739,7 @@ export default function Accueil({ onNavigate, view }) {
           <span className={s.customizeLabel}>Personnaliser</span>
         </Button>
       </header>
+      )}
 
       {/* Blocs, dans l'ordre choisi */}
       {shown.length === 0 ? (
@@ -564,11 +750,18 @@ export default function Accueil({ onNavigate, view }) {
       ) : (
         <div ref={page.ref} className={clsx(s.grid, 'yc-stagger')}>
           {shown.map(id => (
-            <div key={id} data-flip={id} className={s[BLOCK[id].span]}>
+            <div key={id} data-flip={id} className={clsx(s[BLOCK[id].span], isMobile && NV_GLASS.has(id) && s.nvBlock, isMobile && id === 'raccourcis' && s.nvShortcuts)}>
               {renderBlock(id)}
             </div>
           ))}
         </div>
+      )}
+
+      {/* Téléphone (23/11/2026) : « Personnaliser » en bas de l'accueil (l'en-tête n'a plus de place) */}
+      {isMobile && shown.length > 0 && (
+        <button type="button" className={clsx('nv-btn-sec', 'nv-press', s.nvCustomize)} onClick={openEditor}>
+          <SlidersHorizontal size={18} aria-hidden="true" /> Personnaliser l'accueil
+        </button>
       )}
 
       {/* Personnaliser : afficher, masquer, réordonner */}

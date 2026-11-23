@@ -3,14 +3,19 @@
  * Carte portefeuille (solde + QR), commande prête en tête, historique,
  * barre d'onglets en bas : Solde | Commander | Mes résas | Programme.
  * La logique Firestore (compte, transactions, réservations) est celle de la v4.
+ *
+ * Nouveau style (23/11/2026, maquette validée) : racine `.nv` (styles/nouveau.css), dégradé sur
+ * l'accueil et le compte, fond de liste ailleurs, barre d'onglets flottante, gros montants,
+ * détail d'une opération en lecture seule, recharge au clavier numérique. Logique inchangée.
  */
 import { ensureSpectatorSession, soldeUrl, spectateurOuvert, oublierCompte, rememberedKey, ouvrirParJeton } from '../../firebase/publicSession'
 import { jetonTournant, fenetreDe, resteSecondes } from '../../utils/qrTournant'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
-  Search, Wallet, Clock, Bookmark, LayoutList, BarChart2, CalendarDays, UtensilsCrossed,
-  Plus, Minus, Undo2, ShoppingBag, ChevronRight, Maximize2, Mic, Ticket, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote, Heart, UserRound,
+  Wallet, Clock, Bookmark, CalendarDays, UtensilsCrossed,
+  Plus, Minus, Undo2, ShoppingBag, ChevronRight, ChevronLeft, Mic, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote, Heart, UserRound,
+  QrCode, MoreHorizontal, Euro, X, Info, Check, Delete, ArrowLeftRight, Moon,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
@@ -25,13 +30,13 @@ import {
   collection, query, where, getDocs, addDoc, onSnapshot,
   updateDoc, doc, getDoc, serverTimestamp, runTransaction, orderBy, increment
 } from 'firebase/firestore'
-import { fmt, nowStr, makeResaCode as resaCode } from '../../utils/helpers'
+import { fmt, nowStr, initials, makeResaCode as resaCode } from '../../utils/helpers'
 import { useNotifications } from '../../hooks/useNotifications'
 import NotifBell from '../../components/NotifBell'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
 import { friendlyError } from '../../utils/errors'
-import { Button, Badge, Empty, Field, Tabs, Dialog, AnimatedNumber, HoldButton, SessionBanner, focusFirstInvalid } from '../../ui'
+import { Button, Badge, Empty, Dialog, AnimatedNumber, HoldButton, SessionBanner } from '../../ui'
 import { planRemboursement } from '../../utils/remboursementPlan'
 import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../../utils/historiqueSpec'
 import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../utils/dons'
@@ -40,7 +45,6 @@ import SoldeChart from './spectateur/SoldeChart'
 import sp from './spectateur/SoldePage.module.css'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
 import CheckUpdateButton from '../../components/CheckUpdateButton'
-import PageTransition from '../../components/PageTransition'
 
 const PAGE_SIZE = 15
 
@@ -607,32 +611,106 @@ export default function SoldePage({ demo = null }) {
     try { await annuler(cancelId) } finally { setCancelling(false); setCancelId(null) }
   }
 
+  // ── Nouveau style (23/11/2026, maquette validée) : détail d'une opération, feuille « Plus »,
+  //    montant de l'accueil qui se floute au défilement. Aucune donnée nouvelle, aucune action nouvelle.
+  const [detail, setDetail]     = useState(null)    // opération ouverte en lecture seule
+  const [plusOpen, setPlusOpen] = useState(false)   // feuille « Plus » de l'accueil
+  const heroRef        = useRef(null)
+  const detailCloseRef = useRef(null)
+  const plusCloseRef   = useRef(null)
+
+  // Recharge au clavier numérique (23/11/2026) : la saisie remplit « autreMontant » comme l'ancien
+  // champ « Autre » ; les montants rapides gardent « montantRecharge ». Bornes et paiement inchangés.
+  const saisieRecharge = autreMontant !== '' ? autreMontant : String(montantRecharge / 100)
+  const toucheRecharge = (k) => {
+    setRechargeErr('')
+    if (k === 'del') { const n = saisieRecharge.slice(0, -1); setAutreMontant(n === '' ? '0' : n); return }
+    setAutreMontant((saisieRecharge === '0' ? k : saisieRecharge + k).slice(0, 3))
+  }
+
+  // Les fenêtres de src/ui (Dialog, Sheet) et la fiche article s'affichent dans document.body par un
+  // portail, hors de la racine `.nv` : on pose `.nv` sur body tant que l'espace est ouvert (23/11/2026)
+  useEffect(() => {
+    document.body.classList.add('nv')
+    return () => document.body.classList.remove('nv')
+  }, [])
+
+  // Montant de l'accueil : perd en opacité, se floute et rétrécit quand on fait défiler (23/11/2026)
+  useEffect(() => {
+    if (tab !== 'accueil' || !spec) return
+    const el = heroRef.current
+    if (!el || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    let raf = 0
+    const maj = () => {
+      raf = 0
+      const k = Math.min(1, Math.max(0, window.scrollY / 170))
+      el.style.opacity = String(1 - k)
+      el.style.filter = k ? `blur(${(k * 8).toFixed(1)}px)` : ''
+      el.style.transform = k ? `scale(${(1 - k * 0.08).toFixed(3)})` : ''
+    }
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(maj) }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    maj()
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+      el.style.opacity = ''; el.style.filter = ''; el.style.transform = ''
+    }
+  }, [tab, !!spec])
+
+  // Détail et feuille « Plus » : Échap ferme, le fond ne défile plus, le focus revient où il était (23/11/2026)
+  useEffect(() => {
+    if (!detail && !plusOpen) return
+    const avant = document.activeElement
+    const onKey = (e) => { if (e.key === 'Escape') { setDetail(null); setPlusOpen(false) } }
+    document.addEventListener('keydown', onKey)
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    ;(detail ? detailCloseRef : plusCloseRef).current?.focus?.()
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = overflow
+      avant?.focus?.()
+    }
+  }, [!!detail, plusOpen])
+
   const Pagination = ({ page, pages, onChange }) => pages <= 1 ? null : (
     <div className={sp.pager}>
-      <button type="button" onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1} aria-label="Page précédente">‹</button>
-      <span>{page} / {pages}</span>
-      <button type="button" onClick={() => onChange(Math.min(pages, page + 1))} disabled={page === pages} aria-label="Page suivante">›</button>
+      <button type="button" className="nv-round nv-press" onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1} aria-label="Page précédente"><ChevronLeft size={20} aria-hidden="true" /></button>
+      <span>Page {page} sur {pages}</span>
+      <button type="button" className="nv-round nv-press" onClick={() => onChange(Math.min(pages, page + 1))} disabled={page === pages} aria-label="Page suivante"><ChevronRight size={20} aria-hidden="true" /></button>
     </div>
   )
 
-  const TxRow = ({ t }) => {
+  // Une ligne d'opération (accueil, historique) : toucher ouvre le détail en lecture seule
+  const ligneOp = (t, i, avecJour) => {
     const look = txLook(t.type)
     const Icon = look.icon
-    const sansEffet = effetSolde(t) === 0 && t.type !== 'reservation'
+    const [titre, ...reste] = String(t.label || t.type || '').split(' · ')
     const dest = destinationRemboursement(t)
+    const heure = heureDe(t)
+    const quand = avecJour ? [jourDe(t).label, heure].filter(Boolean).join(', ') : heure
+    const sous = [quand, reste.join(' · '), dest].filter(Boolean).join(' · ')
     return (
-      <li className={sp.tx}>
-        <span className={clsx(sp.txIcon, sp[look.tone])}><Icon size={15} aria-hidden="true" /></span>
-        <span className={sp.txText}>
-          <b>{t.label || t.type}</b>
-          <span>{t.date}{t.heure ? ` · ${t.heure}` : ''}{dest ? ` · ${dest}` : ''}</span>
-        </span>
-        <span className={clsx(sp.txAmount, sp[`${look.tone}Text`])}>
-          {sansEffet ? '—' : `${signeDe(t) || look.sign}${fmt(t.montant || 0)}`}
-        </span>
-      </li>
+      <button key={i} type="button" className={clsx('nv-row nv-press', sp.opRow)} onClick={() => setDetail(t)}>
+        <span className={clsx('nv-ic', sp.opBg, sp[opClasse(t.type)])}><Icon size={20} aria-hidden="true" /></span>
+        <span className="nv-rt"><b>{titre}</b>{sous && <span>{sous}</span>}</span>
+        <span className={clsx('nv-amt', sp.opAmt, effetSolde(t) > 0 && 'nv-pos')}>{montantSigne(t)}</span>
+      </button>
     )
   }
+
+  // Historique groupé par jour (page courante), avec le total du jour sur toutes les opérations du jour
+  const joursHisto = (() => {
+    const out = [], idx = {}
+    for (const t of txSlice) {
+      const j = jourDe(t)
+      if (!(j.key in idx)) { idx[j.key] = out.length; out.push({ ...j, txs: [] }) }
+      out[idx[j.key]].txs.push(t)
+    }
+    return out
+  })()
+  const totalJour = (key) => txTriees.filter(t => jourDe(t).key === key).reduce((a, t) => a + effetSolde(t), 0)
 
   const NAV = [
     { id: 'accueil',      label: 'Solde',     icon: Wallet,          match: ['accueil', 'historique', 'recharger', 'rembourser'] },
@@ -641,52 +719,76 @@ export default function SoldePage({ demo = null }) {
     { id: 'programme',    label: 'Programme', icon: CalendarDays,    match: ['programme'], badge: nonLuPlanning },
     { id: 'compte',       label: 'Compte',    icon: UserRound,       match: ['compte'] },
   ]
+  const navIdx = Math.max(0, NAV.findIndex(n => n.match.includes(tab)))
+
+  // Fond de l'écran : dégradé pour l'accueil et le compte, fond de liste ailleurs (maquette)
+  const fondGrad = !spec || tab === 'accueil' || tab === 'compte'
+  const ecranPousse = ['historique', 'recharger', 'rembourser'].includes(tab)
+  const prenom = String(spec?.nom || '').split(' ')[0]
+  const initialesSpec = initials(spec?.nom || '') || '?'
+  const peutRembourser = !!spec && (!!demandeEnCours || (spec.solde || 0) > 0)
+  const peutDonner = !!spec && !rembClos && !demandeEnCours && soldeDon >= DON_MIN
+
+  // Bascule clair / sombre en bouton rond de 44 px, comme la cloche (demande du 23/11/2026)
+  const rond = {
+    width: 44, height: 44, minHeight: 0, borderRadius: '50%',
+    background: fondGrad ? 'var(--nv-glass)' : 'var(--nv-card2)',
+    border: fondGrad ? '1px solid var(--nv-line)' : '1px solid transparent',
+    color: 'var(--nv-fg)',
+  }
+  const boutonsHaut = (avecCloche = true) => (
+    <div className={sp.topBtns}>
+      {fromArtiste && artisteCreneauId && eventId && (
+        <button type="button" className="nv-round nv-press" title="Retour à mon espace artiste" aria-label="Retour à mon espace artiste"
+          onClick={() => { window.location.href = '/artiste?ev=' + eventId + '&cr=' + artisteCreneauId }}>
+          <Mic size={20} aria-hidden="true" />
+        </button>
+      )}
+      {spec && avecCloche && (
+        <span className={sp.bellSlot}><NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu} /></span>
+      )}
+      <ThemeToggle style={rond} />
+    </div>
+  )
+  // Barre du haut d'un écran poussé : retour rond, titre centré, bascule du thème
+  const barrePoussee = (titre, sousTitre, onBack) => (
+    <header className={sp.top}>
+      <button type="button" className="nv-round nv-press" onClick={onBack} aria-label="Retour"><ArrowLeft size={20} aria-hidden="true" /></button>
+      <div className={sp.topCenter}>
+        {titre && <b>{titre}</b>}
+        {sousTitre && <span>{sousTitre}</span>}
+      </div>
+      {boutonsHaut(false)}
+    </header>
+  )
+  const barreOnglet = (titre) => (
+    <header className={sp.top}>
+      <h1 className={clsx('nv-title', sp.topTitle)}>{titre}</h1>
+      {boutonsHaut()}
+    </header>
+  )
 
   return (
-    <div className={sp.page} style={{ '--brand': themeColor }}>
-      {/* En-tête */}
-      <header className={sp.head}>
-        <div className={sp.headInner}>
-          <div className={sp.logo}><img src="/logo.png" alt="" onError={e => { e.currentTarget.style.display = 'none' }} /></div>
-          {/* Refonte téléphone (20/11/2026) : une fois le compte ouvert, l'en-tête salue le spectateur */}
-          {spec ? (
-            <div className={sp.headWho}>
-              <b>Salut {(spec.nom || '').split(' ')[0] || 'à toi'}</b>
-              <span>{eventMeta?.nom || 'Festival'}</span>
-            </div>
-          ) : (<>
-            <span className={sp.brandName}>YllaCash</span>
-            {eventMeta && (
-              <span className={sp.event}>
-                {eventMeta.logoSrc && <img src={eventMeta.logoSrc} alt="" />}
-                {eventMeta.nom}
-              </span>
-            )}
-          </>)}
-          <div className={sp.headActions}>
-            {fromArtiste && artisteCreneauId && eventId && (
-              <button type="button" className={sp.headBtn} title="Retour à mon espace artiste" aria-label="Retour à mon espace artiste"
-                onClick={() => { window.location.href = '/artiste?ev=' + eventId + '&cr=' + artisteCreneauId }}>
-                <Mic size={16} />
-              </button>
-            )}
-            {spec && <NotifBell notifications={notifications} nonLuCount={nonLuCount} onMarkAllRead={marquerToutLu} />}
-            {!spec && <ThemeToggle variant="light" style={{ width: 36, height: 36, minHeight: 0 }} />}
-          </div>
-        </div>
-      </header>
-
-      <main className={clsx(sp.wrap, spec && sp.withNav)}>
+    <div className={clsx('nv', sp.page, fondGrad ? 'nv-grad' : 'nv-list')} style={{ '--brand': themeColor }}>
+      <main className={clsx(sp.wrap, spec && 'nv-under-tabbar', spec && tab === 'reserver' && cartItems.length > 0 && !resaDone && sp.avecPanier)}>
         {/* ── Identification ── */}
-        {!spec && (
-          <section className={sp.login}>
-            <h1>Mon portefeuille festival</h1>
+        {!spec && (<>
+          <header className={sp.top}>
+            <span className={sp.logo}><img src="/logo.png" alt="" onError={e => { e.currentTarget.style.display = 'none' }} /></span>
+            <div className={sp.topWho}>
+              <b>YllaCash</b>
+              {eventMeta?.nom && <span>{eventMeta.nom}</span>}
+            </div>
+            {boutonsHaut(false)}
+          </header>
+          <section className={clsx(sp.login, 'nv-in')}>
+            <h1 className="nv-title">Mon portefeuille festival</h1>
             {loading
-              ? <p className={sp.loading}>Ouverture de votre espace…</p>
-              : <p>Ouvrez votre espace avec le lien reçu par e-mail avec votre billet. Plus besoin de code : votre QR s'affiche ici et change tout seul.</p>}
+              ? <p className="nv-mu">Ouverture de votre espace…</p>
+              : <p className="nv-mu">Ouvrez votre espace avec le lien reçu par e-mail avec votre billet. Plus besoin de code : votre QR s'affiche ici et change tout seul.</p>}
             {err && <p className={sp.error} role="alert">{err}</p>}
           </section>
-        )}
+        </>)}
 
         {spec && (<>
           {/* Session expirée (20/11/2026) : on le dit, et « Réessayer » relance l'ouverture du compte */}
@@ -698,178 +800,231 @@ export default function SoldePage({ demo = null }) {
           )}
           {/* « Réessayer » n'a pas abouti : la raison donnée par l'ouverture du compte (20/11/2026) */}
           {sessionExpiree && !demo && err && <p className={clsx(sp.error, sp.sessionBan)} role="alert">{err}</p>}
-          {/* Contenu : animation entre les onglets */}
-          <PageTransition pageKey={tab}>
-          {/* ── SOLDE ── */}
-          {tab === 'accueil' && (
-            <div className={sp.stack}>
-              {/* Refonte téléphone (20/11/2026) : le QR de paiement est l'élément central de l'accueil */}
-              <section className={sp.wallet} aria-label="Mon solde">
-                <span className={sp.walletLabel}>Mon solde</span>
-                <b className={sp.walletValue}><AnimatedNumber value={spec.solde || 0} format={fmt} /></b>
-                {qrDataUrl && !billetAnnule && (
-                  <button type="button" className={sp.walletQr} onClick={openQr} aria-label="Agrandir mon QR code de paiement">
-                    <img src={qrDataUrl} alt="" />
-                  </button>
-                )}
-                <span className={sp.walletId}>
-                  {billetAnnule
-                    ? 'Billet annulé : ce compte ne permet plus de payer.'
-                    : qrDataUrl
-                      ? `Montrez ce QR pour payer · nouveau dans ${qrReste} s`
-                      : 'Pour afficher votre QR de paiement, rouvrez votre espace avec le lien reçu par e-mail.'}
-                </span>
-                {qrDataUrl && !billetAnnule && (
-                  <span className={sp.walletBar} aria-hidden="true"><i style={{ width: `${Math.round(qrReste / 30 * 100)}%` }} /></span>
+
+          {/* Contenu : onglet en « nv-in », écran poussé en « nv-push » (23/11/2026) */}
+          <div key={tab} className={clsx(sp.screen, ecranPousse ? 'nv-push' : 'nv-in')}>
+
+          {/* ── SOLDE (accueil) ── */}
+          {tab === 'accueil' && (<>
+            <header className={sp.top}>
+              <span className={sp.avatar} aria-hidden="true">{initialesSpec}</span>
+              <div className={sp.topWho}>
+                <b>Salut {prenom || 'à toi'}</b>
+                <span>{eventMeta?.nom || 'Festival'}</span>
+              </div>
+              {boutonsHaut()}
+            </header>
+
+            <section ref={heroRef} className={sp.hero} aria-label="Mon solde">
+              <div className={sp.heroLab}>Mon solde</div>
+              <div className={clsx('nv-big', sp.heroBig)}><AnimatedNumber value={spec.solde || 0} format={montantGros} /></div>
+              <span className={sp.chip}><Wallet size={16} aria-hidden="true" />{eventMeta?.nom ? `${eventMeta.nom} · ` : ''}Compte {spec.id}</span>
+            </section>
+
+            <div className={clsx('nv-acts', sp.acts)}>
+              {!billetAnnule && (
+                <button type="button" className="nv-act nv-press" onClick={() => { setRechargeErr(''); go('recharger') }}>
+                  <i><Plus size={24} aria-hidden="true" /></i>Recharger
+                </button>
+              )}
+              {qrDataUrl && !billetAnnule && (
+                <button type="button" className="nv-act nv-press" onClick={openQr}>
+                  <i><QrCode size={24} aria-hidden="true" /></i>Payer
+                </button>
+              )}
+              <button type="button" className="nv-act nv-press" onClick={() => go('reserver')}>
+                <i><UtensilsCrossed size={24} aria-hidden="true" /></i>Commander
+              </button>
+              <button type="button" className="nv-act nv-press" onClick={() => setPlusOpen(true)} aria-haspopup="dialog">
+                <i><MoreHorizontal size={24} aria-hidden="true" /></i>Plus
+              </button>
+            </div>
+
+            <div className={clsx(sp.stack, 'nv-st')}>
+              {/* QR de paiement tournant (20/11/2026) dans une carte de verre */}
+              <section className={clsx('nv-glass nv-pad', sp.qrCard)} aria-label="Mon QR de paiement">
+                {billetAnnule ? (
+                  <p className={sp.qrTxt}><b>Billet annulé</b><span>Ce compte ne permet plus de payer.</span></p>
+                ) : qrDataUrl ? (<>
+                  <div className={sp.qrRow}>
+                    <button type="button" className={clsx(sp.qrBox, 'nv-press')} onClick={openQr} aria-label="Agrandir mon QR code de paiement">
+                      <img src={qrDataUrl} alt="" />
+                    </button>
+                    <p className={sp.qrTxt}>
+                      <b>Mon QR de paiement</b>
+                      <span>Montrez-le au stand pour payer · nouveau dans {qrReste} s</span>
+                    </p>
+                  </div>
+                  <span className={sp.bar} aria-hidden="true"><i style={{ width: `${Math.round(qrReste / 30 * 100)}%` }} /></span>
+                </>) : (
+                  <p className={sp.qrTxt}><b>Mon QR de paiement</b><span>Pour afficher votre QR de paiement, rouvrez votre espace avec le lien reçu par e-mail.</span></p>
                 )}
                 {secours && !billetAnnule && (
                   <span className={sp.secours}>Scanner en panne ? Tapez ce code à la borne : <b>{secours.code}</b></span>
                 )}
-                {!billetAnnule && (
-                  <div className={sp.walletBtns}>
-                    <button type="button" className={sp.walletBtn} onClick={() => { setRechargeErr(''); go('recharger') }}><Plus size={16} aria-hidden="true" /> Recharger</button>
-                    {qrDataUrl && <button type="button" className={clsx(sp.walletBtn, sp.walletBtnGhost)} onClick={openQr}><Maximize2 size={16} aria-hidden="true" /> Agrandir le QR</button>}
-                  </div>
-                )}
               </section>
 
               {readyResas.map(r => (
-                <button key={r.id} type="button" className={sp.ready} onClick={() => go('reservations')}>
-                  <span className={sp.readyCode}>#{r.code}</span>
-                  <span className={sp.readyText}>
-                    <b>Votre commande est prête</b>
-                    <span>Présentez-vous au stand pour la retirer · {fmt(r.total || 0)}</span>
-                  </span>
-                  <ChevronRight size={18} aria-hidden="true" />
-                </button>
+                <section key={r.id} className="nv-glass nv-pad">
+                  <div className={sp.readyHead}>
+                    <span className={clsx('nv-ic', sp.opBg, sp.op_credit)}><ShoppingBag size={20} aria-hidden="true" /></span>
+                    <p className={sp.qrTxt}>
+                      <b>Votre commande est prête</b>
+                      <span>#{r.code}{(r.items || []).length ? ` · ${(r.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')}` : ''} · {fmt(r.total || 0)} · à retirer au stand</span>
+                    </p>
+                  </div>
+                  <button type="button" className={clsx('nv-btn nv-press', sp.mt16)} onClick={() => go('reservations')}>Voir ma commande</button>
+                </section>
               ))}
 
               {billetAnnule && (
                 <p className={sp.info}>Votre billet a été annulé. Ce compte ne peut plus être rechargé ni servir à payer.{(spec.solde || 0) > 0 ? ' Votre solde vous reste dû : demandez-en le remboursement.' : ''}</p>
               )}
 
-              <section className={sp.ops}>
-                <header className={sp.cardHead}>
-                  <h2>Dernières opérations</h2>
-                  {txTotal > 0 && <button type="button" className={sp.more} onClick={() => go('historique')}>Tout voir</button>}
-                </header>
+              <section className="nv-glass nv-padx" aria-label="Dernières opérations">
                 {txs.length === 0 ? (
                   sessionExpiree && !demo
                     ? <Empty icon={Wallet} title="Opérations non chargées">Elles réapparaîtront dès que votre espace sera rouvert.</Empty>
                     : <Empty icon={Wallet} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
-                ) : (
-                  <ul className={sp.txList}>{txTriees.slice(0, 3).map((t, i) => <TxRow key={i} t={t} />)}</ul>
-                )}
+                ) : (<>
+                  {txTriees.slice(0, 3).map((t, i) => ligneOp(t, i, true))}
+                  {txTotal > 0 && <button type="button" className={clsx(sp.seeAll, 'nv-press')} onClick={() => go('historique')}>Tout voir</button>}
+                </>)}
               </section>
 
               {/* Remboursement : gardé sur l'accueil à la demande de l'organisateur (20/11/2026) */}
-              {(demandeEnCours || (spec.solde || 0) > 0) && (
-                <button type="button" className={sp.rowBtn} onClick={() => { setRembErr(''); go('rembourser') }}>
-                  <span className={clsx(sp.rowIcon, sp.coral)}><Undo2 size={17} aria-hidden="true" /></span>
-                  <span className={sp.rowText}>
-                    <b>{demandeEnCours ? 'Suivre ma demande de remboursement' : 'Me faire rembourser mon solde'}</b>
-                    {limiteTxt && !rembClos && <span>Possible jusqu'au {limiteTxt}</span>}
-                  </span>
-                  <ChevronRight size={18} aria-hidden="true" />
-                </button>
+              {peutRembourser && (
+                <section className="nv-glass nv-padx">
+                  <button type="button" className="nv-row nv-press" onClick={() => { setRembErr(''); go('rembourser') }}>
+                    <span className="nv-ic neutre"><Euro size={20} aria-hidden="true" /></span>
+                    <span className="nv-rt">
+                      <b>{demandeEnCours ? 'Suivre ma demande de remboursement' : 'Me faire rembourser mon solde'}</b>
+                      {limiteTxt && !rembClos && <span>Possible jusqu'au {limiteTxt}</span>}
+                    </span>
+                    <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
+                  </button>
+                </section>
               )}
             </div>
-          )}
+          </>)}
 
-          {/* ── COMPTE (refonte téléphone, 20/11/2026) ── */}
-          {tab === 'compte' && (
-            <div className={sp.stack}>
-              <section>
-                <h2 className={sp.groupTitle}>Mon argent</h2>
-                <button type="button" className={sp.rowLine} onClick={() => go('historique')}>
-                  <span className={clsx(sp.rowIcon, sp.brand)}><Clock size={17} aria-hidden="true" /></span>
-                  <span className={sp.rowText}><b>Tout l'historique</b><span>{txTotal} opération{txTotal > 1 ? 's' : ''}</span></span>
-                  <ChevronRight size={18} aria-hidden="true" />
+          {/* ── COMPTE ── */}
+          {tab === 'compte' && (<>
+            <header className={clsx(sp.top, sp.topEnd)}>{boutonsHaut()}</header>
+            <div className={sp.profil}>
+              <span className={clsx(sp.avatar, sp.avatarXl)} aria-hidden="true">{initialesSpec}</span>
+              <h1 className={sp.profilNom}>{spec.nom || 'Mon compte'}</h1>
+              <p className="nv-mu">Compte {spec.id}{eventMeta?.nom ? ` · ${eventMeta.nom}` : ''}</p>
+            </div>
+            <div className={clsx(sp.stack, 'nv-st')}>
+              <section className="nv-glass nv-padx" aria-label="Mon argent">
+                <button type="button" className="nv-row nv-press" onClick={() => go('historique')}>
+                  <span className="nv-ic neutre"><Clock size={20} aria-hidden="true" /></span>
+                  <span className="nv-rt"><b>Tout l'historique</b><span>{txTotal} opération{txTotal > 1 ? 's' : ''}</span></span>
+                  <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
                 </button>
-                {!rembClos && !demandeEnCours && soldeDon >= DON_MIN && (
-                  <button type="button" className={sp.rowLine} onClick={() => { setRembErr(''); go('rembourser') }}>
-                    <span className={clsx(sp.rowIcon, sp.coral)}><Heart size={17} aria-hidden="true" /></span>
-                    <span className={sp.rowText}><b>Donner à l'ONG Ylla</b><span>Lutte contre le cancer du sein</span></span>
-                    <ChevronRight size={18} aria-hidden="true" />
+                {peutRembourser && (
+                  <button type="button" className="nv-row nv-press" onClick={() => { setRembErr(''); go('rembourser') }}>
+                    <span className="nv-ic neutre"><Euro size={20} aria-hidden="true" /></span>
+                    <span className="nv-rt">
+                      <b>{demandeEnCours ? 'Suivre ma demande de remboursement' : 'Me faire rembourser'}</b>
+                      {limiteTxt && !rembClos && <span>Possible jusqu'au {limiteTxt}</span>}
+                    </span>
+                    <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
+                  </button>
+                )}
+                {peutDonner && (
+                  <button type="button" className="nv-row nv-press" onClick={() => { setRembErr(''); go('rembourser') }}>
+                    <span className={clsx('nv-ic', sp.opBg, sp.op_don)}><Heart size={20} aria-hidden="true" /></span>
+                    <span className="nv-rt"><b>Donner à l'ONG Ylla</b><span>Lutte contre le cancer du sein</span></span>
+                    <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
                   </button>
                 )}
               </section>
-              <section>
-                <h2 className={sp.groupTitle}>Mon compte</h2>
-                <button type="button" className={sp.rowLine} onClick={logoutSpec}>
-                  <span className={clsx(sp.rowIcon, sp.brand)}><KeyRound size={17} aria-hidden="true" /></span>
-                  <span className={sp.rowText}><b>Changer de compte</b><span>Ce compte se rouvrira avec son lien</span></span>
-                  <ChevronRight size={18} aria-hidden="true" />
+              <section className="nv-glass nv-padx" aria-label="Mon compte">
+                <button type="button" className="nv-row nv-press" onClick={logoutSpec}>
+                  <span className="nv-ic neutre"><ArrowLeftRight size={20} aria-hidden="true" /></span>
+                  <span className="nv-rt"><b>Changer de compte</b><span>Ce compte se rouvrira avec son lien</span></span>
+                  <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
                 </button>
-                <div className={sp.rowLine}>
-                  <span className={sp.rowText}><b>Thème clair ou sombre</b></span>
-                  <ThemeToggle variant="light" style={{ width: 44, height: 44, minHeight: 0 }} />
+                <div className="nv-row">
+                  <span className="nv-ic neutre"><Moon size={20} aria-hidden="true" /></span>
+                  <span className="nv-rt"><b>Thème clair ou sombre</b><span>Touchez le bouton pour changer</span></span>
+                  <ThemeToggle style={rond} />
                 </div>
               </section>
             </div>
-          )}
+          </>)}
 
           {/* ── HISTORIQUE ── */}
-          {tab === 'historique' && (
-            <section className={sp.card}>
-              <header className={sp.cardHead}>
-                <h2>Historique</h2>
-                <Tabs size="sm" label="Affichage" value={chartMode ? 'graph' : 'list'} onChange={v => setChartMode(v === 'graph')}
-                  items={[{ value: 'list', label: 'Liste' }, { value: 'graph', label: 'Graphe' }]} />
-              </header>
-              <div className={sp.totals}>
-                <span>Rechargé <b className={sp.successText}>{fmt(totalRecharge)}</b></span>
-                <span>Dépensé <b className={sp.coralText}>{fmt(totalDepense)}</b></span>
-                {totalRembourse > 0 && <span>Remboursé <b>{fmt(totalRembourse)}</b></span>}
-                {totalDonne > 0 && <span>Donné <b>{fmt(totalDonne)}</b></span>}
-              </div>
-              {txTotal === 0 ? (
-                sessionExpiree && !demo
+          {tab === 'historique' && (<>
+            {barrePoussee('Historique', null, () => go('accueil'))}
+            <div className={sp.histHead}>
+              <div className={clsx('nv-big', sp.histBig)}><AnimatedNumber value={spec.solde || 0} format={montantGros} /></div>
+              <div className="nv-mu">Solde actuel</div>
+            </div>
+            <div className={clsx('nv-card nv-pad', sp.totals)}>
+              <span>Rechargé<b className="nv-pos">{fmt(totalRecharge)}</b></span>
+              <span>Dépensé<b>{fmt(totalDepense)}</b></span>
+              {totalRembourse > 0 && <span>Remboursé<b>{fmt(totalRembourse)}</b></span>}
+              {totalDonne > 0 && <span>Donné<b>{fmt(totalDonne)}</b></span>}
+            </div>
+            <div className={clsx('nv-pills', sp.pillsTop)} role="group" aria-label="Affichage">
+              <button type="button" className="nv-pill nv-press" aria-pressed={!chartMode} onClick={() => setChartMode(false)}>Liste</button>
+              <button type="button" className="nv-pill nv-press" aria-pressed={chartMode} onClick={() => setChartMode(true)}>Graphe</button>
+            </div>
+            {txTotal === 0 ? (
+              <div className="nv-card nv-pad">
+                {sessionExpiree && !demo
                   ? <Empty icon={Clock} title="Opérations non chargées">Elles réapparaîtront dès que votre espace sera rouvert.</Empty>
-                  : <Empty icon={Clock} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>
-              ) : chartMode ? (
+                  : <Empty icon={Clock} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>}
+              </div>
+            ) : chartMode ? (
+              <div className="nv-card nv-pad">
                 <SoldeChart timeline={timeline} maxBal={maxBal} hoverIdx={hoverIdx} setHoverIdx={setHoverIdx}
                   zoom={chartZoom} setZoom={setChartZoom} fmt={fmt} />
-              ) : (
-                <>
-                  <ul className={sp.txList}>{txSlice.map((t, i) => <TxRow key={i} t={t} />)}</ul>
-                  <Pagination page={txPage} pages={txPages} onChange={p => { setTxPage(p); window.scrollTo(0, 0) }} />
-                </>
-              )}
-              <Button variant="ghost" block onClick={() => go('accueil')}>Retour au solde</Button>
-            </section>
-          )}
+              </div>
+            ) : (
+              <div className="nv-st">
+                {joursHisto.map(j => (
+                  <section key={j.key} aria-label={j.label}>
+                    <div className="nv-sec"><h2>{j.label}</h2><span>{montantJour(totalJour(j.key))}</span></div>
+                    <div className="nv-card nv-padx">{j.txs.map((t, i) => ligneOp(t, i, false))}</div>
+                  </section>
+                ))}
+                <Pagination page={txPage} pages={txPages} onChange={p => { setTxPage(p); window.scrollTo(0, 0) }} />
+              </div>
+            )}
+          </>)}
 
           {/* ── REMBOURSER LE SOLDE (20/11/2026) ── */}
-          {tab === 'rembourser' && (
-            <div className={sp.stack}>
-              <button type="button" className={sp.back} onClick={() => go('accueil')}><ArrowLeft size={16} /> Mon solde</button>
+          {tab === 'rembourser' && (<>
+            {barrePoussee(donFait ? 'Merci' : 'Remboursement', `Solde : ${fmt(spec.solde || 0)}`, () => go('accueil'))}
+            <div className={clsx(sp.stack, 'nv-st')}>
               {donFait ? (
-                <section className={clsx(sp.card, sp.done)}>
-                  <span className={sp.doneIcon}><Heart size={28} /></span>
-                  <h2>Merci {String(spec.nom || '').split(' ')[0]} !</h2>
-                  <b className={sp.rechargeMontant}>{fmt(donFait.montant)}</b>
+                <section className={clsx('nv-card nv-pad', sp.done)}>
+                  <span className={clsx(sp.doneIcon, sp.opBg, sp.op_don)}><Heart size={28} aria-hidden="true" /></span>
+                  <h2>Merci {prenom} !</h2>
+                  <b className={clsx('nv-big', sp.montantDone)}>{fmt(donFait.montant)}</b>
                   <p>donnés à l'ONG Ylla pour la lutte contre le cancer du sein.</p>
                   <p>Solde restant : <b>{fmt(spec.solde || 0)}</b></p>
-                  <p className={sp.muted}>Le don apparaît dans votre historique.</p>
-                  <div className={sp.doneActions}>
-                    <Button block onClick={() => go('accueil')}>Retour au solde</Button>
-                  </div>
+                  <p className="nv-mu">Le don apparaît dans votre historique.</p>
+                  <button type="button" className="nv-btn nv-press" onClick={() => go('accueil')}>Retour au solde</button>
                 </section>
               ) : rembClos ? (
-                <section className={sp.card}>
-                  <h2>Remboursement</h2>
+                <section className="nv-card nv-pad">
+                  <h2 className={sp.cardTitle}>Remboursement</h2>
                   <p className={sp.info}>Le remboursement était possible jusqu'au {limiteTxt}. Passé cette date, les soldes non réclamés sont reversés à l'ONG Ylla, pour la lutte contre le cancer du sein.</p>
                 </section>
               ) : demandeVue ? (
-                <section className={sp.card}>
+                <section className={clsx('nv-card nv-pad', sp.cardStack)}>
                   <div className={sp.rembHead}>
-                    <h2>Ma demande</h2>
+                    <h2 className={sp.cardTitle}>Ma demande</h2>
                     <Badge tone={{ en_attente: 'warning', rembourse: 'success', annule: 'neutral', refuse: 'danger', echec: 'danger' }[demandeVue.statut] || 'neutral'}>
                       {{ en_attente: 'En cours', rembourse: 'Remboursé', annule: 'Annulée', refuse: 'Refusée', echec: 'Échec' }[demandeVue.statut] || '—'}
                     </Badge>
                   </div>
-                  <p className={sp.muted}>{fmt(demandeVue.total || 0)} · demandée le {String(demandeVue.date || '').slice(0, 5)} à {String(demandeVue.heure || '').slice(0, 5)}</p>
+                  <p className="nv-mu">{fmt(demandeVue.total || 0)} · demandée le {String(demandeVue.date || '').slice(0, 5)} à {String(demandeVue.heure || '').slice(0, 5)}</p>
                   <div className={sp.rembLines}>
                     {demandeVue.stripe?.statut !== 'sans' && (
                       <RembLigne kind="enligne" titre="Carte du paiement en ligne" montant={demandeVue.stripe.rendu ?? demandeVue.stripe.montant}
@@ -890,14 +1045,13 @@ export default function SoldePage({ demo = null }) {
                   )}
                   {rembErr && <p className={sp.error} role="alert">{rembErr}</p>}
                   {demandeVue.statut === 'en_attente'
-                    ? <Button variant="secondary" block onClick={annulerDemande}>Annuler la partie billetterie</Button>
-                    : (spec.solde || 0) > 0 && <Button variant="secondary" block onClick={() => setDemandes(d => d.map(x => x.id === demandeVue.id ? { ...x, timestamp: '' } : x))}>Nouvelle demande</Button>}
+                    ? <button type="button" className="nv-btn-sec nv-press" onClick={annulerDemande}>Annuler la partie billetterie</button>
+                    : (spec.solde || 0) > 0 && <button type="button" className="nv-btn-sec nv-press" onClick={() => setDemandes(d => d.map(x => x.id === demandeVue.id ? { ...x, timestamp: '' } : x))}>Nouvelle demande</button>}
                 </section>
               ) : planRemb && planRemb.total > 0 ? (
-                <section className={sp.card}>
-                  <h2>Remboursement</h2>
-                  <span className={sp.catTitle}>Solde restant</span>
-                  <b className={sp.rechargeMontant} style={{ color: 'var(--text)' }}>{fmt(planRemb.total)}</b>
+                <section className={clsx('nv-card nv-pad', sp.cardStack)}>
+                  <span className="nv-mu">Solde restant</span>
+                  <b className={clsx('nv-big', sp.rembBig)}>{montantGros(planRemb.total)}</b>
                   <div className={sp.rembLines}>
                     {planRemb.stripeTotal > 0 && <RembLigne kind="enligne" titre="Rechargé en ligne" sous="remboursé tout de suite sur votre carte" montant={planRemb.stripeTotal} />}
                     {planRemb.sumup > 0 && <RembLigne kind="sumup" titre="Carte à la billetterie" sous="remboursé par la billetterie" montant={planRemb.sumup} />}
@@ -908,239 +1062,238 @@ export default function SoldePage({ demo = null }) {
                     fillingLabel="Gardez appuyé…" doneLabel="Demande envoyée" hint="Gardez le doigt appuyé 3 secondes pour confirmer">
                     Me faire rembourser {fmt(planRemb.total)}
                   </HoldButton>
-                  <p className={clsx(sp.muted, sp.center)}>Gardez le doigt appuyé 3 secondes pour confirmer</p>
-                  <p className={clsx(sp.muted, sp.center)}>Aucun frais. Relâcher avant la fin n'envoie rien.</p>
-                  {limiteTxt && <p className={clsx(sp.muted, sp.center)}>Remboursement possible jusqu'au {limiteTxt}.</p>}
+                  <p className={clsx('nv-mu', sp.center)}>Gardez le doigt appuyé 3 secondes pour confirmer</p>
+                  <p className={clsx('nv-mu', sp.center)}>Aucun frais. Relâcher avant la fin n'envoie rien.</p>
+                  {limiteTxt && <p className={clsx('nv-mu', sp.center)}>Remboursement possible jusqu'au {limiteTxt}.</p>}
                 </section>
               ) : (
-                <Empty icon={Wallet} title="Rien à rembourser">Votre solde est à zéro.</Empty>
+                <div className="nv-card nv-pad"><Empty icon={Wallet} title="Rien à rembourser">Votre solde est à zéro.</Empty></div>
               )}
               {/* Don à l'ONG Ylla : proposé tant qu'aucune demande n'attend la billetterie */}
-              {!donFait && !rembClos && !demandeEnCours && soldeDon >= DON_MIN && (
-                <section className={sp.card}>
-                  <h2>Faire un don</h2>
-                  <p className={sp.muted}>Offrez tout ou partie de votre solde à l'ONG Ylla, engagée contre le cancer du sein.</p>
-                  <Button variant="secondary" block icon={Heart} onClick={ouvrirDon}>Donner à l'ONG Ylla</Button>
-                  {limiteTxt && <p className={clsx(sp.muted, sp.center)}>Après le {limiteTxt}, un solde non réclamé est reversé à l'ONG Ylla.</p>}
+              {!donFait && peutDonner && (
+                <section className={clsx('nv-card nv-pad', sp.cardStack)}>
+                  <div className={sp.readyHead}>
+                    <span className={clsx('nv-ic', sp.opBg, sp.op_don)}><Heart size={20} aria-hidden="true" /></span>
+                    <p className={sp.qrTxt}><b>Faire un don</b><span>Offrez tout ou partie de votre solde à l'ONG Ylla, engagée contre le cancer du sein.</span></p>
+                  </div>
+                  <button type="button" className="nv-btn-sec nv-press" onClick={ouvrirDon}><Heart size={18} aria-hidden="true" /> Donner à l'ONG Ylla</button>
+                  {limiteTxt && <p className={clsx('nv-mu', sp.center)}>Après le {limiteTxt}, un solde non réclamé est reversé à l'ONG Ylla.</p>}
                 </section>
               )}
             </div>
-          )}
+          </>)}
 
           {/* ── RECHARGER (Stripe) ── */}
           {tab === 'recharger' && (
-            <div className={sp.stack}>
-              {retourStripe.session ? (
-                <section className={clsx(sp.card, sp.done)}>
-                  {rechargeRecue ? (<>
-                    <span className={sp.doneIcon}><CheckCircle2 size={28} /></span>
-                    <h2>Solde rechargé</h2>
-                    <b className={sp.rechargeMontant}>+{fmt(rechargeRecue.montant || 0)}</b>
-                    <p>Nouveau solde : <b>{fmt(spec.solde || 0)}</b></p>
-                    <p className={sp.muted}>Stripe vous envoie le reçu à l'adresse e-mail saisie lors du paiement.</p>
-                  </>) : (<>
-                    <span className={sp.doneIcon}><Clock size={28} /></span>
-                    <h2>Paiement en cours de vérification</h2>
-                    <p>Votre solde sera crédité dès que Stripe confirme le paiement, même si vous fermez cette page.</p>
-                  </>)}
-                  <div className={sp.doneActions}>
-                    <Button block onClick={() => { quitterRecharge(); go('reserver') }}>Commander</Button>
-                    <Button variant="secondary" block onClick={quitterRecharge}>Retour au solde</Button>
-                  </div>
-                </section>
-              ) : (
-                <section className={sp.card}>
-                  <button type="button" className={sp.back} onClick={quitterRecharge}><ArrowLeft size={16} /> Retour</button>
-                  <h2>Recharger mon solde</h2>
-                  <p className={sp.muted}>Solde actuel : {fmt(spec.solde || 0)}</p>
-                  {retourStripe.annule && <p className={sp.info}>Paiement annulé : rien n'a été débité.</p>}
-                  <span className={sp.catTitle}>Montant</span>
-                  <div className={sp.montants}>
-                    {[1000, 2000, 3000, 5000, 10000].map(m => (
-                      <button key={m} type="button" aria-pressed={autreMontant === '' && montantRecharge === m}
-                        className={clsx(sp.montant, autreMontant === '' && montantRecharge === m && sp.montantOn)}
-                        onClick={() => { setMontantRecharge(m); setAutreMontant(''); setRechargeErr('') }}>{m / 100} €</button>
-                    ))}
-                    <input className={clsx(sp.montant, sp.montantAutre, autreMontant !== '' && sp.montantOn)} inputMode="decimal"
-                      placeholder="Autre" aria-label="Autre montant en euros" value={autreMontant}
-                      onChange={e => { setAutreMontant(e.target.value.replace(/[^\d.,]/g, '').slice(0, 6)); setRechargeErr('') }} />
-                  </div>
-                  <p className={sp.muted}>De 5 € à 200 €. Aucun frais pour vous.</p>
-                  <div className={sp.nouveauSolde}><span>Nouveau solde</span><b>{montantOk ? fmt((spec.solde || 0) + montantChoisi) : '—'}</b></div>
-                  {rechargeErr && <p className={sp.error} role="alert">{rechargeErr}</p>}
-                  <Button size="lg" block loading={rechargeBusy} onClick={allerPayer}>
-                    {montantOk ? `Payer ${fmt(montantChoisi)}` : 'Payer'}
-                  </Button>
-                  <p className={clsx(sp.muted, sp.center)}><Lock size={12} aria-hidden="true" /> Vous passez sur la page de paiement sécurisée Stripe</p>
-                </section>
-              )}
-            </div>
+            retourStripe.session ? (<>
+              {barrePoussee('Recharge', null, quitterRecharge)}
+              <section className={clsx('nv-card nv-pad', sp.done)}>
+                {rechargeRecue ? (<>
+                  <span className={clsx(sp.doneIcon, sp.opBg, sp.op_credit)}><CheckCircle2 size={28} aria-hidden="true" /></span>
+                  <h2>Solde rechargé</h2>
+                  <b className={clsx('nv-big nv-pos', sp.montantDone)}>+{fmt(rechargeRecue.montant || 0)}</b>
+                  <p>Nouveau solde : <b>{fmt(spec.solde || 0)}</b></p>
+                  <p className="nv-mu">Stripe vous envoie le reçu à l'adresse e-mail saisie lors du paiement.</p>
+                </>) : (<>
+                  <span className={clsx(sp.doneIcon, sp.opBg, sp.op_resa)}><Clock size={28} aria-hidden="true" /></span>
+                  <h2>Paiement en cours de vérification</h2>
+                  <p>Votre solde sera crédité dès que Stripe confirme le paiement, même si vous fermez cette page.</p>
+                </>)}
+                <div className={sp.doneActions}>
+                  <button type="button" className="nv-btn nv-press" onClick={() => { quitterRecharge(); go('reserver') }}>Commander</button>
+                  <button type="button" className="nv-btn-sec nv-press" onClick={quitterRecharge}>Retour au solde</button>
+                </div>
+              </section>
+            </>) : (<>
+              {barrePoussee('Recharger', `Solde : ${fmt(spec.solde || 0)}`, quitterRecharge)}
+              {retourStripe.annule && <p className={sp.info}>Paiement annulé : rien n'a été débité.</p>}
+              <div className={sp.amtIn} aria-live="polite">
+                <span className={clsx('nv-big', sp.amtBig)}>{saisieRecharge || '0'} €</span><span className={sp.cur} aria-hidden="true" />
+              </div>
+              {rechargeErr && <p className={sp.amtErr} role="alert">{rechargeErr}</p>}
+              <p className={clsx('nv-mu', sp.center)}>
+                {montantOk ? `Sans frais · nouveau solde ${fmt((spec.solde || 0) + montantChoisi)}` : 'Sans frais · de 5 € à 200 €'}
+              </p>
+              <div className={sp.payChipRow}><span className={sp.chip}><Lock size={16} aria-hidden="true" /> Paiement sécurisé par Stripe</span></div>
+              <div className={clsx('nv-pills', sp.pillsCenter)} role="group" aria-label="Montants rapides">
+                {[1000, 2000, 5000].map(m => (
+                  <button key={m} type="button" className="nv-pill nv-press" aria-pressed={montantChoisi === m}
+                    onClick={() => { setMontantRecharge(m); setAutreMontant(''); setRechargeErr('') }}>{m / 100} €</button>
+                ))}
+              </div>
+              <button type="button" className={clsx('nv-btn nv-press', sp.mt16)} onClick={allerPayer} disabled={rechargeBusy} aria-busy={rechargeBusy}>
+                {rechargeBusy ? 'Ouverture du paiement…' : <><Lock size={18} aria-hidden="true" /> Payer {montantChoisi > 0 ? fmt(montantChoisi) : '0 €'} en sécurité</>}
+              </button>
+              <div className={sp.keys} role="group" aria-label="Clavier du montant">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k, i) => k ? (
+                  <button key={k} type="button" className={clsx(sp.key, 'nv-press')} onClick={() => toucheRecharge(k)} aria-label={k === 'del' ? 'Effacer' : undefined}>
+                    {k === 'del' ? <Delete size={26} aria-hidden="true" /> : k}
+                  </button>
+                ) : <span key={'v' + i} />)}
+              </div>
+            </>)
           )}
 
           {/* ── COMMANDER ── */}
-          {tab === 'reserver' && (
-            <div className={sp.stack}>
-              {resaDone ? (
-                <section className={clsx(sp.card, sp.done)}>
-                  <span className={sp.doneIcon}><KeyRound size={28} /></span>
-                  <h2>Votre code</h2>
-                  <b className={sp.codeBig} aria-label={`Code ${String(resaDone.code).split('').join(' ')}`}>
-                    {String(resaDone.code).slice(0, 3)} {String(resaDone.code).slice(3)}
-                  </b>
-                  <p>Tapez ce code sur la borne, touche « J'ai un code ». Elle imprime vos tickets.</p>
-                  <p className={sp.muted}>
-                    {fmt(resaDone.total)} seront débités de votre solde à la borne, au prix affiché ce jour-là.
-                    Annulable sans frais avant, depuis « Mes résas ».
-                  </p>
-                  <div className={sp.doneActions}>
-                    <Button variant="secondary" block onClick={() => { setResaDone(null); go('reservations') }}>Voir mes codes</Button>
-                    <Button block onClick={() => setResaDone(null)}>Commander autre chose</Button>
+          {tab === 'reserver' && (<>
+            {barreOnglet('Commander')}
+            {resaDone ? (
+              <section className={clsx('nv-card nv-pad', sp.done)}>
+                <span className={clsx(sp.doneIcon, sp.opBg, sp.op_credit)}><KeyRound size={28} aria-hidden="true" /></span>
+                <h2>Votre code</h2>
+                <b className={clsx('nv-big', sp.codeBig)} aria-label={`Code ${String(resaDone.code).split('').join(' ')}`}>
+                  {String(resaDone.code).slice(0, 3)} {String(resaDone.code).slice(3)}
+                </b>
+                <p>Tapez ce code sur la borne, touche « J'ai un code ». Elle imprime vos tickets.</p>
+                <p className="nv-mu">
+                  {fmt(resaDone.total)} seront débités de votre solde à la borne, au prix affiché ce jour-là.
+                  Annulable sans frais avant, depuis « Mes résas ».
+                </p>
+                <div className={sp.doneActions}>
+                  <button type="button" className="nv-btn nv-press" onClick={() => { setResaDone(null); go('reservations') }}>Voir mes codes</button>
+                  <button type="button" className="nv-btn-sec nv-press" onClick={() => setResaDone(null)}>Commander autre chose</button>
+                </div>
+              </section>
+            ) : (<>
+              <p className={clsx('nv-mu', sp.lead)}>Commandez ici, puis tapez votre code sur la borne : elle imprime vos tickets et débite votre solde.</p>
+              {showRayons && (
+                <div className={clsx('nv-pills', sp.pillsWrap)} role="tablist" aria-label="Rayons">
+                  {org.rayons.map(r => {
+                    const Icon = getIcon(r.icon)
+                    const on = r.id === rayon?.id
+                    return (
+                      <button key={r.id || 'autres'} type="button" role="tab" aria-selected={on}
+                        className={clsx('nv-pill nv-press', sp.pillIc, on && 'on')} onClick={() => { setRayonId(r.id); setCatKey(null) }}>
+                        <Icon size={18} aria-hidden="true" /> {r.nom}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {rayon && rayon.cats.length > 1 && (
+                <div className={clsx('nv-pills', sp.pillsWrap)} role="group" aria-label="Catégories">
+                  {rayon.cats.map(c => {
+                    const Icon = getIcon(c.icon)
+                    const on = c.key === cat?.key
+                    return (
+                      <button key={c.key} type="button" aria-pressed={on} className={clsx('nv-pill nv-press', sp.pillIc, sp.catPill)}
+                        style={{ '--c': c.couleur || 'var(--brand)' }} onClick={() => setCatKey(c.key)}>
+                        <Icon size={18} aria-hidden="true" /> {c.nom}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {cat ? (
+                <section className={clsx('nv-card nv-padx', sp.mt12)} aria-label={cat.nom}>
+                  <div className="nv-st">
+                    {cat.items.map(m => {
+                      const stock = m.stock || 0
+                      const q = qtys[m.id] || 0
+                      return (
+                        <div key={m.id} className={clsx('nv-row', sp.itemRow, stock === 0 && sp.out)}>
+                          <span className={clsx('nv-ic neutre', sp.itemPic)}>
+                            {m.photoUrl ? <img src={m.photoUrl} alt="" /> : (m.nom || '?').charAt(0)}
+                          </span>
+                          <span className="nv-rt">
+                            <b>{m.nom}</b>
+                            <span>{fmt(m.prix || 0)}{stock === 0 ? <em className={sp.stockOut}> · Rupture</em> : stock <= 10 ? <em className={sp.stockLow}> · {stock} restant{stock > 1 ? 's' : ''}</em> : null}</span>
+                          </span>
+                          <button type="button" className={clsx(sp.infoBtn, 'nv-press')} onClick={() => setFiche(m)} aria-label={`Fiche de ${m.nom}`}><Info size={20} aria-hidden="true" /></button>
+                          {q > 0 && <>
+                            <button type="button" className="nv-round nv-press" onClick={() => changeQty(m.id, -1)} aria-label={`Retirer un ${m.nom}`}><Minus size={18} aria-hidden="true" /></button>
+                            <b className={clsx(sp.stepQ, 'nv-pop')} key={q} aria-live="polite">{q}</b>
+                          </>}
+                          <button type="button" className={clsx('nv-round nv-press', sp.plusBtn)} onClick={() => changeQty(m.id, 1)} disabled={stock === 0 || q >= stock} aria-label={`Ajouter un ${m.nom}`}><Plus size={18} aria-hidden="true" /></button>
+                        </div>
+                      )
+                    })}
                   </div>
                 </section>
               ) : (
-                <>
-                  <p className={sp.info}>Commandez ici, puis tapez votre code sur la borne : elle imprime vos tickets et débite votre solde.</p>
-                  {showRayons && (
-                    <div className={sp.rayons} role="tablist" aria-label="Rayons">
-                      {org.rayons.map(r => {
-                        const Icon = getIcon(r.icon)
-                        const on = r.id === rayon?.id
-                        return (
-                          <button key={r.id || 'autres'} type="button" role="tab" aria-selected={on}
-                            className={clsx(sp.rayon, on && sp.rayonOn)} onClick={() => { setRayonId(r.id); setCatKey(null) }}>
-                            <Icon size={18} aria-hidden="true" /> {r.nom}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {rayon && rayon.cats.length > 1 && (
-                    <div className={sp.cats}>
-                      {rayon.cats.map(c => {
-                        const Icon = getIcon(c.icon)
-                        const on = c.key === cat?.key
-                        return (
-                          <button key={c.key} type="button" aria-pressed={on} className={clsx(sp.catTile, on && sp.catTileOn)}
-                            style={{ '--c': c.couleur || 'var(--brand)' }} onClick={() => setCatKey(c.key)}>
-                            <span className={sp.catTileIcon}><Icon size={20} aria-hidden="true" /></span>
-                            <span className={sp.catTileName}>{c.nom}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {cat ? (
-                    <section className={sp.card}>
-                      <h2 className={sp.catTitle}>{cat.nom}</h2>
-                      <div className={sp.items}>
-                        {cat.items.map(m => {
-                          const stock = m.stock || 0
-                          const q = qtys[m.id] || 0
-                          return (
-                            <div key={m.id} className={clsx(sp.item, sp.itemClick, q > 0 && sp.itemOn, stock === 0 && sp.menuOut)} onClick={() => setFiche(m)}>
-                              <div className={sp.itemPhoto}>
-                                {m.photoUrl ? <img src={m.photoUrl} alt="" /> : <span>{(m.nom || '?').charAt(0)}</span>}
-                              </div>
-                              <b className={sp.itemName}>{m.nom}</b>
-                              <span className={sp.itemPrice}>
-                                <span className={sp.price}>{fmt(m.prix || 0)}</span>
-                                {stock === 0 ? <Badge tone="danger">Rupture</Badge> : stock <= 10 ? <Badge tone="warning">{stock} restant{stock > 1 ? 's' : ''}</Badge> : null}
-                              </span>
-                              <span className={sp.stepper} onClick={e => e.stopPropagation()}>
-                                <button type="button" onClick={() => changeQty(m.id, -1)} disabled={q === 0} aria-label={`Retirer un ${m.nom}`}><Minus size={16} /></button>
-                                <b aria-live="polite">{q}</b>
-                                <button type="button" className={sp.plus} onClick={() => changeQty(m.id, 1)} disabled={stock === 0 || q >= stock} aria-label={`Ajouter un ${m.nom}`}><Plus size={16} /></button>
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                      {fiche && (
-                        <ArticleInfoModal item={fiche} qty={qtys[fiche.id] || 0} onClose={() => setFiche(null)}
-                          maxAdd={Math.max(0, (fiche.stock || 0) - (qtys[fiche.id] || 0))}
-                          raisonBloque={(fiche.stock || 0) === 0 ? 'Épuisé' : 'Stock atteint'}
-                          onAddQty={(n) => changeQty(fiche.id, n)} />
-                      )}
-                    </section>
-                  ) : (
-                    <Empty icon={UtensilsCrossed} title="La carte n'est pas encore disponible">Les plats et boissons apparaîtront ici dès leur mise en ligne.</Empty>
-                  )}
-                </>
+                <div className="nv-card nv-pad">
+                  <Empty icon={UtensilsCrossed} title="La carte n'est pas encore disponible">Les plats et boissons apparaîtront ici dès leur mise en ligne.</Empty>
+                </div>
               )}
-            </div>
-          )}
+            </>)}
+          </>)}
 
           {/* ── MES RÉSAS ── */}
-          {tab === 'reservations' && (
-            <section className={sp.card}>
-              <header className={sp.cardHead}>
-                <h2>Mes commandes</h2>
-                <span className={sp.muted}>{codesEnLigne.length + resaTotal} au total</span>
-              </header>
-              {codesEnLigne.length > 0 && (
-                <ul className={sp.resas}>
-                  {codesEnLigne.map(c => {
-                    const st = CODE_STATUS[c.statut] || CODE_STATUS.en_attente
-                    return (
-                      <li key={c.code} className={clsx(sp.resa, c.statut === 'en_attente' && sp.resaReady)}>
-                        <div className={sp.resaTop}>
-                          <b className={sp.codeSmall}>{String(c.code).slice(0, 3)} {String(c.code).slice(3)}</b>
-                          <Badge tone={st.tone}>{st.label}</Badge>
-                        </div>
-                        <p className={sp.resaItems}>{(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(' · ')}</p>
-                        <div className={sp.resaBottom}>
-                          <span className={sp.muted}>{c.timestamp ? new Date(c.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                          <b>{fmt(c.total || 0)}</b>
-                        </div>
-                        {c.statut === 'en_attente' && <>
-                          <p className={sp.resaHint}>Tapez ce code sur la borne « J'ai un code ». Votre solde sera débité à ce moment-là.</p>
-                          <Button size="sm" variant="danger" onClick={() => setCancelCode(c.code)}>Annuler (sans frais)</Button>
-                        </>}
-                        {c.statut === 'utilise' && c.commandeNumero && <p className={sp.muted}>Tickets imprimés · commande n° {c.commandeNumero}</p>}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              {resaTotal === 0 && codesEnLigne.length > 0 ? null : resaTotal === 0 ? (
-                <Empty icon={Bookmark} title="Aucune réservation" action={<Button size="sm" onClick={() => go('reserver')}>Commander</Button>}>
+          {tab === 'reservations' && (<>
+            {barreOnglet('Mes commandes')}
+            <p className={clsx('nv-mu', sp.lead)}>{codesEnLigne.length + resaTotal} au total</p>
+            {resaTotal === 0 && codesEnLigne.length === 0 ? (
+              <div className="nv-card nv-pad">
+                <Empty icon={Bookmark} title="Aucune réservation" action={<button type="button" className="nv-btn nv-press" onClick={() => go('reserver')}>Commander</button>}>
                   Vos commandes apparaîtront ici : commandez depuis la carte, récupérez quand c'est prêt.
                 </Empty>
-              ) : (
-                <>
-                  <ul className={sp.resas}>
-                    {resaSlice.map(r => {
-                      const st = RESA_STATUS[r.status] || RESA_STATUS.pending
-                      return (
-                        <li key={r.id} className={clsx(sp.resa, r.status === 'ready' && sp.resaReady)}>
-                          <div className={sp.resaTop}>
-                            <b>#{r.code}</b>
-                            <Badge tone={st.tone}>{st.label}</Badge>
+              </div>
+            ) : (
+              <div className={clsx(sp.stack, 'nv-st')}>
+                {/* Codes à taper sur la borne : mis en avant (maquette) */}
+                {codesAttente.map(c => (
+                  <section key={c.code} className={clsx('nv-card nv-pad', sp.codeCard)}>
+                    <span className="nv-mu">À taper sur la borne « J'ai un code »</span>
+                    <b className={clsx('nv-big', sp.codeMid)} aria-label={`Code ${String(c.code).split('').join(' ')}`}>{String(c.code).slice(0, 3)} {String(c.code).slice(3)}</b>
+                    <span className="nv-mu">{(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')} · {fmt(c.total || 0)} débités à la borne</span>
+                    {c.timestamp && <span className="nv-mu">Commandé le {new Date(c.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                    <button type="button" className={clsx('nv-btn-sec nv-press', sp.mt12)} onClick={() => setCancelCode(c.code)}>Annuler (sans frais)</button>
+                  </section>
+                ))}
+                {(codesEnLigne.length > codesAttente.length || resaTotal > 0) && (
+                  <section aria-label="Autres commandes">
+                    <div className="nv-sec"><h2>{codesAttente.length ? 'Autres commandes' : 'Commandes'}</h2><span>{codesEnLigne.length - codesAttente.length + resaTotal}</span></div>
+                    <div className="nv-card nv-padx">
+                      {codesEnLigne.filter(c => c.statut !== 'en_attente').map(c => {
+                        const st = CODE_STATUS[c.statut] || CODE_STATUS.en_attente
+                        const look = ETAT_LOOK[c.statut] || ETAT_LOOK.pending
+                        const Icon = look.icon
+                        return (
+                          <div key={c.code} className={clsx('nv-row', sp.resaRow)}>
+                            <span className={clsx('nv-ic', sp.opBg, sp[look.cls])}><Icon size={20} aria-hidden="true" /></span>
+                            <span className="nv-rt">
+                              <b>{String(c.code).slice(0, 3)} {String(c.code).slice(3)} · {(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')}</b>
+                              <span>{st.label}{c.statut === 'utilise' && c.commandeNumero ? ` · commande n° ${c.commandeNumero}` : ''}{c.timestamp ? ` · ${new Date(c.timestamp).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}</span>
+                            </span>
+                            <span className={clsx('nv-amt', sp.opAmt)}>{fmt(c.total || 0)}</span>
                           </div>
-                          <p className={sp.resaItems}>{(r.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(' · ')}</p>
-                          <div className={sp.resaBottom}>
-                            <span className={sp.muted}>{r.date}</span>
-                            <b>{fmt(r.total || 0)}</b>
+                        )
+                      })}
+                      {resaSlice.map(r => {
+                        const st = RESA_STATUS[r.status] || RESA_STATUS.pending
+                        const look = ETAT_LOOK[r.status] || ETAT_LOOK.pending
+                        const Icon = look.icon
+                        return (
+                          <div key={r.id} className={sp.resaBlock}>
+                            <div className={clsx('nv-row', sp.resaRow)}>
+                              <span className={clsx('nv-ic', sp.opBg, sp[look.cls])}><Icon size={20} aria-hidden="true" /></span>
+                              <span className="nv-rt">
+                                <b>#{r.code} · {(r.items || []).map(i => `${i.qty > 1 ? `${i.qty} ` : ''}${i.nom}`).join(', ')}</b>
+                                <span>{st.label}{r.status === 'ready' ? ' · présentez-vous au stand' : ''}{r.date ? ` · ${r.date}` : ''}</span>
+                              </span>
+                              <span className={clsx('nv-amt', sp.opAmt)}>{fmt(r.total || 0)}</span>
+                            </div>
+                            {r.status === 'pending' && (
+                              <button type="button" className={clsx('nv-btn-sec nv-press', sp.resaCancel)} onClick={() => setCancelId(r.id)}>Annuler la commande</button>
+                            )}
                           </div>
-                          {r.status === 'ready' && <p className={sp.resaHint}>Présentez-vous au stand pour la retirer.</p>}
-                          {r.status === 'pending' && (
-                            <Button size="sm" variant="danger" onClick={() => setCancelId(r.id)}>Annuler la commande</Button>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                  <Pagination page={resaPage} pages={resaPages} onChange={p => { setResaPage(p); window.scrollTo(0, 0) }} />
-                </>
-              )}
-            </section>
-          )}
+                        )
+                      })}
+                    </div>
+                    <Pagination page={resaPage} pages={resaPages} onChange={p => { setResaPage(p); window.scrollTo(0, 0) }} />
+                  </section>
+                )}
+                {resaErr && !cartItems.length && <p className={sp.error} role="alert">{resaErr}</p>}
+              </div>
+            )}
+          </>)}
 
           {/* ── PROGRAMME ── */}
-          {tab === 'programme' && (
+          {tab === 'programme' && (<>
+            {barreOnglet('Programme')}
             <PlanningSpec planning={planningData} eventId={eventId} specId={spec?.id} themeColor={themeColor} />
-          )}
-          </PageTransition>
+          </>)}
+          </div>
         </>)}
 
         <footer className={sp.footer}>
@@ -1149,44 +1302,123 @@ export default function SoldePage({ demo = null }) {
         </footer>
       </main>
 
-      {/* Panier de commande : toujours visible au-dessus des onglets */}
+      {/* Fiche article (20/11/2026), hors de la liste animée */}
+      {fiche && (
+        <ArticleInfoModal item={fiche} qty={qtys[fiche.id] || 0} onClose={() => setFiche(null)}
+          maxAdd={Math.max(0, (fiche.stock || 0) - (qtys[fiche.id] || 0))}
+          raisonBloque={(fiche.stock || 0) === 0 ? 'Épuisé' : 'Stock atteint'}
+          onAddQty={(n) => changeQty(fiche.id, n)} />
+      )}
+
+      {/* Panier de commande : pilule pleine flottante au-dessus des onglets */}
       {spec && tab === 'reserver' && !resaDone && cartItems.length > 0 && (
-        <div className={sp.cartBar}>
-          <div className={sp.cartInfo}>
-            <span>{cartItems.reduce((a, i) => a + i.qty, 0)} article(s)</span>
-            <b>{fmt(cartTotal)}</b>
-          </div>
-          <Button variant="coral" size="lg" loading={resaLoading} onClick={doResa}>Obtenir mon code</Button>
-          {resaErr && <p className={sp.cartErr} role="alert">{resaErr}</p>}
-          {/* Solde insuffisant (20/11/2026) : recharge en un geste, le panier est conservé */}
-          {resaErr && manque > 0 && !billetAnnule && (
-            <div className={sp.cartRecharge}>
-              <Button block icon={CreditCard} onClick={rechargerLeManque}>Recharger mon solde</Button>
-              <span className={sp.muted}>Votre panier est conservé. Vous pouvez aussi recharger à la billetterie.</span>
+        <div className={clsx(sp.cartFloat, 'nv-up')}>
+          {resaErr && (
+            <div className={clsx('nv-card nv-pad', sp.cartErrCard)}>
+              <p className={sp.cartErr} role="alert">{resaErr}</p>
+              {/* Solde insuffisant (20/11/2026) : recharge en un geste, le panier est conservé */}
+              {manque > 0 && !billetAnnule && (<>
+                <button type="button" className="nv-btn nv-press" onClick={rechargerLeManque}><CreditCard size={18} aria-hidden="true" /> Recharger mon solde</button>
+                <span className="nv-mu">Votre panier est conservé. Vous pouvez aussi recharger à la billetterie.</span>
+              </>)}
             </div>
           )}
+          <button type="button" className={clsx('nv-btn nv-press', sp.cartBtn)} onClick={doResa} disabled={resaLoading} aria-busy={resaLoading}
+            aria-label={`Obtenir mon code, ${cartItems.reduce((a, i) => a + i.qty, 0)} article(s), ${fmt(cartTotal)}`}>
+            {resaLoading ? 'Création du code…' : <>Obtenir mon code · {fmt(cartTotal)}</>}
+          </button>
         </div>
       )}
 
-      {/* Barre d'onglets */}
+      {/* Barre d'onglets flottante : la pastille active glisse d'un onglet à l'autre (23/11/2026) */}
       {spec && (
-        <nav className={sp.nav} aria-label="Navigation">
-          {NAV.map(n => {
+        <nav className={clsx('nv-tabbar', sp.tabbar)} aria-label="Navigation">
+          <span className="nv-tab-ind" aria-hidden="true"
+            style={{ width: `calc((100% - 12px) / ${NAV.length})`, transform: `translateX(${navIdx * 100}%)` }} />
+          {NAV.map((n, i) => {
             const Icon = n.icon
-            const on = n.match.includes(tab)
+            const on = i === navIdx
             return (
-              <button key={n.id} type="button" className={clsx(sp.navItem, on && sp.navOn)} aria-current={on ? 'page' : undefined}
+              <button key={n.id} type="button" className="nv-press" aria-current={on ? 'page' : undefined}
                 onClick={() => { go(n.id); if (n.id === 'programme' && nonLuPlanning > 0) marquerToutLu() }}>
-                <span className={sp.navIcon}>
-                  <Icon size={20} aria-hidden="true" />
-                  {n.badge > 0 && <span className={sp.navBadge}>{n.badge}</span>}
-                </span>
+                <Icon size={22} aria-hidden="true" />
+                {n.badge > 0 && <span className="nv-tab-badge">{n.badge}</span>}
                 {n.label}
               </button>
             )
           })}
         </nav>
       )}
+
+      {/* Feuille « Plus » de l'accueil : historique, remboursement, don */}
+      {plusOpen && spec && (
+        <div className={sp.scrim} onMouseDown={e => { if (e.target === e.currentTarget) setPlusOpen(false) }}>
+          <div className={clsx(sp.sheet, 'nv-up')} role="dialog" aria-modal="true" aria-labelledby="sp-plus-titre">
+            <span className={sp.grab} aria-hidden="true" />
+            <h2 id="sp-plus-titre" className={sp.sheetTitle}>Plus</h2>
+            <button type="button" className="nv-row nv-press" onClick={() => { setPlusOpen(false); go('historique') }}>
+              <span className="nv-ic neutre"><Clock size={20} aria-hidden="true" /></span>
+              <span className="nv-rt"><b>Tout l'historique</b><span>{txTotal} opération{txTotal > 1 ? 's' : ''}</span></span>
+              <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
+            </button>
+            {peutRembourser && (
+              <button type="button" className="nv-row nv-press" onClick={() => { setPlusOpen(false); setRembErr(''); go('rembourser') }}>
+                <span className="nv-ic neutre"><Euro size={20} aria-hidden="true" /></span>
+                <span className="nv-rt"><b>{demandeEnCours ? 'Suivre ma demande de remboursement' : 'Me faire rembourser'}</b>{limiteTxt && !rembClos && <span>Possible jusqu'au {limiteTxt}</span>}</span>
+                <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
+              </button>
+            )}
+            {peutDonner && (
+              <button type="button" className="nv-row nv-press" onClick={() => { setPlusOpen(false); setRembErr(''); go('rembourser') }}>
+                <span className={clsx('nv-ic', sp.opBg, sp.op_don)}><Heart size={20} aria-hidden="true" /></span>
+                <span className="nv-rt"><b>Donner à l'ONG Ylla</b><span>Lutte contre le cancer du sein</span></span>
+                <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
+              </button>
+            )}
+            <button ref={plusCloseRef} type="button" className={clsx('nv-btn-sec nv-press', sp.mt12)} onClick={() => setPlusOpen(false)}>Fermer</button>
+          </div>
+        </div>
+      )}
+
+      {/* Détail d'une opération (nouvel écran validé le 23/11/2026) : lecture seule, aucune action */}
+      {detail && spec && (() => {
+        const t = detail
+        const look = txLook(t.type)
+        const Icon = look.icon
+        const [titre, ...reste] = String(t.label || t.type || '').split(' · ')
+        const articles = (t.items || []).length
+          ? t.items.map(i => `${i.qty > 1 ? `${i.qty} × ` : ''}${i.nom}`).join(', ')
+          : reste.join(' · ')
+        const moyen = moyenLibelle(t.moyen) || (t.stripeSession ? 'Paiement en ligne sécurisé' : '')
+        const parQui = t.staff && t.staff !== '—' ? t.staff : ''
+        const heure = heureDe(t)
+        return (
+          <div className={clsx(sp.detail, 'nv-list nv-up')} role="dialog" aria-modal="true" aria-labelledby="sp-detail-titre">
+            <div className={clsx(sp.detHead, sp[opClasse(t.type)])}>
+              <div className={sp.detBar}>
+                <button ref={detailCloseRef} type="button" className="nv-round nv-press" onClick={() => setDetail(null)} aria-label="Fermer le détail"><X size={20} aria-hidden="true" /></button>
+              </div>
+              <span className={clsx(sp.detIc, sp.opBg)}><Icon size={38} aria-hidden="true" /></span>
+              <div id="sp-detail-titre" className={sp.detTitle}>{titre}</div>
+              <div className={clsx('nv-big', sp.detBig, effetSolde(t) > 0 && 'nv-pos')}>{montantSigne(t)}</div>
+              <div className="nv-mu">{[jourDe(t).label, heure].filter(Boolean).join(', ')}</div>
+            </div>
+            <div className={clsx(sp.detBody, 'nv-st')}>
+              <section className="nv-card nv-pad">
+                <div className="nv-mu">Statut</div>
+                <div className={sp.detStatut}>{statutOp(t)}</div>
+              </section>
+              <section className={clsx('nv-card', sp.kvCard)}>
+                {articles && <div className={sp.kv}><span>{(t.items || []).length ? 'Articles' : 'Détail'}</span><b>{articles}</b></div>}
+                {moyen && <div className={sp.kv}><span>Moyen</span><b>{moyen}</b></div>}
+                {parQui && <div className={sp.kv}><span>Enregistré par</span><b>{parQui}</b></div>}
+                {t.commandeNumero && <div className={sp.kv}><span>Commande</span><b>n° {t.commandeNumero}</b></div>}
+                <div className={sp.kv}><span>Compte</span><b>{spec.id}</b></div>
+              </section>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* QR agrandi, sur fond blanc pour le scan */}
       {qrOpen && qrDataUrl && (
@@ -1197,31 +1429,31 @@ export default function SoldePage({ demo = null }) {
           <span>Se renouvelle dans {qrReste} s · une capture d'écran ne fonctionne pas</span>
           {secours && <span className={sp.secoursFull}>Scanner en panne ? Tapez ce code<b>{secours.code}</b></span>}
           <p>Présentez ce QR à la borne. Touchez l'écran pour fermer.</p>
-          <Button variant="secondary" onClick={closeQr}>Fermer</Button>
+          <button type="button" className={sp.qrClose} onClick={closeQr}>Fermer</button>
         </div>
       )}
 
       <Dialog open={donOpen} onClose={() => { if (!donBusy) setDonOpen(false) }} title="Donner à l'ONG Ylla"
         footer={<Button variant="ghost" disabled={donBusy} onClick={() => setDonOpen(false)}>Annuler</Button>}>
-        <div className={sp.donBody}>
+        <div className={clsx('nv', sp.donBody)}>
           <span className={sp.catTitle}>L'ONG Ylla</span>
           <p>L'ONG Ylla œuvre en France et en Afrique pour la lutte contre le cancer du sein, l'accompagnement des populations et la promotion du vivre-ensemble. Elle agit en mémoire de Yolande Ylla Seri Bah.</p>
           <span className={sp.catTitle}>À quoi sert votre don</span>
           <div className={sp.rembLines}>
-            <div className={sp.rembLine}><span className={sp.rembText}><b>Prévenir et sensibiliser</b><span className={sp.muted}>informer pour réduire les risques</span></span></div>
-            <div className={sp.rembLine}><span className={sp.rembText}><b>Dépister</b><span className={sp.muted}>détecter tôt pour sauver des vies</span></span></div>
-            <div className={sp.rembLine}><span className={sp.rembText}><b>Accompagner</b><span className={sp.muted}>soutenir les femmes touchées par la maladie</span></span></div>
+            <div className={sp.rembLine}><span className={sp.rembText}><b>Prévenir et sensibiliser</b><span className="nv-mu">informer pour réduire les risques</span></span></div>
+            <div className={sp.rembLine}><span className={sp.rembText}><b>Dépister</b><span className="nv-mu">détecter tôt pour sauver des vies</span></span></div>
+            <div className={sp.rembLine}><span className={sp.rembText}><b>Accompagner</b><span className="nv-mu">soutenir les femmes touchées par la maladie</span></span></div>
           </div>
-          <p className={sp.muted}>Déjà plus de 1 000 femmes et hommes sensibilisés, dans 3 pays. <a className={sp.donLink} href="https://ongylla.org" target="_blank" rel="noopener noreferrer">Découvrir l'ONG sur ongylla.org</a></p>
+          <p className="nv-mu">Déjà plus de 1 000 femmes et hommes sensibilisés, dans 3 pays. <a className={sp.donLink} href="https://ongylla.org" target="_blank" rel="noopener noreferrer">Découvrir l'ONG sur ongylla.org</a></p>
           <span className={sp.catTitle}>Montant du don</span>
-          <div className={sp.montants}>
+          <div className={clsx('nv-pills', sp.pillsWrap)} role="group" aria-label="Montant du don">
             {[200, 500, 1000, 2000].filter(m => m < soldeDon).map(m => (
-              <button key={m} type="button" aria-pressed={donChoix === m} className={clsx(sp.montant, donChoix === m && sp.montantOn)}
+              <button key={m} type="button" aria-pressed={donChoix === m} className="nv-pill nv-press"
                 onClick={() => { setDonChoix(m); setDonAutre(''); setDonErr('') }}>{m / 100} €</button>
             ))}
-            <button type="button" aria-pressed={donChoix === soldeDon} className={clsx(sp.montant, donChoix === soldeDon && sp.montantOn)}
+            <button type="button" aria-pressed={donChoix === soldeDon} className="nv-pill nv-press"
               onClick={() => { setDonChoix(soldeDon); setDonAutre(''); setDonErr('') }}>Tout</button>
-            <input className={clsx(sp.montant, sp.montantAutre, donChoix == null && sp.montantOn)} inputMode="decimal"
+            <input className={clsx(sp.pillInput, donChoix == null && sp.pillInputOn)} inputMode="decimal"
               placeholder="Autre" aria-label="Autre montant en euros" value={donAutre}
               onFocus={() => setDonChoix(null)}
               onChange={e => { setDonChoix(null); setDonAutre(e.target.value.replace(/[^\d.,]/g, '').slice(0, 6)); setDonErr('') }} />
@@ -1236,7 +1468,7 @@ export default function SoldePage({ demo = null }) {
             fillingLabel="Gardez appuyé…" doneLabel="Merci !" hint="Gardez le doigt appuyé 3 secondes pour confirmer">
             {donMontant ? `Donner ${fmt(donMontant)} à l'ONG Ylla` : 'Choisissez un montant'}
           </HoldButton>
-          <p className={clsx(sp.muted, sp.center)}>Gardez le doigt appuyé 3 secondes pour confirmer</p>
+          <p className={clsx('nv-mu', sp.center)}>Gardez le doigt appuyé 3 secondes pour confirmer</p>
         </div>
       </Dialog>
 
@@ -1263,6 +1495,90 @@ export default function SoldePage({ demo = null }) {
   )
 }
 
+// ── Nouveau style (23/11/2026) : aides d'affichage, sans calcul de montant nouveau ──
+
+// Gros montant : euros en grand, centimes plus petits (maquette)
+function montantGros(c) {
+  const n = Math.round(Number(c) || 0)
+  const a = Math.abs(n)
+  return <>{n < 0 ? '−' : ''}{Math.floor(a / 100).toLocaleString('fr-FR')}<small>,{String(a % 100).padStart(2, '0')} €</small></>
+}
+
+// Montant signé d'une opération : même règle qu'avant (signe de l'effet sur le solde)
+function montantSigne(t) {
+  const sansEffet = effetSolde(t) === 0 && t.type !== 'reservation'
+  return sansEffet ? '—' : `${signeDe(t) || txLook(t.type).sign}${fmt(t.montant || 0)}`
+}
+const montantJour = (e) => e > 0 ? `+${fmt(e)}` : e < 0 ? `−${fmt(-e)}` : fmt(0)
+
+// Pastille de couleur selon le type d'opération (table de couleurs du module CSS)
+const OP_CLASSE = {
+  credit: 'op_credit', credit_correction: 'op_credit', debit: 'op_debit', debit_correction: 'op_debit',
+  reservation: 'op_resa', annulation: 'op_annul', remboursement: 'op_remb', don: 'op_don',
+}
+const opClasse = (type) => OP_CLASSE[type] || 'op_autre'
+
+// États des commandes et codes : couleur et icône de la pastille
+const ETAT_LOOK = {
+  ready:      { cls: 'op_credit', icon: Check },
+  utilise:    { cls: 'op_credit', icon: Check },
+  processing: { cls: 'op_autre',  icon: Clock },
+  pending:    { cls: 'op_resa',   icon: Clock },
+  en_attente: { cls: 'op_resa',   icon: Clock },
+  collected:  { cls: 'op_annul',  icon: Check },
+  cancelled:  { cls: 'op_annul',  icon: X },
+  annule:     { cls: 'op_annul',  icon: X },
+}
+
+// Date d'une opération (horodatage de la base, sinon date écrite)
+function msDe(t) {
+  if (t?.createdAt?.seconds != null) return t.createdAt.seconds * 1000
+  if (typeof t?.createdAt?.toMillis === 'function') return t.createdAt.toMillis()
+  if (t?.timestamp) { const v = Date.parse(t.timestamp); if (!isNaN(v)) return v }
+  return null
+}
+function jourDe(t) {
+  const ms = msDe(t)
+  if (ms == null) return { key: 'd-' + (t?.date || '?'), label: t?.date ? String(t.date) : 'Date inconnue' }
+  const d = new Date(ms)
+  const auj = new Date(); auj.setHours(0, 0, 0, 0)
+  const jour = new Date(d); jour.setHours(0, 0, 0, 0)
+  const ecart = Math.round((auj - jour) / 86400000)
+  let label
+  if (ecart === 0) label = "Aujourd'hui"
+  else if (ecart === 1) label = 'Hier'
+  else { const s = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }); label = s.charAt(0).toUpperCase() + s.slice(1) }
+  return { key: d.toDateString(), label }
+}
+function heureDe(t) {
+  if (t?.heure) return String(t.heure).slice(0, 5)
+  const ms = msDe(t)
+  return ms != null ? new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''
+}
+
+// Statut lisible d'une opération (écran de détail), d'après son type
+function statutOp(t) {
+  switch (t?.type) {
+    case 'credit':            return 'Crédité sur votre solde'
+    case 'credit_correction': return 'Correction : ajouté à votre solde'
+    case 'debit':             return 'Payé avec votre solde YllaCash'
+    case 'debit_correction':  return 'Correction : retiré de votre solde'
+    case 'reservation':       return 'Réservation payée avec votre solde'
+    case 'annulation':        return effetSolde(t) > 0 ? 'Recrédité sur votre solde' : 'Annulation enregistrée'
+    case 'remboursement':     { const d = destinationRemboursement(t); return 'Remboursé' + (d ? ' ' + d : '') }
+    case 'don':               return "Donné à l'ONG Ylla"
+    default:                  return 'Opération enregistrée'
+  }
+}
+function moyenLibelle(m) {
+  const x = String(m || '').toLowerCase()
+  if (!x) return ''
+  if (x === 'en-ligne') return 'Paiement en ligne'
+  if (x.startsWith('esp')) return 'Espèces'
+  if (x === 'cb' || x.startsWith('carte')) return 'Carte bancaire'
+  return String(m)
+}
+
 // ── Remboursement du solde : une ligne par chemin (carte en ligne, carte billetterie, espèces) ──
 const ETAT_PART = {
   a_traiter: ['warning', 'À la billetterie'],
@@ -1275,10 +1591,10 @@ function RembLigne({ kind, titre, sous, montant, etat }) {
   const Icon = REMB_ICON[kind]
   return (
     <div className={sp.rembLine}>
-      <span className={clsx(sp.rembIcon, sp['remb_' + kind])}><Icon size={16} aria-hidden="true" /></span>
+      <span className={clsx(sp.rembIcon, sp['remb_' + kind])}><Icon size={18} aria-hidden="true" /></span>
       <span className={sp.rembText}>
         <span>{titre}</span>
-        {sous && <span className={sp.muted}>{sous}</span>}
+        {sous && <span className="nv-mu">{sous}</span>}
         {etat && <Badge tone={etat[0]}>{etat[1]}</Badge>}
       </span>
       <b>{fmt(montant || 0)}</b>

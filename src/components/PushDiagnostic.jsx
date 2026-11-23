@@ -138,7 +138,7 @@ export default function PushDiagnostic() {
           {fcm.isRefreshing ? 'Rafraîchissement…' : 'Rafraîchir'}
         </button>
         <button onClick={sendTest} disabled={!isReady || testing}
-          style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', border:'none', borderRadius:8, background:'var(--brand)', color:'#fff', fontSize:12, fontWeight:700, cursor: isReady ? 'pointer' : 'not-allowed', fontFamily:'var(--font)', minHeight:38, opacity: isReady ? 1 : 0.5 }}>
+          style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', border:'none', borderRadius:8, background:'var(--brand)', color:'var(--on-brand, #fff)', fontSize:12, fontWeight:700, cursor: isReady ? 'pointer' : 'not-allowed', fontFamily:'var(--font)', minHeight:38, opacity: isReady ? 1 : 0.5 }}>
           <Send size={13}/> {testing ? 'Envoi…' : 'Envoyer une notification de test'}
         </button>
       </div>

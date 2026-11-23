@@ -5,7 +5,7 @@
  * Lot 6 : thème « plein soleil » (préférence de l'appareil) et bandeau de connexion.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Zap, Volume2, VolumeX, Vibrate, Sun, AlertTriangle, RotateCcw, Undo2, CheckCircle2, ScanLine, ReceiptText } from 'lucide-react'
+import { Zap, Volume2, VolumeX, Vibrate, Sun, AlertTriangle, RotateCcw, Undo2, CheckCircle2, ScanLine, ReceiptText, SlidersHorizontal } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
@@ -15,7 +15,8 @@ import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firesto
 import { fmt } from '../../utils/helpers'
 import { dayStart, txTime } from '../../utils/dashboardData'
 import { holdSale, cancelSale, dismissSale, retrySale, subscribe, subscribeCommitted } from '../../utils/pendingSales'
-import { Tabs, toast, ConnectionBar } from '../../ui'
+import { Tabs, toast, ConnectionBar, Sheet } from '../../ui'
+import { useBreakpoint } from '../../hooks/useBreakpoint'
 import useSunMode    from '../../store/useSunMode'
 import { friendlyError } from '../../utils/errors'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
@@ -52,6 +53,9 @@ export default function Debit() {
   const { user }                    = useAuthStore()
   const staffNom = user?.nom || 'Stand'
   const { sun, toggleSun }          = useSunMode()
+  // Nouveau style téléphone (23/11/2026) : sous 641 px seulement ; réglages regroupés dans une feuille
+  const { isMobile }                = useBreakpoint()
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const [mode, setMode]         = useState('client') // client | artiste
   const [prefs, setPrefs]       = useState(loadPrefs)
@@ -223,12 +227,22 @@ export default function Debit() {
   const standName = staffNom
 
   return (
-    <div className={clsx(s.page, sun && 'sun')}>
+    <div className={clsx(s.page, sun && 'sun', isMobile && s.nvPos)}>
+      {/* Téléphone (23/11/2026) : grand titre et bouton rond des réglages de la caisse */}
+      {isMobile && (
+        <div className={s.nvTitleRow}>
+          <p className="nv-title" aria-hidden="true">Encaisser</p>
+          <button type="button" className={clsx('nv-round', 'nv-press', (sun || (mode === 'client' && prefs.rush)) && s.nvRoundOn)}
+            onClick={() => setSettingsOpen(true)} aria-haspopup="dialog" aria-label="Réglages de la caisse : plein soleil, mode rush, son, vibration">
+            <SlidersHorizontal size={20} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       {/* Barre d'outils */}
       <div className={s.toolbar}>
         <Tabs label="Type de vente" value={mode} onChange={(v) => { setMode(v); setClient(null); setQtys({}) }}
           items={[{ value: 'client', label: 'Vente client' }, { value: 'artiste', label: 'Artiste' }]} />
-        <div className={s.prefs}>
+        {!isMobile && <div className={s.prefs}>
           <button type="button" className={clsx(s.prefIcon, sun && s.prefOn)} onClick={toggleSun}
             aria-pressed={sun} aria-label="Plein soleil" title={sun ? 'Plein soleil activé' : "Plein soleil : contraste fort pour l'extérieur"}>
             <Sun size={15} />
@@ -248,8 +262,24 @@ export default function Debit() {
               </button>
             )}
           </>)}
-        </div>
+        </div>}
       </div>
+
+      {/* Téléphone (23/11/2026) : mêmes réglages qu'à côté des onglets, regroupés dans une feuille */}
+      {isMobile && (
+        <Sheet open={settingsOpen} onClose={() => setSettingsOpen(false)} title="Réglages de la caisse">
+          <div className={s.nvSettings}>
+            <SettingRow icon={Sun} label="Plein soleil" hint="Contraste fort pour l'extérieur" on={sun} onToggle={toggleSun} />
+            {mode === 'client' && (<>
+              <SettingRow icon={Zap} label="Mode rush" hint="Les 8 articles les plus vendus aujourd'hui, en grand" on={prefs.rush} onToggle={() => setPref('rush', !prefs.rush)} />
+              <SettingRow icon={prefs.sound ? Volume2 : VolumeX} label="Son" hint="Bip à chaque encaissement" on={prefs.sound} onToggle={() => setPref('sound', !prefs.sound)} />
+              {'vibrate' in navigator && (
+                <SettingRow icon={Vibrate} label="Vibration" hint="Le téléphone vibre à chaque encaissement" on={prefs.vibrate} onToggle={() => setPref('vibrate', !prefs.vibrate)} />
+              )}
+            </>)}
+          </div>
+        </Sheet>
+      )}
 
       {mode === 'artiste' && (
         <ArtistServeMode eventId={currentEventId} menu={menu} staffNom={staffNom} staffId={user?.id || user?.uid || null} />
@@ -284,15 +314,15 @@ export default function Debit() {
         <div className={clsx(s.layout, !prefs.rush && s.layoutArticlesFirst)}>
           <section className={s.catalog} aria-label="Articles">
             {!prefs.rush && cats.length > 1 && (
-              <div className={s.cats} role="tablist" aria-label="Catégories">
+              <div className={clsx(s.cats, isMobile && 'nv-pills')} role="tablist" aria-label="Catégories">
                 {cats.map(c => (
                   <button key={c} type="button" role="tab" aria-selected={c === currentCat}
-                    className={clsx(s.cat, c === currentCat && s.catOn)} onClick={() => setCat(c)}>{c}</button>
+                    className={isMobile ? clsx('nv-pill', 'nv-press', c === currentCat && 'on') : clsx(s.cat, c === currentCat && s.catOn)} onClick={() => setCat(c)}>{c}</button>
                 ))}
               </div>
             )}
             {prefs.rush && <p className={s.rushNote}><Zap size={14} /> Les 8 articles les plus vendus aujourd'hui</p>}
-            <ProductGrid items={gridItems} qtys={qtys} onAdd={addItem} onInfo={setSelectedInfoItem} big={prefs.rush} />
+            <ProductGrid items={gridItems} qtys={qtys} onAdd={addItem} onInfo={setSelectedInfoItem} big={prefs.rush} nv={isMobile} />
           </section>
 
           <aside className={s.side}>
@@ -309,6 +339,26 @@ export default function Debit() {
         {/* Mobile : total + encaisser toujours visibles */}
         {/* Refonte téléphone (20/11/2026) : le bouton du bas suit l'étape de la vente.
             Le caissier scanne avant ou après avoir choisi les articles, comme avant. */}
+        {isMobile ? (
+          /* Téléphone (23/11/2026) : bouton plein flottant au-dessus de la barre du bas, même étape et mêmes actions */
+          <div className={s.nvFloat}>
+            {lines.length > 0 && (
+              <button type="button" className={clsx('nv-round', 'nv-press', s.nvTicketBtn)} onClick={() => ticketRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                aria-label={`Voir le ticket : ${lines.reduce((a, l) => a + l.qty, 0)} article(s), ${fmt(total)}${client ? `, ${client.nom || client.id}` : ''}`}>
+                <ReceiptText size={20} aria-hidden="true" />
+              </button>
+            )}
+            {client && lines.length ? (
+              <button type="button" className={clsx('nv-btn', 'nv-press', s.nvMain)} onClick={pay}>Encaisser · {fmt(total)}</button>
+            ) : client ? (
+              <button type="button" className={clsx('nv-btn', 'nv-press', s.nvMain)} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>Choisir les articles</button>
+            ) : (
+              <button type="button" className={clsx('nv-btn', 'nv-press', s.nvMain)} onClick={() => document.querySelector('.' + s.scanCard)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+                <ScanLine size={20} aria-hidden="true" /> Scanner le client{lines.length ? ` · ${fmt(total)}` : ''}
+              </button>
+            )}
+          </div>
+        ) : (
         <div className={s.mobileBar}>
           <div>
             <span>{client ? `${client.nom || client.id} · ${lines.reduce((a, l) => a + l.qty, 0)} article(s)` : `${lines.reduce((a, l) => a + l.qty, 0)} article(s)`}</span>
@@ -329,6 +379,7 @@ export default function Debit() {
             </button>
           )}
         </div>
+        )}
       </>)}
 
       <PaymentFeedback
@@ -347,5 +398,16 @@ export default function Debit() {
         />
       )}
     </div>
+  )
+}
+
+// Ligne de réglage de la caisse (téléphone, 23/11/2026) : interrupteur accessible, cible de 44 px au moins
+function SettingRow({ icon: Icon, label, hint, on, onToggle }) {
+  return (
+    <button type="button" role="switch" aria-checked={!!on} className={s.nvSetting} onClick={onToggle}>
+      <span className={s.nvSettingIcon} aria-hidden="true"><Icon size={20} /></span>
+      <span className={s.nvSettingText}><b>{label}</b><span>{hint}</span></span>
+      <span className={s.nvSwitch} aria-hidden="true" />
+    </button>
   )
 }

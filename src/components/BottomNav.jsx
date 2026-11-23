@@ -2,6 +2,7 @@
  * components/BottomNav.jsx — barre du bas de l'espace staff sur téléphone (lot 7)
  * Les 4 pages les plus utilisées selon le rôle, puis « Plus » qui ouvre le menu complet.
  * Pose --bottom-nav sur <html> pour que les éléments fixés en bas (toasts, barre de caisse) se décalent.
+ * Nouveau style (23/11/2026) : barre flottante `.nv-tabbar` (styles/nouveau.css) ; n'est rendue que sur téléphone.
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { MoreHorizontal } from 'lucide-react'
@@ -34,44 +35,50 @@ export default function BottomNav({ role, customPages, currentPage, onNavigate, 
   const navRef = useRef(null)
   const [pill, setPill] = useState(null)
 
-  // La barre existe : on réserve sa hauteur en bas de l'écran
+  // La barre existe : on réserve sa place en bas de l'écran.
+  // Nouveau style (23/11/2026) : la barre flotte (marge et zone sûre comprises), donc --bottom-nav
+  // vaut la distance entre le haut de la barre et le bas de l'écran, pas seulement sa hauteur.
   useEffect(() => {
     const el = navRef.current
     if (!el) return
-    const set = () => document.documentElement.style.setProperty('--bottom-nav', `${el.offsetHeight}px`)
+    const set = () => {
+      const top = el.getBoundingClientRect().top
+      const h = top > 0 ? Math.round(window.innerHeight - top) : el.offsetHeight
+      document.documentElement.style.setProperty('--bottom-nav', `${h}px`)
+    }
     set()
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(set) : null
     ro?.observe(el)
-    return () => { ro?.disconnect(); document.documentElement.style.removeProperty('--bottom-nav') }
+    window.addEventListener('resize', set, { passive: true })
+    return () => { ro?.disconnect(); window.removeEventListener('resize', set); document.documentElement.style.removeProperty('--bottom-nav') }
   }, [])
 
-  // Indicateur glissant sous l'onglet actif (« Plus » si la page n'est pas dans la barre)
+  // Pastille glissante derrière l'onglet actif (« Plus » si la page n'est pas dans la barre).
+  // `.nv-tab-ind` part de left: 6px (marge intérieure de la barre) : on retire ces 6 px.
   useLayoutEffect(() => {
     const on = navRef.current?.querySelector('[aria-current="page"], [data-more="on"]')
-    setPill(on ? { x: on.offsetLeft, w: on.offsetWidth } : null)
+    setPill(on ? { x: on.offsetLeft - 6, w: on.offsetWidth } : null)
   }, [currentPage, fav.join()])
 
   return (
-    <nav ref={navRef} className={s.nav} aria-label="Navigation principale">
-      {pill && <span className={s.pill} style={{ width: pill.w, transform: `translateX(${pill.x}px)` }} aria-hidden="true" />}
+    <nav ref={navRef} className={clsx('nv-tabbar', s.nav)} aria-label="Navigation principale">
+      {pill && <span className="nv-tab-ind" style={{ width: pill.w, transform: `translateX(${pill.x}px)` }} aria-hidden="true" />}
       {fav.map(pid => {
         const { icon: Icon, label } = ALL_PAGES[pid]
         const on = pid === currentPage
         const badge = badges[pid]
         return (
-          <button key={pid} type="button" className={clsx(s.item, on && s.on)} onClick={() => onNavigate(pid)}
-            aria-current={on ? 'page' : undefined} aria-label={label}>
-            <span className={s.icon}>
-              <Icon size={20} aria-hidden="true" />
-              {badge > 0 && <span className={s.badge}>{badge > 99 ? '99+' : badge}</span>}
-            </span>
+          <button key={pid} type="button" className={clsx('nv-press', s.item)} onClick={() => onNavigate(pid)}
+            aria-current={on ? 'page' : undefined} aria-label={badge > 0 ? `${label}, ${badge} à traiter` : label}>
+            <Icon size={22} aria-hidden="true" />
+            {badge > 0 && <span className="nv-tab-badge" aria-hidden="true">{badge > 99 ? '99+' : badge}</span>}
             <span className={s.label}>{SHORT[pid] || label}</span>
           </button>
         )
       })}
-      <button type="button" className={clsx(s.item, !inFav && s.on)} onClick={onMore}
+      <button type="button" className={clsx('nv-press', s.item, !inFav && s.on)} onClick={onMore}
         data-more={!inFav ? 'on' : undefined} aria-label="Plus de pages et réglages">
-        <span className={s.icon}><MoreHorizontal size={20} aria-hidden="true" /></span>
+        <MoreHorizontal size={22} aria-hidden="true" />
         <span className={s.label}>Plus</span>
       </button>
     </nav>
