@@ -8,6 +8,7 @@
  * de la page. On rétablit la fiche de l'appli en quittant la page.
  */
 import { useEffect } from 'react'
+import { retenirEspace } from '../utils/dernierEspace'
 
 // Mentions de passage à ne pas garder dans le lien de démarrage (retour de paiement Stripe…)
 const PASSAGERES = ['recharge', 'annule', 'session_id']
@@ -51,6 +52,9 @@ export default function InstallPerso({ nom, children }) {
     const titre = document.querySelector('meta[name="apple-mobile-web-app-title"]')
     const titreAvant = titre && titre.getAttribute('content')
     let url = null
+    // Relais (23/11/2026) : si le téléphone ignore la fiche ci-dessous, l'icône démarre sur « / »
+    // et l'appli renvoie vers ce lien (utils/dernierEspace.js)
+    try { retenirEspace(lienDemarrage(window.location.href)) } catch { /* rien */ }
     try {
       const fiche = fichePerso(window.location.href, nom)
       url = URL.createObjectURL(new Blob([JSON.stringify(fiche)], { type: 'application/manifest+json' }))

@@ -25,6 +25,7 @@ import Avatar   from './components/Avatar'
 import UpdateBanner from './components/UpdateBanner'
 import { hasYllaSession } from './firebase/session'
 import LinkGate from './components/LinkGate'
+import { oublierEspace } from './utils/dernierEspace'
 import InstallPerso from './components/InstallPerso'
 import ArchiveBanner from './components/ArchiveBanner'
 import { useTheme }      from './hooks/useTheme'
@@ -271,6 +272,8 @@ function StaffApp() {
   const staffSession = !!user && user.role !== 'benevole'
   const { loading, error }             = useFirestore({ enabled: staffSession })
   React.useEffect(() => { preloadLibs() }, []) // Préchargement PDF/XLS en background
+  // Essai A7 : l'équipe a utilisé l'appli en dernier, l'icône doit rouvrir la connexion de l'équipe
+  React.useEffect(() => { if (staffSession) oublierEspace() }, [staffSession])
   const { staff, spectateurs, logs, roles } = useAppStore()
   const { isMobile, isTablet }         = useBreakpoint()
   const { currentEventId: notifEventId } = useEventStore()

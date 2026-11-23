@@ -14,6 +14,13 @@ import App      from './App.jsx'
 import './index.css'
 import './styles/nouveau.css'   // nouveau style des écrans téléphone (23/11/2026)
 import { installApiAuth } from './firebase/session'
+import { espaceARouvrir } from './utils/dernierEspace'
+
+// Essai A7 (23/11/2026) : lancée depuis l'icône de l'écran d'accueil, l'appli démarre sur « / ».
+// Si un espace personnel (solde, bénévole, artiste, borne) a été le dernier ouvert sur ce
+// téléphone, on l'affiche directement au lieu de la connexion de l'équipe.
+const aRouvrir = espaceARouvrir()
+if (aRouvrir) window.history.replaceState(null, '', aRouvrir)
 
 // Sécurité, lot 1 : les appels aux fonctions serveur portent la session de la personne connectée
 installApiAuth()
