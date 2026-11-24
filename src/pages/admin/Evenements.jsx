@@ -443,7 +443,7 @@ export default function Evenements() {
       )}
 
       {/* Copie : nom de la nouvelle édition (remplace prompt) */}
-      <Dialog open={!!copy} onClose={() => setCopy(null)} title="Dupliquer l'événement"
+      <Dialog saisie open={!!copy} onClose={() => setCopy(null)} title="Dupliquer l'événement"
         footer={<>
           <Button variant="secondary" onClick={() => setCopy(null)}>Annuler</Button>
           <Button icon={Copy} onClick={confirmDuplicate}>Dupliquer</Button>

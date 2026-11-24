@@ -459,7 +459,7 @@ export default function Alertes() {
         <Button variant="secondary" block icon={SettingsIcon} aria-haspopup="dialog"
           onClick={() => setReglagesOpen(true)}>Réglages des alertes</Button>
 
-        <Sheet open={reglagesOpen} onClose={() => setReglagesOpen(false)} title="Réglages des alertes">
+        <Sheet saisie open={reglagesOpen} onClose={() => setReglagesOpen(false)} title="Réglages des alertes">
           <div className={s.mSheet}>
             <button type="button" className={s.mOption} aria-pressed={son} onClick={()=>setSon(v=>!v)}>
               {son ? <Bell size={18} aria-hidden="true"/> : <BellOff size={18} aria-hidden="true"/>}

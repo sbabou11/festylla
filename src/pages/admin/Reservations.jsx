@@ -325,7 +325,7 @@ export default function Reservations({ onNavigate }) {
       )}
 
       {/* Annulation : choix du motif */}
-      <Dialog open={!!annulModal} onClose={closeAnnul} title="Motif d'annulation"
+      <Dialog saisie open={!!annulModal} onClose={closeAnnul} title="Motif d'annulation"
         footer={<>
           <Button variant="secondary" onClick={closeAnnul}>Retour</Button>
           <Button variant="danger" icon={XCircle} onClick={doAnnuler} loading={loading === annulModal}>

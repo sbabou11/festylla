@@ -1,0 +1,24 @@
+/* « Fermer sans enregistrer ? » (24/11/2026) — au-dessus de la fenêtre, tokens du thème */
+.fond {
+  position: fixed; inset: 0; z-index: 400;
+  display: grid; place-items: center; padding: 24px;
+  background: var(--overlay, rgba(6, 34, 47, .55));
+  animation: fseFond var(--dur-base, .18s) var(--ease, ease-out);
+}
+.boite {
+  width: min(360px, 100%); display: grid; gap: 12px; padding: 20px;
+  border-radius: var(--radius-xl, 22px); background: var(--bg); color: var(--text);
+  box-shadow: var(--shadow-lg, 0 20px 50px rgba(0, 0, 0, .3));
+  animation: fsePop .18s var(--ease, ease-out);
+}
+.titre { font-size: 18px; }
+.texte { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+.continuer, .fermer {
+  min-height: 48px; border-radius: 99px; font: 700 15px var(--font, inherit); cursor: pointer; width: 100%;
+}
+.continuer { border: 0; background: var(--marine, #06222F); color: var(--bg); }
+.fermer { border: 1.5px solid var(--red); background: transparent; color: var(--red-dark, var(--red)); }
+:global(.dark) .fermer { color: var(--red); }
+@keyframes fseFond { from { opacity: 0; } }
+@keyframes fsePop { from { transform: scale(.95); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fond, .boite { animation: none; } }

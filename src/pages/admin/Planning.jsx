@@ -674,7 +674,7 @@ export default function Planning({ onNavigate }) {
       })()}
 
       {/* Formulaire du créneau */}
-      <Dialog open={showForm} onClose={() => setShowForm(false)} className={s.formDialog}
+      <Dialog saisie open={showForm} onClose={() => setShowForm(false)} className={s.formDialog}
         title={editing ? 'Modifier le créneau' : 'Nouveau créneau'}
         footer={<>
           <Button variant="secondary" onClick={() => setShowForm(false)}>Annuler</Button>

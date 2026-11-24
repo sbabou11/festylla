@@ -357,7 +357,7 @@ export default function Spectateurs({ onNavigate }) {
       })()}
 
       {/* Modification nom / solde */}
-      <Dialog open={!!editing} onClose={() => { if (!saving) setEditing(null) }} title="Modifier le spectateur"
+      <Dialog saisie open={!!editing} onClose={() => { if (!saving) setEditing(null) }} title="Modifier le spectateur"
         footer={<>
           <Button variant="secondary" icon={X} onClick={() => setEditing(null)} disabled={saving}>Annuler</Button>
           <Button icon={Save} onClick={saveEdit} loading={saving}>Enregistrer</Button>

@@ -40,13 +40,14 @@ function surRetour(ev) {
   // On est revenu sous l'étape de la fenêtre du dessus : elle se ferme
   if (etapeDe(ev.state) >= haut.id) return
   pile.pop()
-  haut.fermer()
+  // 'garde' : la fenêtre reste ouverte exprès (« Fermer sans enregistrer ? » posée ou refermée)
+  const reponse = haut.fermer()
   setTimeout(() => {
     if (!haut.ouverte()) return
-    // Elle a refusé (opération en cours) : on la remet en place
+    // Elle reste ouverte : on remet son étape en place
     pile.push(haut)
     window.history.pushState({ ...(window.history.state || {}), ycFenetre: haut.id }, '', window.location.href)
-    toast.info('Opération en cours : attendez la fin avant de fermer.')
+    if (reponse !== 'garde') toast.info('Opération en cours : attendez la fin avant de fermer.')
   }, 60)
 }
 

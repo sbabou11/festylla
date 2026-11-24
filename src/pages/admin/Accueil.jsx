@@ -1134,7 +1134,7 @@ function GoalDialog({ open, onClose, initial, onSave }) {
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Objectif de recettes par jour"
+    <Dialog saisie open={open} onClose={onClose} title="Objectif de recettes par jour"
       footer={<>
         <Button variant="secondary" onClick={onClose}>Annuler</Button>
         <Button type="submit" form="goal-form" loading={saving}>Enregistrer</Button>

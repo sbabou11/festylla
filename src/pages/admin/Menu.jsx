@@ -5,6 +5,7 @@
  * Articles    : via useAppStore (déjà fonctionnel)
  */
 import React, { useState, useEffect, useRef } from 'react'
+import useFermerSansEnregistrer from '../../hooks/useFermerSansEnregistrer'
 import clsx from 'clsx'
 import { db } from '../../firebase/config'
 import {
@@ -76,6 +77,8 @@ export default function Menu() {
   const [savingItem,  setSavingItem]  = useState(false)
   const [itemTried,   setItemTried]   = useState(false)
   const itemFormRef = useRef(null)
+  // « Fermer sans enregistrer ? » (24/11/2026) : « Annuler » demande si un champ de l'article a changé
+  const questionArticle = useFermerSansEnregistrer(itemFormRef, editingItem !== null, itemForm.nom || '')
 
   // ── Confirmations (remplacent confirm/prompt) ────────────────────
   const [pendingCat, setPendingCat] = useState(null)     // catégorie à supprimer
@@ -627,6 +630,7 @@ export default function Menu() {
         </div>
       )}
 
+      {questionArticle.question}
       {/* ── ARTICLES ── */}
       {section === 'articles' && (
         <div className={s.list}>
@@ -754,7 +758,7 @@ export default function Menu() {
                   <Button icon={Save} onClick={saveItem} loading={savingItem}>
                     {savingItem ? 'Sauvegarde…' : editingItem === 'new' ? 'Ajouter' : 'Enregistrer'}
                   </Button>
-                  <Button variant="secondary" icon={X} onClick={() => setEditingItem(null)}>Annuler</Button>
+                  <Button variant="secondary" icon={X} onClick={() => questionArticle.demander(() => setEditingItem(null))}>Annuler</Button>
                 </div>
               </div>
             </Card>
@@ -825,7 +829,7 @@ export default function Menu() {
       </Dialog>
 
       {/* Réassort d'un article */}
-      <Dialog
+      <Dialog saisie
         open={!!restock}
         onClose={() => setRestock(null)}
         title="Réapprovisionner"
@@ -847,7 +851,7 @@ export default function Menu() {
       </Dialog>
 
       {/* Rayon : créer / modifier */}
-      <Dialog
+      <Dialog saisie
         open={!!rayonForm}
         onClose={() => setRayonForm(null)}
         title={rayonForm?.id === 'new' ? 'Nouveau rayon' : 'Modifier le rayon'}
@@ -880,7 +884,7 @@ export default function Menu() {
       </Dialog>
 
       {/* Stand : créer / modifier */}
-      <Dialog
+      <Dialog saisie
         open={!!standForm}
         onClose={() => setStandForm(null)}
         title={standForm?.id === 'new' ? 'Nouveau stand' : 'Modifier le stand'}

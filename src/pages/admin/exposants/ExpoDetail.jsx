@@ -355,7 +355,7 @@ export default function ExpoDetail({ expo, organisateur, eventId, onBack, onEdit
       </Card>
 
       {/* Fenêtre d'édition de paiement (Étape 2) */}
-      <Dialog
+      <Dialog saisie
         open={!!editPaymentKind}
         title={`Modifier ${editPaymentKind === 'acompte' ? "l'acompte" : 'le solde'}`}
         onClose={() => !editLoading && setEditPaymentKind(null)}

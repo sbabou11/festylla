@@ -9,6 +9,7 @@ import { X } from 'lucide-react'
 import clsx from 'clsx'
 import s from './Overlay.module.css'
 import useRetourFerme from '../hooks/useRetourFerme'
+import useFermerSansEnregistrer from '../hooks/useFermerSansEnregistrer'
 
 const EXIT_MS = 150
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -16,14 +17,20 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), selec
 // Fenêtres ouvertes : seule la dernière réagit à Échap et à Tab
 const openStack = []
 
-function Overlay({ open, onClose, title, footer, kind, side = 'right', className, children }) {
+function Overlay({ open, onClose, title, footer, kind, side = 'right', className, saisie = false, children }) {
   const panelRef = useRef(null)
   // onClose dans une ref : un parent qui passe une fonction inline ne doit pas
   // relancer l'effet (et voler le focus d'un champ) à chaque rendu
   const closeRef = useRef(onClose)
   closeRef.current = onClose
+  // saisie (24/11/2026) : fenêtre de modification ; si un champ a changé, la croix, le fond, Échap,
+  // « Annuler » et le retour du téléphone demandent « Fermer sans enregistrer ? »
+  const { demander, question } = useFermerSansEnregistrer(panelRef, !!open && saisie, typeof title === 'string' ? title : '')
+  const fermer = () => (saisie ? demander(() => closeRef.current?.()) : closeRef.current?.())
+  const fermerRef = useRef(fermer)
+  fermerRef.current = fermer
   // Retour du téléphone (24/11/2026) : ferme d'abord cette fenêtre au lieu de quitter l'écran
-  useRetourFerme(!!open, () => closeRef.current?.())
+  useRetourFerme(!!open, () => fermerRef.current())
 
   // Dernier contenu ouvert : les parents vident souvent leur état en fermant
   const shown = useRef(null)
@@ -46,7 +53,7 @@ function Overlay({ open, onClose, title, footer, kind, side = 'right', className
     openStack.push(me)
     const onKey = (e) => {
       if (openStack[openStack.length - 1] !== me) return
-      if (e.key === 'Escape') { closeRef.current?.(); return }
+      if (e.key === 'Escape') { fermerRef.current(); return }
       if (e.key !== 'Tab') return
       const panel = panelRef.current
       if (!panel) return
@@ -69,7 +76,7 @@ function Overlay({ open, onClose, title, footer, kind, side = 'right', className
   const content = open ? { title, footer, children } : shown.current
 
   return createPortal(
-    <div className={clsx(s.backdrop, s[kind], !open && s.closing)} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
+    <div className={clsx(s.backdrop, s[kind], !open && s.closing)} onMouseDown={(e) => { if (e.target === e.currentTarget) fermer() }}>
       <div
         ref={panelRef}
         role="dialog"
@@ -77,11 +84,18 @@ function Overlay({ open, onClose, title, footer, kind, side = 'right', className
         aria-label={typeof content.title === 'string' ? content.title : undefined}
         tabIndex={-1}
         className={clsx(s.panel, s[`${kind}Panel`], kind === 'sheet' && s[side], className)}
+        onClickCapture={saisie ? (e) => {
+          // Un bouton « Annuler » de la fenêtre passe aussi par la question (sauf data-sans-question)
+          const b = e.target.closest('button')
+          if (!b || b.closest('[data-sans-question]') || b.textContent.trim() !== 'Annuler') return
+          e.preventDefault(); e.stopPropagation()
+          fermer()
+        } : undefined}
       >
         {content.title && (
           <header className={s.head}>
             <h2 className={s.title}>{content.title}</h2>
-            <button type="button" className={s.close} onClick={onClose} aria-label="Fermer">
+            <button type="button" className={s.close} onClick={fermer} aria-label="Fermer">
               <X size={18} />
             </button>
           </header>
@@ -89,6 +103,7 @@ function Overlay({ open, onClose, title, footer, kind, side = 'right', className
         <div className={s.body}>{content.children}</div>
         {content.footer && <footer className={s.foot}>{content.footer}</footer>}
       </div>
+      {question}
     </div>,
     document.body,
   )

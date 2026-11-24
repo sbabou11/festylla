@@ -636,7 +636,7 @@ export default function Staff() {
       )}
 
       {/* Formulaire membre (ajout / édition) */}
-      <Sheet open={!!memberForm} onClose={() => setMemberForm(null)}
+      <Sheet saisie open={!!memberForm} onClose={() => setMemberForm(null)}
         title={isEditMember ? 'Modifier un membre' : 'Nouveau membre du staff'}
         footer={
           <div className={s.sheetFoot}>
@@ -904,7 +904,7 @@ export default function Staff() {
       )}
 
       {/* Nouveau mot de passe d'un membre (remplace prompt) */}
-      <Dialog open={!!pwdTarget} onClose={() => setPwdTarget(null)} title="Nouveau mot de passe"
+      <Dialog saisie open={!!pwdTarget} onClose={() => setPwdTarget(null)} title="Nouveau mot de passe"
         footer={<>
           <Button variant="secondary" onClick={() => setPwdTarget(null)}>Annuler</Button>
           <Button icon={Check} onClick={submitResetPwd}>Appliquer</Button>
