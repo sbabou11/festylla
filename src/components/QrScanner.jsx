@@ -32,6 +32,7 @@ import { Tabs, Button, CodeInput, Field, focusFirstInvalid } from '../ui'
 import s from './QrScanner.module.css'
 import { extractSpecId } from '../utils/specCode'
 import { parseQrTournant } from '../utils/qrTournant'
+import { redessinerVideo } from '../utils/redessin'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
 
@@ -220,6 +221,8 @@ export default function QrScanner({
       // Récupère la MediaStreamTrack active pour permettre le tap-to-focus.
       try {
         const videoEl = document.querySelector(`#${SCANNER_ID} video`)
+        // iPhone (24/11/2026) : la vidéo restait blanche tant que Safari ne la redessinait pas
+        redessinerVideo(videoEl)
         if (videoEl && videoEl.srcObject) {
           const tracks = videoEl.srcObject.getVideoTracks()
           if (tracks && tracks[0]) {

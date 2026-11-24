@@ -33,7 +33,7 @@ export default function Remboursement() {
     <div style={{ maxWidth: 520, margin: '0 auto', display: 'grid', gap: 16 }}>
       <Tabs label="Type de remboursement" value={vue} onChange={setVue} items={[
         { value: 'ticket', label: 'Ticket' },
-        { value: 'code',   label: 'Code non utilisé' },
+        { value: 'code',   label: 'Annuler un code' },
         { value: 'compte', label: 'Solde du compte' },
         { value: 'demandes', label: nbDemandes ? `Demandes (${nbDemandes})` : 'Demandes' },
       ]}/>

@@ -327,7 +327,7 @@ function CodesEnAttente({ enAttente }) {
         </div>
       ))}
       <span>Déjà comptées dans l'attendu : l'argent est dans la caisse. Le client peut encore imprimer son ticket à la borne ;
-        un code annulé se rembourse dans « Remboursement › Code non utilisé ».</span>
+        un code annulé se rembourse dans « Remboursement › Annuler un code ».</span>
     </div>
   )
 }

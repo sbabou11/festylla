@@ -8,6 +8,7 @@
 import { useEffect } from 'react'
 import { flushSync } from 'react-dom'
 import useAppStore from '../store/useAppStore'
+import { forcerRedessin } from '../utils/redessin'
 
 // Utilisable hors React (vitrine /ui) : transition circulaire autour d'une bascule de thème
 export function revealTheme(apply, event) {
@@ -27,7 +28,8 @@ export function revealTheme(apply, event) {
     { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
     { duration: 450, easing: 'cubic-bezier(.2,.7,.3,1)', pseudoElement: '::view-transition-new(root)' },
   )).catch(() => {})
-  vt.finished.finally(() => root.classList.remove('yc-theme-vt'))
+  // iPhone (24/11/2026) : Safari laissait une partie de la page non dessinée après le cercle
+  vt.finished.finally(() => { root.classList.remove('yc-theme-vt'); forcerRedessin() })
 }
 
 export function useTheme() {

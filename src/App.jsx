@@ -39,6 +39,7 @@ import { db as fsDb } from './firebase/config'
 import useAppStore from './store/useAppStore'
 import { setCurrentEvent } from './firebase/service'
 import useEventStore from './store/useEventStore'
+import { forcerRedessin } from './utils/redessin'
 
 // Hubs : y arriver efface la page parente (pas de flèche retour)
 const HUB_PAGES = ['accueil', 'operations', 'equipe-hub', 'spectateurs-hub', 'gestion-artistes', 'finances']
@@ -389,7 +390,12 @@ function StaffApp() {
     // Seul le contenu (view-transition-name: page) glisse ; rien si l'utilisateur réduit les animations
     const animate = pid !== currentPage && document.startViewTransition
       && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (animate) document.startViewTransition(() => flushSync(go)).ready.catch(() => {}) // onglet masqué : transition ignorée
+    if (animate) {
+      const vt = document.startViewTransition(() => flushSync(go))
+      vt.ready.catch(() => {}) // onglet masqué : transition ignorée
+      // iPhone (24/11/2026) : sans ce redessin, Safari laissait des zones vides et la caméra blanche
+      vt.finished.then(() => forcerRedessin(), () => forcerRedessin())
+    }
     else go()
   }
 
