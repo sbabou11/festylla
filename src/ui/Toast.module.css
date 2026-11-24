@@ -8,15 +8,22 @@
   gap: var(--space-2);
   pointer-events: none;
 }
-/* Téléphone : en haut, hors de la zone du pouce et de la barre du bas */
+/* Téléphone (24/11/2026, maquette XFQD1gCuSZ3DHPgeYPDLbq) : en bas, juste au-dessus de la barre,
+   à portée du pouce pour « Annuler » ; en haut quand un panneau du bas est ouvert (.haut),
+   sinon il couvrirait ses boutons. */
 @media (max-width: 640px) {
   .viewport {
     left: var(--space-4);
     right: var(--space-4);
-    top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
-    bottom: auto;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
     width: auto;
   }
+  .viewport.haut {
+    top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
+    bottom: auto;
+  }
+  .viewport.haut .toast { animation-name: riseTop; }
+  .viewport.haut .leaving { animation-name: leaveTop; }
 }
 .toast {
   position: relative;
@@ -61,7 +68,5 @@
 @keyframes drain { to { transform: scaleX(0); } }
 @keyframes rise { from { transform: translateY(16px); opacity: 0; } }
 @keyframes leave { to { transform: translateY(8px); opacity: 0; } }
-@media (max-width: 640px) {
-  @keyframes rise { from { transform: translateY(-16px); opacity: 0; } }
-  @keyframes leave { to { transform: translateY(-8px); opacity: 0; } }
-}
+@keyframes riseTop { from { transform: translateY(-16px); opacity: 0; } }
+@keyframes leaveTop { to { transform: translateY(-8px); opacity: 0; } }

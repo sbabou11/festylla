@@ -9,7 +9,7 @@
  * Fermer un toast (croix ou balayage) confirme l'action en attente (onExpire).
  * Le temps s'arrête au survol et pendant un appui.
  */
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { create } from 'zustand'
 import { CheckCircle2, AlertTriangle, XCircle, Info, X } from 'lucide-react'
@@ -128,10 +128,27 @@ function ToastItem({ t }) {
   )
 }
 
+// Une fenêtre ou un panneau est-il ouvert ? (les fenêtres sont rendues dans <body>)
+const panneauOuvert = () => typeof document !== 'undefined' && !!document.querySelector('[role="dialog"]')
+
+function usePanneauOuvert(actif) {
+  const [ouvert, setOuvert] = useState(false)
+  useEffect(() => {
+    if (!actif) return undefined
+    setOuvert(panneauOuvert())
+    const obs = new MutationObserver(() => setOuvert(panneauOuvert()))
+    obs.observe(document.body, { childList: true, subtree: true })
+    return () => obs.disconnect()
+  }, [actif])
+  return ouvert
+}
+
 export function ToastViewport() {
   const items = useToastStore(st => st.items)
+  // Téléphone (24/11/2026) : en bas, sauf quand un panneau est ouvert (le message passe en haut)
+  const haut = usePanneauOuvert(items.length > 0)
   return createPortal(
-    <div className={s.viewport} role="status" aria-live="polite">
+    <div className={clsx(s.viewport, haut && s.haut)} role="status" aria-live="polite">
       {items.map(t => <ToastItem key={t.id} t={t} />)}
     </div>,
     document.body,

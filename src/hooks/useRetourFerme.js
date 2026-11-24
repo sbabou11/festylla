@@ -13,7 +13,21 @@ import { useEffect, useRef } from 'react'
 import { toast } from '../ui/Toast'
 
 const pile = []          // fenêtres ouvertes, la dernière au-dessus : { id, fermer, ouverte }
-let suivant = 1
+// Numéros toujours croissants, même d'un chargement de page à l'autre (piège signalé par Event
+// Manager le 24/11/2026 : l'étape d'une fenêtre survit au rechargement de la page)
+let suivant = Date.now()
+
+// Au démarrage : une étape restée d'avant un rechargement n'a plus de fenêtre derrière elle ;
+// on la retire en gardant les repères de navigation de l'appli
+if (typeof window !== 'undefined' && window.history?.replaceState) {
+  try {
+    const st = window.history.state
+    if (st && typeof st === 'object' && st.ycFenetre) {
+      const { ycFenetre, ...reste } = st
+      window.history.replaceState(Object.keys(reste).length ? reste : null, '', window.location.href)
+    }
+  } catch { /* historique inaccessible : rien à nettoyer */ }
+}
 let ignorer = 0          // retours lancés par nous-mêmes (fenêtre fermée à la croix)
 let ecoute = false
 
