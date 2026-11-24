@@ -15,6 +15,7 @@ import { ALL_PAGES } from './Sidebar'
 import { fmt } from '../utils/helpers'
 import { fuzzyMatch, highlight } from '../utils/fuzzy'
 import s from './CommandPalette.module.css'
+import useRetourFerme from '../hooks/useRetourFerme'
 
 const norm = (v = '') => String(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 const PER_GROUP = 5
@@ -52,6 +53,8 @@ const rank = (items, n, text, limit = PER_GROUP) => items
 
 export default function CommandPalette({ open, onClose, onNavigate, canAccessPage }) {
   const { spectateurs, menu, reservations } = useAppStore()
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(!!open, onClose)
   const [q, setQ]           = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef(null)

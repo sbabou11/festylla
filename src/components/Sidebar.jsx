@@ -22,6 +22,7 @@ import { useBreakpoint }   from '../hooks/useBreakpoint'
 import { useOfflineQueue } from '../hooks/useOfflineQueue'
 import s from './Sidebar.module.css'
 import { isEmLinked, PAGES_RETIREES_EM } from '../em/pages'
+import useRetourFerme from '../hooks/useRetourFerme'
 
 export const ALL_PAGES = {
   evenements:           { icon: Calendar,        label: 'Événements' },
@@ -93,6 +94,8 @@ export default function Sidebar({
   const voitAudit = ROLES_AUDIT.includes(useAuthStore(st => st.user?.role))
   const { online, queueSize, syncing } = useOfflineQueue()
   const { isMobile, isTablet } = useBreakpoint()
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(isMobile && mobileOpen, () => onMobileClose?.())
   const { events, currentEventId } = useEventStore()
 
   // Replié par défaut : le rail laisse toute la place au contenu

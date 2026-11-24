@@ -9,6 +9,7 @@ import clsx from 'clsx'
 import { Music, BookOpen, Film, Sparkles, Heart, X, Search, Clock, MapPin, ExternalLink, Share2, CalendarPlus, CalendarDays } from 'lucide-react'
 import { toast } from '../../../ui'
 import sp from './SoldePage.module.css'
+import useRetourFerme from '../../../hooks/useRetourFerme'
 
 // ── Composant planning espace spectateur ──────────────────────────────
 const TYPES_SPEC = {
@@ -63,6 +64,8 @@ function fmt2Spec(ts) {
 
 // ── Carte artiste spectateur (feuille du bas, nouveau style 23/11/2026) ──
 function CarteArtisteSpec({ cr, onClose, isFav, onToggleFav, themeColor }) {
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(true, onClose)
   const ti = TYPES_SPEC[cr.type] || TYPES_SPEC.autre
   const TypeIcon = ti.Icon
   const [now, setNow] = React.useState(Date.now())

@@ -17,11 +17,14 @@ import { createPortal } from 'react-dom'
 import { X, Info, AlertTriangle, Minus, Plus } from 'lucide-react'
 import { ALLERGENES_BY_CODE, labelAllergene } from '../utils/allergenes'
 import s from './ArticleInfoModal.module.css'
+import useRetourFerme from '../hooks/useRetourFerme'
 
 const euros = (c) => ((c || 0) / 100).toFixed(2).replace('.', ',') + ' €'
 
 export default function ArticleInfoModal({ item, onClose, onAdd = null, onAddQty = null, qty = 0, maxAdd = Infinity, sousTitre = null, raisonBloque = 'Épuisé' }) {
   const [n, setN] = useState(1)
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(!!item, onClose)
   useEffect(() => { setN(1) }, [item?.id])
   useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') onClose() }

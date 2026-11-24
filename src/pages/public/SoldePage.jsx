@@ -48,6 +48,7 @@ import BraceletSecours from './spectateur/BraceletSecours'
 import sp from './spectateur/SoldePage.module.css'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
 import CheckUpdateButton from '../../components/CheckUpdateButton'
+import useRetourFerme from '../../hooks/useRetourFerme'
 
 const PAGE_SIZE = 15
 
@@ -135,6 +136,8 @@ export default function SoldePage({ demo = null }) {
   const [scannerEnPanne, setScannerEnPanne] = useState(!!demo?.scannerEnPanne)
   const [secours, setSecours]         = useState(null)   // { code, expMs }
   const [qrOpen, setQrOpen]           = useState(false)
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(qrOpen, () => setQrOpen(false))
   const [chartMode, setChartMode]     = useState(false)   // false=liste true=graphe
   const [planningData, setPlanningData] = useState(() => {
     try {
@@ -619,6 +622,8 @@ export default function SoldePage({ demo = null }) {
   //    montant de l'accueil qui se floute au défilement. Aucune donnée nouvelle, aucune action nouvelle.
   const [detail, setDetail]     = useState(null)    // opération ouverte en lecture seule
   const [plusOpen, setPlusOpen] = useState(false)   // feuille « Plus » de l'accueil
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(plusOpen, () => setPlusOpen(false))
   // Cartes de résumé cliquables (23/11/2026, maquette validée) : 'solde' | 'demande', ouvertes en DetailSheet
   const [carteOuverte, setCarteOuverte] = useState(null)
   const heroRef        = useRef(null)

@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import clsx from 'clsx'
 import s from './Overlay.module.css'
+import useRetourFerme from '../hooks/useRetourFerme'
 
 const EXIT_MS = 150
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
@@ -21,6 +22,8 @@ function Overlay({ open, onClose, title, footer, kind, side = 'right', className
   // relancer l'effet (et voler le focus d'un champ) à chaque rendu
   const closeRef = useRef(onClose)
   closeRef.current = onClose
+  // Retour du téléphone (24/11/2026) : ferme d'abord cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(!!open, () => closeRef.current?.())
 
   // Dernier contenu ouvert : les parents vident souvent leur état en fermant
   const shown = useRef(null)

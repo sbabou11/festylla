@@ -11,6 +11,7 @@
  * Styles : ChatModal.module.css (tokens uniquement, s'adapte au clair, sombre et plein soleil).
  */
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import useRetourFerme from '../hooks/useRetourFerme'
 import clsx from 'clsx'
 import { X, Send, Mic, Image as ImageIcon, Trash2, Play, Pause, AlertCircle, Volume2, VolumeX, MessageCircle } from 'lucide-react'
 import { Button } from '../ui'
@@ -118,6 +119,8 @@ export default function ChatModal({
   walkieMuted = false,
   onToggleWalkieMute,
 }) {
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(!!open, onClose)
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [recording, setRecording] = useState(false)

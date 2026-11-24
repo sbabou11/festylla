@@ -11,6 +11,7 @@ import { NOTIF_TYPES } from '../hooks/useNotifications'
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import DetailSheet from './DetailSheet'
 import s from './NotifBell.module.css'
+import useRetourFerme from '../hooks/useRetourFerme'
 
 // onOpenCommande (facultatif, 23/11/2026) : ouvre la commande liée à une notification
 // (reçoit la notification) ; sans lui, le détail n'affiche pas de bouton « Voir la commande ».
@@ -23,6 +24,8 @@ export default function NotifBell({ notifications, nonLuCount, onMarkAllRead, on
   const prevCount         = useRef(nonLuCount)
   const dropdownRef       = useRef(null)
   const { isMobile }      = useBreakpoint()
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(open && isMobile, () => setOpen(false))
 
   // Animation cloche sur nouvelle notif
   useEffect(() => {

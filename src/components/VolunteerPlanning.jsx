@@ -33,6 +33,7 @@ import QRCode from 'qrcode'
 import { Dialog, Button, Empty, Field, focusFirstInvalid, toast } from '../ui'
 import { postQrText, postShortCode } from '../utils/shiftTime'
 import { ROLES_EQUIPE, labelRoleEquipe, posteRole } from '../utils/roleEquipe'
+import useRetourFerme from '../hooks/useRetourFerme'
 
 const POST_COLORS = ['#009090','#F07848','#D89030','#6B3FA0','#0E8D7A','#5EB8E4','#A32D2D','#888780']
 const POST_EMOJIS = ['🍻','💳','🎫','🛡️','🍔','📦','🚗','🎤','📋','🔧']
@@ -388,6 +389,8 @@ function DayGrid({ shifts, posts, onCellClick }) {
 function AssignModal({ shifts, shiftId, postId, postOverride, posts, benevoles, benevsById, onClose }) {
   const { currentEventId } = useEventStore()
   const [busy, setBusy] = useState(null)
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(true, onClose)
 
   // Recalcule le shift à JOUR à chaque render (pas une copie figée à l'ouverture)
   const shift = shifts.find(s => s.id === shiftId)
@@ -523,6 +526,8 @@ function PostesView({ posts }) {
   const { currentEventId } = useEventStore()
   const [editing, setEditing] = useState(null)
   const [qrPost, setQrPost] = useState(null)
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(!!editing, () => setEditing(null))
   const [ask, confirmDialog] = useConfirm()
   const [tried, setTried] = useState(false)
   const formRef = useRef(null)
@@ -675,6 +680,8 @@ function ShiftsView({ shifts, currentEvent }) {
   }, [currentEventId])
   const [editing, setEditing] = useState(null)
   const [bulkOpen, setBulkOpen] = useState(false)
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(!!editing, () => setEditing(null))
   const [duplicating, setDuplicating] = useState(null) // shift à dupliquer (objet)
   const [dupDates, setDupDates]   = useState([])        // dates cibles sélectionnées
   const [dupKeepTargets, setDupKeepTargets] = useState(true) // recopier les effectifs cibles ?

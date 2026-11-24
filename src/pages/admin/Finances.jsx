@@ -28,6 +28,7 @@ import { ArrowLeft, Mic } from 'lucide-react'
 import DetailSheet from '../../components/DetailSheet'
 import { Repartition, Note, grouper, nettoyer } from '../../components/detailContenus'
 import { Button } from '../../ui'
+import useRetourFerme from '../../hooks/useRetourFerme'
 
 const MODE_LABEL = { especes: 'Espèces', virement: 'Virement', cheque: 'Chèque', cb: 'CB', autre: 'Autre' }
 const MODES = ['especes', 'virement', 'cheque', 'cb', 'autre']
@@ -394,6 +395,8 @@ function StatCard({ label, value, color, onClick }) {
 
 function FinanceForm({ initial, liveFinance, eventId, allCats, onCancel, onSave }) {
   const [sens, setSens] = useState(initial?.sens || 'depense')
+  // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
+  useRetourFerme(true, onCancel)
   const [montant, setMontant] = useState(initial ? (initial.montant / 100).toString() : '')
   const [categorie, setCategorie] = useState(initial?.categorie || '')
   const [customCat, setCustomCat] = useState('')
