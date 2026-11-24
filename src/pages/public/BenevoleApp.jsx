@@ -13,6 +13,7 @@
  */
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { remonter, garderPlace, remettrePlace } from '../../utils/placePage'
+import QuoiDeNeuf from '../../components/QuoiDeNeuf'
 import { db } from '../../firebase/config'
 import {
   collection, query, where, getDoc,
@@ -638,6 +639,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
             <div className={`nv-st ${s.stack}`}>
               {/* Écran 13 (24/11/2026) : mon solde, comme un spectateur ; les avantages s'y ajoutent */}
               <CarteSolde pm={porteMonnaie} onRecharger={() => setRechargeOuverte(true)} onCommander={() => setTab('commander')}/>
+              {/* Quoi de neuf (24/11/2026) : une fois par mise en ligne et par téléphone */}
+              <QuoiDeNeuf espace="benevole" />
               {!em && (
               /* Mon créneau : carte de verre principale (nouveau style, 23/11/2026) */
                 slot && ribbon ? (

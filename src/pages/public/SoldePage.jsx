@@ -45,6 +45,7 @@ import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../ut
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
 import BraceletSecours from './spectateur/BraceletSecours'
+import QuoiDeNeuf from '../../components/QuoiDeNeuf'
 import sp from './spectateur/SoldePage.module.css'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
 import CheckUpdateButton from '../../components/CheckUpdateButton'
@@ -847,6 +848,8 @@ export default function SoldePage({ demo = null }) {
                 <span className={sp.chip}><Wallet size={16} aria-hidden="true" />{eventMeta?.nom ? `${eventMeta.nom} · ` : ''}Compte {spec.id}</span>
               </button>
             </section>
+            {/* Quoi de neuf (24/11/2026) : une fois par mise en ligne et par téléphone */}
+            <QuoiDeNeuf espace="spectateur" />
 
             <div className={clsx('nv-acts', sp.acts)}>
               {!billetAnnule && (

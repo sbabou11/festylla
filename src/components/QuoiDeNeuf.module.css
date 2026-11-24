@@ -1,0 +1,19 @@
+/* Lien « Nouveautés » et liste (24/11/2026) — tokens du thème, clair et sombre */
+.place { display: flex; justify-content: center; margin: 0 0 12px; min-width: 0; }
+.lien {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 4px 4px 4px 12px; border-radius: 99px;
+  background: var(--nv-glass2, var(--bg)); border: 1px solid var(--nv-line, var(--border));
+  color: var(--nv-fg, var(--text)); box-shadow: 0 2px 10px rgba(6, 34, 47, .08);
+  font-size: 13px; font-weight: 700; width: max-content; max-width: 100%;
+}
+.voir { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 4px 0; }
+.accent { color: var(--brand); }
+.masquer { width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--nv-mu, var(--muted)); display: grid; place-items: center; cursor: pointer; }
+.date { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.lignes { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.lignes li { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; align-items: start; }
+.lignes b { display: block; font-size: 15px; }
+.lignes li > span:last-child > span { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.ic { width: 36px; height: 36px; border-radius: 12px; background: var(--bg2); color: var(--brand); display: grid; place-items: center; }
+.compris { width: 100%; }
