@@ -11,7 +11,8 @@
  * Nouveau style (23/11/2026, maquette validée) : classe `nv` (styles/nouveau.css), accueil sur
  * dégradé avec cartes de verre, barre d'onglets flottante. Logique inchangée.
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
+import { remonter, garderPlace, remettrePlace } from '../../utils/placePage'
 import { db } from '../../firebase/config'
 import {
   collection, query, where, getDoc,
@@ -117,6 +118,13 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     if (t === 'commander') setConsoVue('commander')
     setTabBrut(t)
   }
+  // Barre du bas (24/11/2026) : l'onglet où l'on est déjà ramène en haut ; en revenant sur un
+  // onglet, on retrouve sa place
+  const changerOnglet = (t) => {
+    if (t === tab) { remonter(); return }
+    garderPlace('bv-' + tab); setTabBrut(t)
+  }
+  useLayoutEffect(() => { remettrePlace('bv-' + tab) }, [tab])
   const [qtys,        setQtys]        = useState({})
   const [resaLoading, setResaLoading] = useState(false)
   const [resaErr,     setResaErr]     = useState('')
@@ -866,7 +874,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           const on = tab === item.id
           return (
             <button key={item.id} type="button" className="nv-press"
-              onClick={() => setTabBrut(item.id)} aria-current={on ? 'page' : undefined}>
+              onClick={() => changerOnglet(item.id)} aria-current={on ? 'page' : undefined}>
               <Icon size={22} aria-hidden="true"/>
               {item.badge > 0 && <span className="nv-tab-badge" aria-label={`${item.badge} en cours`}>{item.badge}</span>}
               {item.verrou && <span className={s.tabVerrou} aria-label="verrouillé"><Lock size={10} strokeWidth={3} aria-hidden="true"/></span>}

@@ -10,7 +10,7 @@
  */
 import { ensureSpectatorSession, soldeUrl, spectateurOuvert, oublierCompte, rememberedKey, ouvrirParJeton } from '../../firebase/publicSession'
 import { jetonTournant, fenetreDe, resteSecondes } from '../../utils/qrTournant'
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import {
   Wallet, Clock, Bookmark, CalendarDays, UtensilsCrossed,
@@ -49,6 +49,7 @@ import sp from './spectateur/SoldePage.module.css'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
 import CheckUpdateButton from '../../components/CheckUpdateButton'
 import useRetourFerme from '../../hooks/useRetourFerme'
+import { remonter, garderPlace, remettrePlace } from '../../utils/placePage'
 
 const PAGE_SIZE = 15
 
@@ -597,7 +598,12 @@ export default function SoldePage({ demo = null }) {
     return () => { lock?.release?.().catch?.(() => {}) }
   }, [qrOpen])
 
-  const go = (t) => { setTab(t); setDonFait(null); window.scrollTo(0, 0) }
+  // 24/11/2026 : l'onglet où l'on est déjà ramène en haut ; en revenant sur un écran, on retrouve sa place
+  const go = (t) => {
+    if (t === tab) { remonter(); return }
+    garderPlace('sp-' + tab); setTab(t); setDonFait(null)
+  }
+  useLayoutEffect(() => { remettrePlace('sp-' + tab) }, [tab])
   // Sécurité (20/11/2026) : changer de compte oublie vraiment celui-ci sur ce téléphone (clé, session,
   // numéro dans l'adresse) ; il se rouvrira seulement avec son lien
   const logoutSpec = () => {

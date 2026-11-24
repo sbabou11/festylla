@@ -4,7 +4,7 @@
  * Changement de page : transition douce via l'API View Transitions quand elle existe
  */
 import { pageRetiree } from './em/pages'
-import React, { useState, useEffect, Suspense, lazy } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef, Suspense, lazy } from 'react'
 import { flushSync } from 'react-dom'
 import clsx from 'clsx'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
@@ -41,6 +41,7 @@ import useAppStore from './store/useAppStore'
 import { setCurrentEvent } from './firebase/service'
 import useEventStore from './store/useEventStore'
 import { forcerRedessin } from './utils/redessin'
+import { remonter, garderPlace, remettrePlace } from './utils/placePage'
 
 // Hubs : y arriver efface la page parente (pas de flèche retour)
 const HUB_PAGES = ['accueil', 'operations', 'equipe-hub', 'spectateurs-hub', 'gestion-artistes', 'finances']
@@ -214,6 +215,12 @@ const DevEspace     = import.meta.env.DEV ? lazy(() => import('./pages/dev/DevAu
 const page = (el) => <Suspense fallback={<Loader />}>{el}</Suspense>
 const Borne        = lazy(() => import('./pages/public/Borne'))
 
+// Retrouver sa place (24/11/2026) : en revenant sur une page, la liste reprend où on l'avait laissée
+function RetrouverPlace({ page, zone }) {
+  useLayoutEffect(() => { remettrePlace(page, zone.current) }, [page, zone])
+  return null
+}
+
 export default function App() {
   return (
     <>
@@ -292,6 +299,8 @@ function StaffApp() {
   const [studioOpen, setStudioOpen]         = useState(false)
   const [auditOpen, setAuditOpen]           = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  // Zone qui défile du contenu (24/11/2026) : retour en haut et place retrouvée par page
+  const contenuRef = useRef(null)
   // espaceChoisi vient du store (reset automatique au login/logout)
   const setEspaceChoisi = (val) => setEspaceStore(val)
 
@@ -386,6 +395,9 @@ function StaffApp() {
   // 2e argument : une recherche d'URL ('?x=1') ou l'id du hub d'origine (flèche retour)
   const navigate = (pid, arg = '') => {
     if (!canAccessPage(pid)) return
+    // Onglet où l'on est déjà (24/11/2026) : retour en haut de la page ; sinon on garde sa place
+    if (pid === currentPage && !arg) { remonter(contenuRef.current); return }
+    garderPlace(currentPage, contenuRef.current)
     const search = typeof arg === 'string' && arg.startsWith('?') ? arg : ''
     const parent = arg && !search && !HUB_PAGES.includes(pid) ? arg : null
     const go = () => { routerNavigate(`/${pid}${search}`); setParentPage(parent); setStudioOpen(false); setMobileMenuOpen(false) }
@@ -556,7 +568,8 @@ function StaffApp() {
           <ArchiveBanner />
 
           {/* Contenu de la page */}
-          <main className={shell.content}>
+          <main className={shell.content} ref={contenuRef}>
+            <RetrouverPlace page={currentPage} zone={contenuRef} />
             <Suspense fallback={<PageSkeleton />}>
               {PageComponent
                 ? <PageComponent onNavigate={navigate} view={user.role} />
