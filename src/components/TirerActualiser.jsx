@@ -15,6 +15,7 @@ import { toast } from '../ui'
 import useAuthStore from '../store/useAuthStore'
 import { checkForUpdate, installerMaintenant } from '../hooks/useAppUpdate'
 import { APP_BUILD } from '../utils/buildInfo'
+import { vibrerSucces } from '../utils/vibration'
 
 const SEUIL = 60          // distance du rond (px) pour déclencher
 const MAX = 110           // le rond ne descend pas plus bas
@@ -76,6 +77,7 @@ export default function TirerActualiser() {
       e.y0 = null
       const v = Math.min(MAX, e.d / 2)
       if (!e.actif || v < SEUIL) { setDist(0); return }
+      vibrerSucces()   // lâché assez loin (Android)
       actualiser()
     }
 

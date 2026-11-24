@@ -33,6 +33,7 @@ import s from './QrScanner.module.css'
 import { extractSpecId } from '../utils/specCode'
 import { parseQrTournant } from '../utils/qrTournant'
 import { redessinerVideo } from '../utils/redessin'
+import { vibrerSucces } from '../utils/vibration'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
 
@@ -204,7 +205,8 @@ export default function QrScanner({
         (decodedText) => {
           if (mountedRef.current && onScan) {
             const id = parse(decodedText)
-            if (id) onScan(id)
+            // QR reconnu par la caméra : courte vibration (Android, 24/11/2026)
+            if (id) { vibrerSucces(); onScan(id) }
             else if (illisibleRef.current) {
               // La caméra relit le même QR plusieurs fois par seconde : un seul signal toutes les 3 s
               const now = Date.now(), l = dernierIllisible.current

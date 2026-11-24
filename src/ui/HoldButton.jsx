@@ -7,6 +7,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import s from './HoldButton.module.css'
+import { vibrerSucces } from '../utils/vibration'
 
 export default function HoldButton({
   onConfirm, duration = 1200, tone = 'danger', block = false, disabled = false,
@@ -24,7 +25,7 @@ export default function HoldButton({
     setState('filling')
     timer.current = setTimeout(async () => {
       setState('done')
-      navigator.vibrate?.(30)
+      vibrerSucces()
       try { await onConfirm?.() } finally {
         doneTimer.current = setTimeout(() => setState('idle'), 1600)
       }
