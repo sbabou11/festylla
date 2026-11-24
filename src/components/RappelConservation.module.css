@@ -1,0 +1,13 @@
+/* Rappel d'effacement d'une édition (24/11/2026) — couleurs « attention » puis « danger » du thème */
+.ban {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%;
+  padding: 12px; margin: 0 0 12px; border-radius: 14px;
+  background: var(--gold-light); color: var(--gold-dark);
+  font: inherit; font-size: 13px; line-height: 1.45; text-align: left;
+  border: 0;
+}
+.rouge { background: var(--red-light); color: var(--red-dark); }
+button.ban { cursor: pointer; }
+.ico { flex: none; margin-top: 1px; }
+.txt { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.txt b { font-size: 14px; }

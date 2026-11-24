@@ -40,6 +40,7 @@ import {
 import { pastilleTx, pastilleAlerte } from '../../utils/nvPastilles'
 import DetailSheet from '../../components/DetailSheet'
 import BannierePanneBorne from '../../components/BannierePanneBorne'
+import RappelConservation from '../../components/RappelConservation'
 import {
   TxDetailSheet, Repartition, BarresHeures, Note, grouper, parHeure, moyenLabel, nettoyer, TX_TYPE_LABEL,
 } from '../../components/detailContenus'
@@ -993,6 +994,8 @@ export default function Accueil({ onNavigate, view }) {
       )}
 
       {role === 'billetterie' && borneEnPanne && <BannierePanneBorne onOuvrir={() => go('debit')} />}
+      {/* Conservation des données (24/11/2026) : effacer une édition passée 4 mois après le festival */}
+      {isAdmin && <RappelConservation peutOuvrir={!!canAccessPage?.('evenements')} onOuvrir={() => go('evenements')} />}
 
       {/* Blocs, dans l'ordre choisi */}
       {shown.length === 0 ? (

@@ -12,6 +12,7 @@ import clsx from 'clsx'
 import useEventStore, { isArchiveEvent } from '../../store/useEventStore'
 import { ArchiveDialog, RestoreDialog, RemoveArchiveDialog, SecuriteDialog } from './evenements/ArchiveDialogs'
 import LiaisonsDialog from './evenements/LiaisonsDialog'
+import Calendrier, { PastilleConservation } from './evenements/Calendrier'
 import { compressImage } from '../../utils/imageUtils'
 import useAuthStore  from '../../store/useAuthStore'
 import useAppStore   from '../../store/useAppStore'
@@ -67,7 +68,7 @@ const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, o
             <h3 className={s.cardTitle}>{event.nom}</h3>
             {archived
               ? <span className={s.archiveTag}><Archive size={11} aria-hidden="true"/> Archive · lecture seule</span>
-              : isActive && <span className={s.activeTag}>Actif</span>}
+              : isActive ? <span className={s.activeTag}>Actif</span> : <PastilleConservation event={event}/>}
           </div>
           {event.description && <p className={s.cardDesc}>{event.description}</p>}
           {/* Infos date + lieu */}
@@ -86,6 +87,9 @@ const EventCard = ({ event, isActive, onSelect, onEdit, onDelete, onDuplicate, o
           </div>
         </div>
       </div>
+
+      {/* Conservation des données (24/11/2026) : édition passée, ni active ni archive consultée */}
+      {!archived && !isActive && <Calendrier event={event}/>}
 
       {/* Actions */}
       {archived ? (

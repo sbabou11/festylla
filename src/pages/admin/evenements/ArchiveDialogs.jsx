@@ -15,6 +15,7 @@ import {
   buildArchive, downloadBlob, verifyArchiveForPurge, purgeEvent, restoreArchive,
 } from '../../../archive/archiveService'
 import s from './evenements.module.css'
+import { ARCHIVE_ANNEES, calendrierEdition, moisAnnee } from '../../../utils/conservation'
 
 function Progress({ p }) {
   if (!p) return null
@@ -93,6 +94,11 @@ export function ArchiveDialog({ event, onClose }) {
           <p className={s.dialogText}>
             Un fichier ZIP avec toutes les données de l'édition, ses photos et justificatifs,
             et un classeur Excel lisible sans l'appli. Les mots de passe de l'équipe ne sont pas conservés.
+          </p>
+          {/* Conservation des données (RGPD, 24/11/2026) : archive gardée 10 ans */}
+          <p className={s.dialogText}>
+            <strong>À garder {ARCHIVE_ANNEES} ans{event && calendrierEdition(event) ? `, jusqu'en ${moisAnnee(calendrierEdition(event).archive)}` : ''}, en lieu sûr</strong> (pièces comptables).
+            Il contient des données personnelles : ne le partagez pas.
           </p>
           {phase === 'building' ? <Progress p={progress}/> : (
             <Button icon={Download} onClick={build} disabled={busy}>

@@ -1,0 +1,19 @@
+/* Calendrier de conservation d'une édition (24/11/2026) — tokens du thème, clair et sombre */
+.pastille { flex-shrink: 0; padding: 2px 8px; border-radius: 99px; font-size: var(--fs-11); font-weight: 700; white-space: nowrap; }
+.vert   { background: var(--green-light); color: var(--green-dark); }
+.orange { background: var(--gold-light);  color: var(--gold-dark); }
+.rouge  { background: var(--red-light);   color: var(--red-dark); }
+
+.frise { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; }
+.etape { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; padding-bottom: 10px; }
+.etape:not(:last-child)::before { content: ''; position: absolute; left: 10px; top: 22px; bottom: 0; width: 2px; background: var(--border); }
+.rond {
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 11px; font-weight: 800; background: var(--bg2); color: var(--muted);
+}
+.fait .rond { background: var(--green-light); color: var(--green-dark); }
+.cours .rond { background: var(--brand); color: #fff; }
+.retard .rond { background: var(--red); color: #fff; }
+.txt { display: grid; gap: 1px; min-width: 0; }
+.txt b { font-size: var(--fs-13); }
+.txt span { font-size: var(--fs-12); color: var(--muted); }
