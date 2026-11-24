@@ -203,6 +203,9 @@
 
 /* Choix du rôle */
 .roleChoices { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-2); }
+/* Rôle obligatoire et fiches désactivées (refonte des rôles, 23/11/2026) */
+.roleErr { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--red-dark); }
+.desactiveMsg { margin-bottom: var(--space-3); padding: 10px 12px; border-radius: var(--radius); background: var(--red-light); color: var(--red-dark); font-size: 13px; font-weight: 600; line-height: 1.45; }
 .roleChoice {
   display: flex;
   align-items: center;

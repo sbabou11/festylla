@@ -17,16 +17,17 @@ import s from './BottomNav.module.css'
 const FAVORITES = {
   super_admin:          ['accueil', 'debit', 'transactions', 'alertes'],
   admin:                ['accueil', 'debit', 'transactions', 'alertes'],
-  billetterie:          ['accueil', 'credit', 'commande-sur-place', 'entree'],   // « Compte de secours » ne sert qu'en panne : menu Plus
+  billetterie:          ['accueil', 'credit', 'commande-sur-place', 'debit'],   // « Encaisser » : seulement pendant une panne de borne (écran 7)
   stand:                ['accueil', 'debit', 'reservations-admin', 'transactions'],
   consultation:         ['accueil', 'transactions', 'reservations-admin', 'analytics'],
-  directeur_artistique: ['accueil', 'planning', 'gestion-artistes', 'cachets'],   // planning masqué si relié à Event Manager
+  directeur_artistique: ['accueil', 'planning', 'gestion-artistes'],   // planning masqué si relié à Event Manager ; plus de Cachets (23/11/2026)
+  controle_entree:      ['entree'],   // 23/11/2026 : seulement l'écran « Entrée »
 }
 
 // Libellés courts : 5 cases sur 375 px
 const SHORT = {
   dashboard: 'Direct', accueil: 'Accueil', transactions: 'Flux', alertes: 'Alertes', benevoles: 'Bénévoles',
-  credit: 'Recharger', 'commande-sur-place': 'Sur place', nouveau: 'Secours', entree: 'Entrée', 'lien-perdu': 'Lien perdu', cloture: 'Clôture', debit: 'Encaisser',
+  credit: 'Recharger', 'commande-sur-place': 'Sur place', nouveau: 'Compte', entree: 'Entrée', 'lien-perdu': 'Lien perdu', cloture: 'Clôture', debit: 'Encaisser',
   retrait: 'Retrait', 'reservations-admin': 'Réserv.', analytics: 'Analyse',
   planning: 'Planning', 'gestion-artistes': 'Artistes', 'mon-profil': 'Profil', evenements: 'Événements', spectateurs: 'Public',
 }

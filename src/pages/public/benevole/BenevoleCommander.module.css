@@ -59,3 +59,11 @@
 /* Carte article : toucher ouvre la fiche (20/11/2026) */
 .itemClick { cursor: pointer; }
 .itemClick:hover { border-color: var(--brand); }
+
+/* Écran 13 (24/11/2026) : solde du bénévole, pastille « Inclus avantage », prix, récapitulatif */
+.inclus { background: var(--green-light); color: var(--green-dark); }
+.prix { font-weight: 600; font-size: 14px; }
+.soldeLigne { display: flex; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.recap { display: grid; gap: 8px; }
+.recapLigne { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+.recapLigne span { min-width: 0; }

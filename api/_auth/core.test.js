@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
+const { validateRolePassword, identifiantDe, ROLES_EQUIPE_BENEVOLE } = require('./core.js')
 const { hashPassword, checkPassword, passwordFields, validateNewPassword, legacyHash, blockedMinutes, afterFailure, LIMIT, sessionFor, publicAccount, counterKey } = require('./core.js')
 
 const DEL = Symbol('supprimer')
@@ -33,6 +34,27 @@ describe('mots de passe', () => {
   })
 })
 
+describe("rôle d'équipe d'un bénévole (écran 10)", () => {
+  const fiche = { prenom: 'Awa', nom: 'Diallo', username: 'awa.diallo' }
+  it('refuse le mot de passe de départ, le nom et les suites faciles', () => {
+    expect(validateRolePassword('awa.diallo123', fiche)).toMatch(/trop facile/)
+    expect(validateRolePassword('Diallo-2027!', fiche)).toMatch(/trop facile/)
+    expect(validateRolePassword('xx123456', fiche)).toMatch(/trop facile/)
+    expect(validateRolePassword('aaaaaaaa', fiche)).toMatch(/trop facile/)
+    expect(validateRolePassword('Kora-58', fiche)).toMatch(/au moins 8/)
+  })
+  it('accepte un mot de passe solide', () => {
+    expect(validateRolePassword('Tamarin-Kora-58', fiche)).toBeNull()
+  })
+  it("crée l'identifiant sans accents ni espaces", () => {
+    expect(identifiantDe('Héloïse', 'Le Gall')).toBe('heloise.legall')
+    expect(identifiantDe('', '')).toBe('benevole')
+  })
+  it('ne connaît que trois rôles', () => {
+    expect(ROLES_EQUIPE_BENEVOLE).toEqual(['billetterie', 'controle_entree', 'consultation'])
+  })
+})
+
 describe('limite des essais de connexion', () => {
   it('bloque 15 minutes après 8 échecs en 15 minutes', () => {
     let rec = null, t = 0
@@ -48,6 +70,16 @@ describe('limite des essais de connexion', () => {
   })
   it('ne garde ni l\'adresse réseau ni l\'identifiant en clair', () => {
     expect(counterKey('ip', '82.1.2.3')).not.toContain('82.1.2.3')
+  })
+})
+
+describe('rôles retirés (23/11/2026)', () => {
+  it('désactive les fiches de l\'équipe au rôle Stand ou sans rôle, pas les autres', () => {
+    const { compteDesactive } = require('./core')
+    expect(compteDesactive({ kind: 'staff', data: { role: 'stand' } })).toMatch(/désactivé/)
+    expect(compteDesactive({ kind: 'staff', data: {} })).toMatch(/désactivé/)
+    expect(compteDesactive({ kind: 'staff', data: { role: 'billetterie' } })).toBe('')
+    expect(compteDesactive({ kind: 'benevole', data: {} })).toBe('')
   })
 })
 

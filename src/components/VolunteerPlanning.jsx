@@ -17,6 +17,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import useAppStore from '../store/useAppStore'
 import useEventStore from '../store/useEventStore'
 import {
@@ -31,6 +32,7 @@ import {
 import QRCode from 'qrcode'
 import { Dialog, Button, Empty, Field, focusFirstInvalid, toast } from '../ui'
 import { postQrText, postShortCode } from '../utils/shiftTime'
+import { ROLES_EQUIPE, labelRoleEquipe, posteRole } from '../utils/roleEquipe'
 
 const POST_COLORS = ['#009090','#F07848','#D89030','#6B3FA0','#0E8D7A','#5EB8E4','#A32D2D','#888780']
 const POST_EMOJIS = ['🍻','💳','🎫','🛡️','🍔','📦','🚗','🎤','📋','🔧']
@@ -529,10 +531,13 @@ function PostesView({ posts }) {
 
   const handleSave = async () => {
     if (!editing.nom?.trim()) { setTried(true); focusFirstInvalid(formRef.current); return }
+    // Écran 11 (24/11/2026) : rôle ouvert par le poste ; controleBillets en reste déduit (compatibilité)
+    const role = posteRole(editing)
+    const champs = { nom: editing.nom.trim(), emoji: editing.emoji, couleur: editing.couleur, role, controleBillets: role === 'controle_entree' }
     if (editing.id) {
-      await updateVolunteerPost(editing.id, { nom: editing.nom.trim(), emoji: editing.emoji, couleur: editing.couleur, controleBillets: !!editing.controleBillets }, currentEventId)
+      await updateVolunteerPost(editing.id, champs, currentEventId)
     } else {
-      await addVolunteerPost({ nom: editing.nom.trim(), emoji: editing.emoji, couleur: editing.couleur, controleBillets: !!editing.controleBillets, ordre: posts.length }, currentEventId)
+      await addVolunteerPost({ ...champs, ordre: posts.length }, currentEventId)
     }
     setEditing(null)
   }
@@ -569,7 +574,7 @@ function PostesView({ posts }) {
             </div>
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p.nom}</div>
-              {p.controleBillets && <div style={{ fontSize:11, color:'var(--brand-dark)', fontWeight:600 }}>Contrôle les billets</div>}
+              {posteRole(p) && <div style={{ fontSize:11, color:'var(--brand-dark)', fontWeight:600 }}>Ouvre le rôle « {labelRoleEquipe(posteRole(p))} »</div>}
             </div>
             <button onClick={() => setQrPost(p)} className="btn-icon" title="QR de pointage" aria-label={'QR de pointage du poste ' + p.nom} style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><QrCode size={14}/></button>
             <button onClick={() => { setTried(false); setEditing(p) }} className="btn-icon" style={{ width:40, height:40, minHeight:'auto', flexShrink:0 }}><Pencil size={14}/></button>
@@ -578,7 +583,9 @@ function PostesView({ posts }) {
         ))}
       </div>
 
-      {editing && (
+      {/* 24/11/2026 : rendue dans <body> (portail), sinon la barre du bas de l'espace équipe passait
+          par-dessus le bas de la fenêtre sur téléphone (page animée = nouveau repère pour position:fixed) */}
+      {editing && createPortal(
         <div onClick={() => setEditing(null)} style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
           <div ref={formRef} onClick={e => e.stopPropagation()} style={{
             background:'var(--bg)', borderRadius:'var(--radius-xl) var(--radius-xl) 0 0',
@@ -619,15 +626,26 @@ function PostesView({ posts }) {
               ))}
             </div>
 
-            {/* Droit de contrôler les billets à l'écran « Entrée » (règle d'échange billetterie §3) */}
-            <label style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'12px 0', borderTop:'1px solid var(--border)', marginBottom:16, cursor:'pointer' }}>
-              <input type="checkbox" checked={!!editing.controleBillets} onChange={e => setEditing(f => ({ ...f, controleBillets: e.target.checked }))}
-                style={{ width:20, height:20, marginTop:2, flexShrink:0 }}/>
-              <span>
-                <span style={{ display:'block', fontSize:14, fontWeight:600, color:'var(--text)' }}>Contrôle les billets à l'entrée</span>
-                <span style={{ display:'block', fontSize:12, color:'var(--muted)', marginTop:2 }}>Les bénévoles affectés à ce poste sur un créneau du jour voient l'écran Entrée.</span>
+            {/* Écran 11 (24/11/2026) : rôle ouvert par ce poste (remplace « Contrôle les billets ») */}
+            <div style={{ padding:'12px 0', borderTop:'1px solid var(--border)', marginBottom:16 }}>
+              <span style={{ display:'block', fontSize:14, fontWeight:600, color:'var(--text)', marginBottom:8 }}>Rôle ouvert par ce poste</span>
+              <div role="radiogroup" aria-label="Rôle ouvert par ce poste" style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {ROLES_EQUIPE.map(r => {
+                  const on = posteRole(editing) === r.value
+                  return (
+                    <button key={r.value || 'aucun'} type="button" role="radio" aria-checked={on}
+                      onClick={() => setEditing(f => ({ ...f, role: r.value }))}
+                      style={{ minHeight:40, padding:'0 14px', borderRadius:99, border: on ? '1.5px solid var(--brand)' : '1.5px solid var(--border)', background: on ? 'var(--brand-light)' : 'none', color:'var(--text)', fontWeight:600, display:'inline-flex', alignItems:'center', gap:6, cursor:'pointer' }}>
+                      <i aria-hidden="true" style={{ width:10, height:10, borderRadius:'50%', background:r.color, display:'inline-block' }}/>{r.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <span style={{ display:'block', fontSize:12, color:'var(--muted)', marginTop:8, lineHeight:1.45 }}>
+                Pendant un créneau sur ce poste, un bénévole qui a ce même rôle sur sa fiche peut déverrouiller son onglet
+                (15 min avant le début, jusqu'à la fin ; clôture de caisse 30 min après).
               </span>
-            </label>
+            </div>
 
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={() => setEditing(null)} className="btn-secondary" style={{ flex:1, minHeight:44 }}>Annuler</button>
@@ -636,7 +654,8 @@ function PostesView({ posts }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -897,7 +916,9 @@ function ShiftsView({ shifts, currentEvent }) {
         </div>
       )}
 
-      {editing && (
+      {/* 24/11/2026 : rendue dans <body> (portail), sinon la barre du bas de l'espace équipe passait
+          par-dessus le bas de la fenêtre sur téléphone (page animée = nouveau repère pour position:fixed) */}
+      {editing && createPortal(
         <div onClick={() => setEditing(null)} style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,.45)', display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
           <div ref={formRef} onClick={e => e.stopPropagation()} style={{
             background:'var(--bg)', borderRadius:'var(--radius-xl) var(--radius-xl) 0 0',
@@ -988,7 +1009,8 @@ function ShiftsView({ shifts, currentEvent }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

@@ -12,7 +12,7 @@ import React, { useEffect, useState } from 'react'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { LifeBuoy } from 'lucide-react'
 import { db } from '../../../firebase/config'
-import { saveSettings } from '../../../firebase/service'
+import { saveSettings, addAuditLog } from '../../../firebase/service'
 import useEventStore from '../../../store/useEventStore'
 import useAuthStore from '../../../store/useAuthStore'
 import { friendlyError } from '../../../utils/errors'
@@ -24,7 +24,11 @@ const REGLAGES = [
     texte: 'Affiche un code tournant sous le QR des spectateurs, à taper à la borne, en caisse et à la billetterie.' },
   { key: 'liaisonEnPanne', titre: 'Liaison du site en panne',
     texte: 'Rouvre la création de compte à la billetterie, le temps que le site internet renvoie ses billets.' },
+  // 23/11/2026 (refonte des rôles, écran 7) : la billetterie encaisse et imprime les tickets au guichet
+  { key: 'borneEnPanne', titre: 'Borne en panne',
+    texte: 'Ouvre « Encaisser » à la billetterie et y imprime les tickets. Les ventes sont comptées à part dans la clôture.' },
 ]
+const heure = (iso) => { try { return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) } catch { return '' } }
 
 export default function SecoursSettings() {
   const { currentEventId } = useEventStore()
@@ -42,7 +46,15 @@ export default function SecoursSettings() {
   const basculer = async (key) => {
     setBusy(key)
     try {
-      await saveSettings({ [key]: !etat[key] }, currentEventId)
+      const actif = !etat[key]
+      const qui = user?.nom || user?.email || 'Admin'
+      await saveSettings({ [key]: actif,
+        ...(key === 'borneEnPanne' ? { borneEnPanneDepuis: actif ? new Date().toISOString() : null, borneEnPannePar: actif ? qui : null } : {}) }, currentEventId)
+      if (key === 'borneEnPanne') {
+        addAuditLog(actif ? 'BORNE_PANNE_ACTIVEE' : 'BORNE_PANNE_DESACTIVEE', {
+          staff: qui, label: actif ? 'Borne déclarée en panne : « Encaisser » ouvert à la billetterie' : 'Fin de la panne de borne : « Encaisser » refermé à la billetterie',
+        }).catch(() => {})
+      }
       toast.success(!etat[key] ? 'Mode secours activé' : 'Mode secours désactivé')
     } catch (e) { toast.error(friendlyError(e, 'Le réglage n\'a pas été enregistré.')) }
     finally { setBusy('') }
@@ -59,6 +71,9 @@ export default function SecoursSettings() {
             <span>
               <span className={s.toggleTitle}>{r.titre}</span>
               <span className={s.hint}>{r.texte}</span>
+              {r.key === 'borneEnPanne' && etat.borneEnPanne === true && etat.borneEnPanneDepuis && (
+                <span className={s.hint}><b>Activé par {etat.borneEnPannePar || 'un admin'} à {heure(etat.borneEnPanneDepuis)}</b> · noté au journal d'audit</span>
+              )}
             </span>
           </label>
         ))}

@@ -15,6 +15,9 @@
  *                                             unique, valable 2 minutes, affiché en QR au guichet
  *   { action: 'ouvrir-lien', ev, jeton }      téléphone du spectateur, sans session : échange le jeton
  *                                             contre l'ouverture de son espace et sa nouvelle clé
+ *   { action: 'billet-voir', ev, specId }     billetterie (23/11/2026) : état d'un billet (sans compte ?)
+ *   { action: 'compte-billet', ev, docId, accords } billetterie : compte pour un billet acheté sans compte,
+ *                                             à la demande du spectateur (3 accords), jeton 2 min comme ci-dessus
  *   { action: 'jetons-espace', ev }           espace bénévole ou artiste ouvert sans le lien personnel
  *                                             (23/11/2026) : le téléphone ne connaît pas la clé, le serveur
  *                                             calcule les QR tournants des 5 prochaines minutes (api/_qr/espace)
@@ -28,7 +31,9 @@ const { cleDuCompte } = require('../_auth/cles')
 const { admin, getDb, clientIp, verifyCaller, canManage, writeAudit } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { lireJeton, jetonValable, lireSecours, nouveauSecours } = require('../_qr/tournant')
-const { jetonsAVenir } = require('../_qr/espace')
+const { jetonsAVenir, lireJetonEspace, jetonEspaceValable } = require('../_qr/espace')
+const { loadAccount } = require('../_auth/server')
+const { assurerPorteMonnaie } = require('../_auth/porteMonnaie')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/
@@ -166,6 +171,52 @@ module.exports = async (req, res) => {
       res.status(200).json({ jeton, secondes: Math.round(JETON_MS / 1000) }); return
     }
 
+    // ── Billetterie : compte pour un billet acheté « sans compte » (23/11/2026, refonte des rôles) ──
+    // 'billet-voir'   { ev, specId }                     : état du billet (nom, pass, sans compte ou non)
+    // 'compte-billet' { ev, docId, accords, staff }      : crée le compte à la demande du spectateur, avec
+    //                  ses trois accords (demande, conditions, délai de remboursement) ; renvoie un jeton
+    //                  à usage unique de 2 minutes, affiché en QR au guichet (comme « Lien perdu »)
+    if (body.action === 'billet-voir' || body.action === 'compte-billet') {
+      const billetterie = caller.type === 'staff' && (['admin', 'super_admin', 'billetterie'].includes(caller.role) || await canManage(db, caller, 'nouveau'))
+      if (!billetterie) throw new Refus(403, 'Réservé à la billetterie.')
+      if (body.action === 'billet-voir') {
+        const specId = String(body.specId || '').toUpperCase()
+        if (!/^FY-[A-Z0-9]{4,12}$/.test(specId)) throw new Refus(400, 'Code de billet illisible.')
+        const snap = await trouver(evRef, specId)
+        if (!snap || !snap.data().billet) { res.status(200).json({ trouve: false }); return }
+        const s = snap.data(), b = s.billet
+        res.status(200).json({ trouve: true, docId: snap.id, specId: s.id, nom: s.nom || '', pass: b.pass || '', jours: b.jours || 1,
+          annule: !!b.annule, sansCompte: !!b.sansCompte }); return
+      }
+      const docId = String(body.docId || '')
+      if (!ID.test(docId)) throw new Refus(400, 'Billet manquant.')
+      const a = body.accords || {}
+      if (a.demande !== true || a.conditions !== true || a.remboursement !== true) throw new Refus(400, 'Les trois accords du spectateur sont nécessaires.')
+      const ref = evRef.collection('spectateurs').doc(docId)
+      const jeton = crypto.randomBytes(16).toString('hex')
+      const staff = String(body.staff || caller.uid || '').slice(0, 80)
+      const spec = await db.runTransaction(async (t) => {
+        const snap = await t.get(ref)
+        if (!snap.exists || !snap.data().billet) throw new Refus(404, 'Billet introuvable.')
+        const s = snap.data()
+        if (s.billet.annule) throw new Refus(403, 'Ce billet a été annulé : pas de compte possible.')
+        if (!s.billet.sansCompte) throw new Refus(409, 'Ce billet a déjà un compte : utilisez « Lien perdu ».')
+        t.set(evRef.collection('cles').doc(docId), { cle: newKey(), creeLe: admin.firestore.FieldValue.serverTimestamp() })
+        t.update(ref, {
+          'billet.sansCompte': false,
+          'billet.compteGuichet': { le: admin.firestore.FieldValue.serverTimestamp(), par: staff, accords: { demande: true, conditions: true, remboursement: true } },
+        })
+        t.set(evRef.collection('jetons-lien').doc(jeton), {
+          specDoc: docId, specId: s.id, specNom: s.nom || '', expMs: now + JETON_MS, utiliseLe: null,
+          par: staff, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+        return s
+      })
+      await writeAudit(db, ev, { action: 'COMPTE_GUICHET_BILLET', specId: spec.id, specNom: spec.nom || '', staff, userType: 'staff',
+        label: `Compte créé au guichet pour ${spec.nom || spec.id} (billet sans compte, à sa demande, accords enregistrés)` })
+      res.status(200).json({ jeton, secondes: Math.round(JETON_MS / 1000) }); return
+    }
+
     if (body.action !== 'identifier') throw new Refus(400, 'Action inconnue.')
     if (!['borne', 'staff'].includes(caller.type)) throw new Refus(403, 'Réservé à la borne et à l\'équipe.')
 
@@ -176,7 +227,18 @@ module.exports = async (req, res) => {
     const echec = async (status, message) => { await ipRef.set(afterFailure(ipRec, now, PUBLIC_LIMIT)); throw new Refus(status, message) }
 
     let snap = null
-    if (body.qr != null) {
+    // Écran 13 (24/11/2026) : QR de l'espace d'un bénévole → son porte-monnaie (créé s'il n'existe pas)
+    const luB = body.qr != null && !lireJeton(body.qr) ? lireJetonEspace(String(body.qr).slice(0, 400)) : null
+    if (luB && luB.kind === 'benevole') {
+      const lien = await evRef.collection('liens').doc(`benevole-${luB.id}`).get()
+      if (!jetonEspaceValable({ lu: luB, cle: lien.exists ? String(lien.data().cle || '') : '', ev, ms: now })) {
+        await echec(401, 'Ce QR n\'est plus valable : il change toutes les 30 secondes. Présentez celui affiché en ce moment.')
+      }
+      const account = await loadAccount(db, `events/${ev}/benevoles/${luB.id}`)
+      if (!account) throw new Refus(404, 'Fiche bénévole introuvable.')
+      const pm = await assurerPorteMonnaie(db, admin, account)
+      snap = await evRef.collection('spectateurs').doc(pm.docId).get()
+    } else if (body.qr != null) {
       const lu = lireJeton(body.qr)
       if (!lu) await echec(400, 'Ce QR n\'est pas reconnu. Présentez le QR de votre espace YllaCash.')
       snap = await trouver(evRef, lu.specId)
@@ -213,7 +275,7 @@ module.exports = async (req, res) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       })
     }
-    res.status(200).json({ compte: { id: spec.id, docId: snap.id, nom: spec.nom || '', solde: Number(spec.solde) || 0 } })
+    res.status(200).json({ compte: { id: spec.id, docId: snap.id, nom: spec.nom || '', solde: Number(spec.solde) || 0, ...(spec.porteMonnaieBenevole ? { benevole: true } : {}) } })
   } catch (e) {
     if (e instanceof Refus) { res.status(e.status).json({ error: e.message }); return }
     console.error('qr:', e)

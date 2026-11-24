@@ -8,10 +8,10 @@ import { createSpectateur as svcCreateSpectateur } from '../../firebase/service'
 import useEventStore from '../../store/useEventStore'
 import QrCode from '../../components/QrCode'
 import useAuthStore from '../../store/useAuthStore'
-import { Field, Empty, focusFirstInvalid } from '../../ui'
+import { Field, focusFirstInvalid } from '../../ui'
+import CompteBillet from './CompteBillet'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { db } from '../../firebase/config'
-import { Globe } from 'lucide-react'
 
 export default function Nouveau() {
   const { createSpectateur } = useAppStore()
@@ -56,17 +56,13 @@ export default function Nouveau() {
   const card = { background:'var(--bg)', border:'0.5px solid var(--border)', borderRadius:'var(--radius-lg)', padding:'14px 16px' }
 
   if (secours === null) return null
-  if (!secours) {
-    return (
-      <Empty icon={Globe} title="Les comptes se créent sur le site internet">
-        Le spectateur prend son billet sur le site du festival et reçoit par e-mail le lien de son espace.
-        Sans compte, passez par « Commande sur place ». En cas de panne de la liaison avec le site,
-        un administrateur peut rouvrir cette page dans Paramètres, « Paiement : modes de secours ».
-      </Empty>
-    )
-  }
+  // 23/11/2026 (refonte des rôles) : la page sert d'abord à créer un compte pour un billet acheté
+  // « sans compte » ; l'ancien formulaire de secours n'apparaît, en dessous, que si la liaison est en panne
+  if (!secours) return <CompteBillet />
 
   return (
+    <div style={{ display:'grid', gap:16 }}>
+    <CompteBillet />
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))', gap:12 }}>
       <div style={card} ref={formRef}>
         <div style={{ fontSize:13, fontWeight:600, marginBottom:12, color:'var(--text)' }}>Créer un compte spectateur</div>
@@ -123,6 +119,7 @@ export default function Nouveau() {
           </div>
         )}
       </div>
+    </div>
     </div>
   )
 }

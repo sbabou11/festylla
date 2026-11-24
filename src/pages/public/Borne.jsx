@@ -318,6 +318,12 @@ export default function Borne() {
     try {
       const r = await apiFetch('/api/borne', { body: { action: 'commander', ev: evParam(), ...body } })
       if (r.artiste) setLastResa(ticketArtiste(r))
+      // Écran 13 (24/11/2026) : une partie payée sur le solde → tickets par stand, comme un spectateur
+      // (les articles offerts y figurent à 0 €, sur le ticket du stand des bénévoles)
+      else if (r.totalPaye > 0) setLastResa({
+        benevoleMixte: true, numero: r.numero, nom: r.benevole, total: r.totalPaye, parType: r.parType || {},
+        items: (r.items || []).map(i => ({ nom: i.offert ? `${i.nom} (avantage)` : i.nom, qty: i.qty, prix: i.offert ? 0 : (i.prix || 0), standId: i.standId })),
+      })
       else setLastResa({ benevole: true, numero: r.numero, stand: r.stand, items: r.items || [], parType: r.parType || {}, nom: r.benevole })
       setCart({})
       setStep(STEP.TICKET)
@@ -2240,7 +2246,9 @@ function Ticket({ resa, onDone, logoUrl, stands = [], festival = '' }) {
     festival, date: dateTicket(),
     ...(resa?.artiste
       ? { mention: `ARTISTE · ${resa.artiste}`, offert: 'Avantages artiste' }
-      : { paiement: resa?.origine === 'billetterie' ? 'Payé à la billetterie' : 'Payé avec le solde' }),
+      : resa?.benevoleMixte
+        ? { mention: `BENEVOLE · ${String(resa.nom || '').split(/\s+/)[0]}`, paiement: 'Avantages bénévole + solde' }
+        : { paiement: resa?.origine === 'billetterie' ? 'Payé à la billetterie' : 'Payé avec le solde' }),
   }), [])   // eslint-disable-line react-hooks/exhaustive-deps
   const { phase, progres, reessayer } = useImpressionTickets(papier)
   const secondsLeft = useRetourAuto(phase, onDone)

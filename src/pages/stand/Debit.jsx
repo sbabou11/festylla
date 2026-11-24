@@ -29,6 +29,10 @@ import Ticket          from './pos/Ticket'
 import ClientPanel     from './pos/ClientPanel'
 import PaymentFeedback from './pos/PaymentFeedback'
 import s from './pos/pos.module.css'
+import { createCommande } from '../../firebase/service'
+import { watchCarte } from '../../menu/carte'
+import BannierePanneBorne from '../../components/BannierePanneBorne'
+import ImpressionGuichet from '../../components/ImpressionGuichet'
 
 const PREFS_KEY = 'yllacash-pos-prefs'
 const loadPrefs = () => { try { return { sound: true, vibrate: true, rush: false, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') } } catch { return { sound: true, vibrate: true, rush: false } } }
@@ -54,6 +58,14 @@ export default function Debit() {
   const { currentEventId, events }  = useEventStore()
   const { user }                    = useAuthStore()
   const staffNom = user?.nom || 'Stand'
+  // Écran 7 (23/11/2026) : la billetterie n'ouvre cette caisse que pendant une panne de la borne.
+  // Chaque vente devient une commande payée par le solde, marquée « panne de borne » (comptée à
+  // part dans la clôture), et ses tickets de retrait sont imprimés au guichet.
+  const guichet = user?.role === 'billetterie'
+  const borneEnPanne = useAuthStore(st => st.borneEnPanne)
+  const [stands, setStands] = useState([])
+  const [sendingGuichet, setSendingGuichet] = useState(false)
+  const [venteGuichet, setVenteGuichet] = useState(null)   // { numero, lignes, total, nom, reste }
   const { sun, toggleSun }          = useSunMode()
   // Nouveau style téléphone (23/11/2026) : sous 641 px seulement ; réglages regroupés dans une feuille
   const { isMobile }                = useBreakpoint()
@@ -78,6 +90,7 @@ export default function Debit() {
   const ticketRef = useRef(null)
 
   useEffect(() => subscribe(setPending), [])
+  useEffect(() => guichet ? watchCarte(currentEventId, c => setStands(c.stands || [])) : undefined, [guichet, currentEventId])
   // « Paiement accepté » seulement une fois la vente réellement écrite
   useEffect(() => subscribeCommitted((sale) => {
     setAccepted(a => [...a.slice(-1), sale])
@@ -193,9 +206,46 @@ export default function Debit() {
     if (prefs.vibrate) navigator.vibrate?.(ok ? 80 : [120, 80, 120])
   }
 
+  // Jamais au milieu d'une vente : tant qu'une vente du guichet est en cours, la page reste ouverte
+  // même si l'admin lève la panne entre-temps (voir pagesDuRole)
+  const venteEnCours = guichet && (!!client || lines.length > 0 || !!venteGuichet || sendingGuichet)
+  useEffect(() => { if (guichet) useAuthStore.getState().setEncaissementEnCours(venteEnCours) }, [guichet, venteEnCours])
+  useEffect(() => () => useAuthStore.getState().setEncaissementEnCours(false), [])
+
+  // ── Guichet (borne en panne) : commande payée par le solde, tickets imprimés ici ──
+  const payGuichet = async () => {
+    if (sendingGuichet) return
+    if (client._isBenev) { signal(false); setScanError('Les bénévoles ne paient pas à cette caisse.'); return }
+    if (client._eventId && client._eventId !== currentEventId) { signal(false); setScanError("Ce compte appartient à un autre événement."); return }
+    if ((client.solde || 0) < total) {
+      signal(false)
+      setFeedback({ kind: 'error', message: `Solde insuffisant : ${fmt(client.solde || 0)} pour un ticket de ${fmt(total)}.` })
+      return
+    }
+    setSendingGuichet(true)
+    try {
+      const standOf = (m) => stands.find(st => st.id === m.standId) || null
+      const items = lines.map(l => ({ id: l.id, nom: l.nom, qty: l.qty, prixUnit: l.prix || 0,
+        ...(standOf(l) ? { standId: standOf(l).id, standNumero: standOf(l).numero } : {}) }))
+      const r = await createCommande({
+        specId: client.id, specDocId: client._docId || null, specNom: client.nom, items,
+        payNow: true, staff: staffNom, source: 'billetterie-panne', remise: true,
+        marque: { panneBorne: true },
+      }, currentEventId)
+      signal(true)
+      setVenteGuichet({ numero: r.numero, total, nom: client.nom || client.id, reste: (client.solde || 0) - total,
+        lignes: lines.map(l => ({ nom: l.nom, qty: l.qty, prix: l.prix || 0, standId: l.standId })) })
+      setClient(null); setQtys({})
+    } catch (e) {
+      signal(false)
+      setFeedback({ kind: 'error', message: friendlyError(e, "L'encaissement n'est pas passé.") })
+    } finally { setSendingGuichet(false) }
+  }
+
   // ── Encaisser : débit retenu 10 s puis écrit ───────────────────
   const pay = () => {
     if (!client || !lines.length) return
+    if (guichet) { payGuichet(); return }
     if (online && (client.solde || 0) < total) {
       signal(false)
       setFeedback({ kind: 'error', message: `Solde insuffisant : ${fmt(client.solde || 0)} pour un ticket de ${fmt(total)}.` })
@@ -253,10 +303,18 @@ export default function Debit() {
           </button>
         </div>
       )}
+      {/* Écran 7 : la billetterie n'encaisse ici que pendant une panne de la borne */}
+      {guichet && (
+        <BannierePanneBorne texte={borneEnPanne
+          ? 'Borne en panne : ventes payées par le solde, tickets imprimés ici, comptées à part dans la clôture.'
+          : 'La panne de la borne est terminée : finissez cette vente, « Encaisser » se fermera ensuite.'} />
+      )}
       {/* Barre d'outils */}
       <div className={s.toolbar}>
+        {guichet ? <span /> : (
         <Tabs label="Type de vente" value={mode} onChange={(v) => { setMode(v); setClient(null); setQtys({}) }}
           items={[{ value: 'client', label: 'Vente client' }, { value: 'artiste', label: 'Artiste' }]} />
+        )}
         {!isMobile && <div className={s.prefs}>
           <button type="button" className={clsx(s.prefIcon, sun && s.prefOn)} onClick={toggleSun}
             aria-pressed={sun} aria-label="Plein soleil" title={sun ? 'Plein soleil activé' : "Plein soleil : contraste fort pour l'extérieur"}>
@@ -371,7 +429,7 @@ export default function Debit() {
               </div>
             )}
             {prefs.rush && <p className={s.rushNote}><Zap size={14} /> Les 8 articles les plus vendus aujourd'hui</p>}
-            <ProductGrid items={gridItems} qtys={qtys} onAdd={addItem} onInfo={setSelectedInfoItem} big={prefs.rush} nv={isMobile} />
+            <ProductGrid items={gridItems} qtys={qtys} onAdd={addItem} onRemove={(m) => changeQty(m.id, -1)} onInfo={setSelectedInfoItem} big={prefs.rush} nv={isMobile} />
           </section>
 
           <aside className={s.side}>
@@ -430,6 +488,19 @@ export default function Debit() {
         </div>
         )}
       </>)}
+
+      {/* Vente du guichet enregistrée : tickets de retrait imprimés ici (écran 7) */}
+      <Sheet open={!!venteGuichet} onClose={() => setVenteGuichet(null)} title="Vente enregistrée"
+        footer={<Button block onClick={() => setVenteGuichet(null)}>Vente suivante</Button>}>
+        {venteGuichet && (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <p style={{ margin: 0 }}><b>{fmt(venteGuichet.total)} débités du solde de {venteGuichet.nom}</b><br />
+              <span style={{ color: 'var(--muted)', fontSize: 13 }}>Reste {fmt(Math.max(0, venteGuichet.reste))} sur son compte · commande n° {venteGuichet.numero} · marquée « panne de borne » · encaissée par {staffNom}</span></p>
+            <ImpressionGuichet key={venteGuichet.numero} numero={venteGuichet.numero} lignes={venteGuichet.lignes}
+              stands={stands} paiement="Payé avec le solde · billetterie" />
+          </div>
+        )}
+      </Sheet>
 
       <PaymentFeedback
         feedback={feedback}

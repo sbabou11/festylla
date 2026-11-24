@@ -1,0 +1,17 @@
+/* Ouverture exceptionnelle de l'onglet de rôle (écran 12, 24/11/2026) */
+.bloc { border: 1.5px dashed var(--brand); border-radius: 16px; padding: 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.bloc > * { min-width: 0; }
+.aide { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.ok { display: flex; gap: 8px; align-items: flex-start; border-radius: 12px; padding: 10px 12px; font-size: 13px; line-height: 1.45; background: var(--green-light); color: var(--green-dark); }
+.ok svg { flex: none; margin-top: 2px; }
+.journal { display: grid; gap: 6px; }
+.titreJ { font-size: 13px; font-weight: 700; }
+.ligneJ { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; line-height: 1.4; padding: 8px 10px; border-radius: 10px; background: var(--bg2); }
+.ligneJ svg { flex: none; margin-top: 2px; }
+.form { display: grid; gap: 14px; }
+.champ { display: grid; gap: 8px; }
+.label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: 40px; padding: 0 16px; border-radius: 99px; border: 1.5px solid var(--border); background: none; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.chipOn { border-color: var(--brand); background: var(--brand-light); }
+.champ textarea { min-height: 80px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); padding: 10px 12px; font: inherit; font-size: 16px; resize: vertical; }

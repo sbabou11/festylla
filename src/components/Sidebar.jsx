@@ -15,7 +15,7 @@ import {
 import clsx from 'clsx'
 import useAppStore   from '../store/useAppStore'
 import useEventStore from '../store/useEventStore'
-import { ROLE_PAGES } from '../store/useAuthStore'
+import { pagesDuRole } from '../store/useAuthStore'
 import { APP_FULL_LABEL } from '../utils/buildInfo'
 import { useBreakpoint }   from '../hooks/useBreakpoint'
 import { useOfflineQueue } from '../hooks/useOfflineQueue'
@@ -51,7 +51,7 @@ export const ALL_PAGES = {
   settings:             { icon: Settings,        label: 'Paramètres' },
   credit:               { icon: PlusCircle,      label: 'Créditer' },
   'commande-sur-place': { icon: ShoppingBag,     label: 'Commande sur place' },
-  nouveau:              { icon: QrCode,          label: 'Compte de secours' },
+  nouveau:              { icon: QrCode,          label: 'Compte pour un billet' },
   remboursement:        { icon: Banknote,        label: 'Remboursement' },
   'lien-perdu':         { icon: KeyRound,        label: 'Lien perdu' },
   debit:                { icon: ShoppingCart,    label: 'Encaisser' },
@@ -62,7 +62,7 @@ export const ALL_PAGES = {
 const BUILTIN_NAMES = {
   admin: 'Admin', billetterie: 'Billetterie',
   stand: 'Stand', consultation: 'Consultation', spectateur: 'Spectateur',
-  super_admin: 'Super Admin', directeur_artistique: 'Directeur artistique',
+  super_admin: 'Super Admin', directeur_artistique: 'Directeur artistique', controle_entree: 'Contrôle entrée',
 }
 
 const LS_KEY = 'yllacash-sidebar-v2' // 'true' = rail replié
@@ -113,7 +113,7 @@ export default function Sidebar({
   const customRole   = (roles || []).find(r => r.id === view)
   const emLinked     = isEmLinked(currentEvent)
   // Lot D : pages passées dans Event Manager, masquées pour un événement qui y est relié
-  const allowed      = (ROLE_PAGES[view] || customRole?.pages || ['mon-profil']).filter(id => !(emLinked && PAGES_RETIREES_EM.includes(id)))
+  const allowed      = (pagesDuRole(view) || customRole?.pages || ['mon-profil']).filter(id => !(emLinked && PAGES_RETIREES_EM.includes(id)))
   // Pour les rôles qui ont accès aux hubs, on masque ces entrées du menu pour ne garder que les hubs.
   // (Elles restent accessibles via les pancartes des hubs.)
   const HUB_HIDDEN_FROM_SIDEBAR = [

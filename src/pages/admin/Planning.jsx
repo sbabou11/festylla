@@ -795,8 +795,9 @@ export default function Planning({ onNavigate }) {
             </label>
           </div>
 
-          {/* Raccourci vers Cachets — visible uniquement en édition */}
-          {editing && (
+          {/* Raccourci vers Cachets — visible uniquement en édition, et pour qui a accès aux cachets
+              (23/11/2026 : plus le directeur artistique) */}
+          {editing && useAuthStore.getState().canAccessPage('cachets') && (
             <div className={s.cachetLink}>
               <span className={s.cachetIcon}><Coins size={16} aria-hidden="true"/></span>
               <div className={s.cachetText}>

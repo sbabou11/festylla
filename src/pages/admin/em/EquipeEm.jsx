@@ -8,7 +8,13 @@
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { Info, QrCode as QrIcon, FileText, RefreshCw, Search, Copy } from 'lucide-react'
+import { Info, QrCode as QrIcon, FileText, RefreshCw, Search, Copy, UserCog } from 'lucide-react'
+import useAuthStore, { setRoleBenevole } from '../../../store/useAuthStore'
+import useAppStore from '../../../store/useAppStore'
+import RoleEquipeBloc, { etatRoleEquipe } from '../../../components/RoleEquipeBloc'
+import ExceptionRoleBloc from '../../../components/ExceptionRoleBloc'
+import BilanBenevoles from '../../../components/BilanBenevoles'
+import { labelRoleEquipe } from '../../../utils/roleEquipe'
 import { db } from '../../../firebase/config'
 import { apiFetch } from '../../../firebase/session'
 import { linkFor, renewLinkKey } from '../../../firebase/publicSession'
@@ -91,7 +97,46 @@ function LienDialog({ lien, onClose }) {
   )
 }
 
-function Ligne({ nom, badge, detail, onQr, docLabel, onDoc, onRenew }) {
+/**
+ * Écran 10 (23/11/2026) : fiche d'un bénévole d'Event Manager, en lecture seule sauf le rôle d'équipe,
+ * gardé côté YllaCash (Event Manager ne l'écrase pas). Enregistré par le serveur, admins seulement.
+ */
+function RoleDialog({ ev, fiche, staff, onClose, live }) {
+  const [role, setRole] = useState(fiche?.roleEquipe || '')
+  const [mdp, setMdp] = useState('')
+  const [tried, setTried] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const etat = etatRoleEquipe(fiche || {}, role, mdp)
+  const enregistrer = async () => {
+    if (!etat.change) { onClose(); return }
+    if (!etat.ok) { setTried(true); return }
+    setBusy(true)
+    try {
+      await setRoleBenevole(`events/${ev}/benevoles/${fiche.id}`, role, mdp || undefined)
+      toast.success(role ? `Rôle « ${labelRoleEquipe(role)} » donné · noté au journal d'audit` : 'Rôle d\'équipe retiré')
+      onClose()
+    } catch (e) { toast.error(friendlyError(e, 'Le rôle d\'équipe n\'a pas été enregistré.')) }
+    finally { setBusy(false) }
+  }
+  return (
+    <Dialog open={!!fiche} onClose={onClose} title={fiche ? `Fiche bénévole · ${`${fiche.prenom || ''} ${fiche.nom || ''}`.trim()}` : ''}
+      footer={<>
+        <Button variant="secondary" onClick={onClose}>Annuler</Button>
+        <Button onClick={enregistrer} loading={busy}>Enregistrer</Button>
+      </>}>
+      {fiche && (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>Fiche venue d'Event Manager : identité, créneaux et droits se modifient là-bas.</p>
+          <RoleEquipeBloc fiche={fiche} role={role} setRole={setRole} mdp={mdp} setMdp={setMdp} staff={staff} em showError={tried} />
+          {/* Écran 12 : en attendant les créneaux d'Event Manager, l'ouverture exceptionnelle ouvre l'onglet */}
+          {fiche.roleEquipe && <ExceptionRoleBloc fiche={live || fiche} eventId={ev} />}
+        </div>
+      )}
+    </Dialog>
+  )
+}
+
+function Ligne({ nom, badge, detail, onQr, docLabel, onDoc, onRenew, onRole }) {
   return (
     <div style={{ ...box, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
       <div style={{ minWidth: 0 }}>
@@ -99,6 +144,7 @@ function Ligne({ nom, badge, detail, onQr, docLabel, onDoc, onRenew }) {
         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Aujourd'hui : {detail}</div>
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {onRole && <Button size="sm" variant="secondary" icon={UserCog} onClick={onRole}>Rôle</Button>}
         <Button size="sm" variant="secondary" icon={QrIcon} onClick={onQr}>QR du lien</Button>
         <Button size="sm" variant="secondary" icon={FileText} onClick={onDoc}>{docLabel}</Button>
         <HoldButton tone="danger" onConfirm={onRenew}>Maintenir : renouveler le lien</HoldButton>
@@ -142,6 +188,9 @@ export function BenevolesEm() {
   const all = useListe(ev, 'benevoles')
   const [q, setQ] = useState('')
   const [lien, setLien] = useState(null)
+  const [ficheRole, setFicheRole] = useState(null)
+  const roleAdmin = ['admin', 'super_admin'].includes(useAuthStore(st => st.user?.role))
+  const staff = useAppStore(st => st.staff) || []
   const jour = festDay()
   const liste = useMemo(() => (all || [])
     .filter(b => b.source === 'event-manager' && b.actif !== false)
@@ -152,6 +201,9 @@ export function BenevolesEm() {
     <div style={{ maxWidth: 980, margin: '0 auto', padding: 16, display: 'grid', gap: 12 }}>
       <EnTete titre="Bénévoles" ev={ev} event={event}
         quoi="Pour ajouter un bénévole ou changer ses droits et ses jours de contrôle : Event Manager."/>
+      {/* Écran 13 (24/11/2026) : offert et acheté à part, soldes des bénévoles */}
+      <BilanBenevoles />
+
       <Recherche value={q} onChange={setQ}/>
       {all === null ? <p style={{ color: 'var(--text-muted)' }}>Chargement…</p> : shown.length === 0 ? (
         <Empty title={liste.length ? 'Aucun résultat' : 'Aucun bénévole'}>
@@ -161,7 +213,11 @@ export function BenevolesEm() {
         <div style={{ display: 'grid', gap: 8 }}>
           {shown.map(b => (
             <Ligne key={b.id} nom={`${b.prenom} ${b.nom}`.trim()}
-              badge={(b.controleBillets || []).includes(jour) && <Badge tone="brand">Entrée aujourd'hui</Badge>}
+              badge={<>
+                {(b.controleBillets || []).includes(jour) && <Badge tone="brand">Entrée aujourd'hui</Badge>}
+                {b.roleEquipe && <Badge tone="coral">{labelRoleEquipe(b.roleEquipe)}</Badge>}
+              </>}
+              onRole={roleAdmin ? () => setFicheRole(b) : undefined}
               detail={resume(b.droitsJours?.[jour], b.consoJours?.[jour])}
               onQr={() => ouvrirLien(ev, 'benevole', b.id, b.prenom, setLien)}
               docLabel="Carte PDF"
@@ -171,6 +227,8 @@ export function BenevolesEm() {
         </div>
       )}
       <LienDialog lien={lien} onClose={() => setLien(null)}/>
+      {ficheRole && <RoleDialog ev={ev} fiche={ficheRole} staff={staff} onClose={() => setFicheRole(null)}
+        live={(all || []).find(b => b.id === ficheRole.id)}/>}
     </div>
   )
 }

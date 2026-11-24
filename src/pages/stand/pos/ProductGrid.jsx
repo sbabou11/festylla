@@ -2,15 +2,15 @@
  * ProductGrid — tuiles d'articles.
  * Stock restant affiché (or sous le seuil, brique en rupture).
  * Photo de l'article si renseignée, sinon initiales.
- * onInfo fourni (23/11/2026, comme la borne) : toucher la tuile ouvre la fiche (composition,
- * allergènes, quantité) ; le bouton rond « + » ajoute 1 au ticket en un appui.
+ * onInfo fourni (23/11/2026) : carte de la billetterie (aperçu photo, nom, prix, « − » / « + ») ;
+ * toucher la carte ouvre la fiche (composition, allergènes, quantité). onRemove retire 1.
  * Sans onInfo : un appui sur la tuile ajoute 1 au ticket (comportement d'origine).
  * nv (téléphone, 23/11/2026) : tuile en carte, pastille ronde aux initiales, stock bas ou rupture
  * écrits sous le prix, quantité qui « saute » à chaque appui. Même logique d'ajout.
  */
 import React from 'react'
 import clsx from 'clsx'
-import { Plus } from 'lucide-react'
+import { Plus, Minus } from 'lucide-react'
 import { fmt } from '../../../utils/helpers'
 import s from './pos.module.css'
 
@@ -25,9 +25,51 @@ const initials = (nom = '') => {
   return (words[0][0] + words[1][0]).toUpperCase()
 }
 
-export default function ProductGrid({ items, qtys, onAdd, onInfo, big = false, nv = false }) {
+export default function ProductGrid({ items, qtys, onAdd, onRemove, onInfo, big = false, nv = false }) {
   if (items.length === 0) {
     return <p className={s.gridEmpty}>Aucun article dans cette catégorie.</p>
+  }
+  // 23/11/2026 (maquette validée : « vraiment uniforme, comme la borne et la billetterie ») :
+  // même carte que « Commande sur place » de la billetterie, sur tous les écrans : aperçu photo,
+  // nom, prix, stock bas, puis « − » et « + » ; toucher la carte ouvre la fiche.
+  if (onInfo) {
+    return (
+      <div className={clsx(s.pgGrid, big && s.pgGridBig)}>
+        {items.map(m => {
+          const stock   = m.stock || 0
+          const qty     = qtys[m.id] || 0
+          const rupture = stock === 0
+          const full    = qty >= stock
+          const low     = !rupture && stock <= (m.seuilAlerte || 10)
+          const photo   = m.photoUrl || m.image
+          return (
+            <div key={m.id} className={clsx(s.pgCard, qty > 0 && s.pgCardOn, rupture && s.pgCardOut)}>
+              <button type="button" className={s.pgOpen} onClick={() => onInfo(m)}
+                aria-label={`Fiche de ${m.nom}, ${fmt(m.prix || 0)}${qty ? `, ${qty} au ticket` : ''}${rupture ? ', en rupture' : ''}`}>
+                <span className={s.pgPhoto} data-pic>
+                  {photo ? <img src={photo} alt="" /> : <span aria-hidden="true">{(m.nom || '?').charAt(0).toUpperCase()}</span>}
+                  {qty > 0 && <span key={qty} className={clsx(s.pgQty, 'nv-pop')}>{qty}</span>}
+                </span>
+                <span className={s.pgBody}>
+                  <span className={s.pgName}>{m.nom}</span>
+                  <span className={s.pgPrice}>{rupture ? 'Épuisé' : fmt(m.prix || 0)}</span>
+                  {low && <span className={s.pgLow}>{stock} restant{stock > 1 ? 's' : ''}</span>}
+                </span>
+              </button>
+              <div className={s.pgActs}>
+                <button type="button" aria-label={`Retirer un ${m.nom}`} disabled={!qty || !onRemove} onClick={() => onRemove?.(m)}>
+                  <Minus size={16} aria-hidden="true" />
+                </button>
+                <button type="button" className={s.pgAdd} aria-label={`Ajouter un ${m.nom}`} disabled={rupture || full}
+                  onClick={(e) => onAdd(m, e.currentTarget.closest(`.${s.pgCard}`))}>
+                  <Plus size={16} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
   }
   return (
     <div className={clsx(s.grid, big && s.gridBig, nv && s.nvGrid)}>

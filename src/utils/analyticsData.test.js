@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { expectedTill, countTotal } from './analyticsData'
+import { expectedTill, countTotal, ventesPanneBorne } from './analyticsData'
 import { makeResaCode } from './helpers'
 
 const H = 3600 * 1000
@@ -43,6 +43,28 @@ describe('clôture : montant attendu par mode de paiement', () => {
     const r = expectedTill(logs, { from: day, to: day + 24 * H, staff: 'Caisse Karim' })
     expect(r.especes.total).toBe(1000)
     expect(r.cb.total).toBe(0)
+  })
+})
+
+describe('clôture : ventes payées par le solde (23/11/2026)', () => {
+  it("une commande sur place payée avec le solde n'entre pas dans la caisse", () => {
+    const r = expectedTill([{ ...tx(1, 1800, 'solde'), type: 'debit', surPlace: true }], { from: day, to: day + 24 * H })
+    expect(r.inconnu).toEqual({ n: 0, total: 0 })
+    expect(r.especes.total + r.cb.total).toBe(0)
+  })
+  it('les ventes de la panne de borne sont comptées à part, par caisse', () => {
+    const logs = [
+      { ...tx(1, 1800, undefined, 'Awa', 'debit'), panneBorne: true },
+      { ...tx(2, 400, undefined, 'Awa', 'debit'), panneBorne: true },
+      { ...tx(3, 500, undefined, 'Malik', 'debit'), panneBorne: true },
+      tx(4, 900, undefined, 'Awa', 'debit'),                                  // vente ordinaire : ignorée
+      { ...tx(30, 700, undefined, 'Awa', 'debit'), panneBorne: true },        // hors de la période
+    ]
+    const tout = ventesPanneBorne(logs, { from: day, to: day + 24 * H })
+    expect(tout.n).toBe(3); expect(tout.total).toBe(2700)
+    expect(tout.parStaff).toEqual({ Awa: 2, Malik: 1 })
+    expect(expectedTill(logs, { from: day, to: day + 24 * H }).inconnu.n).toBe(0)
+    expect(ventesPanneBorne(logs, { from: day, to: day + 24 * H, staff: 'Malik' }).total).toBe(500)
   })
 })
 

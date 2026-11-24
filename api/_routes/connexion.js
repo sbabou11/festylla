@@ -14,7 +14,7 @@
  * REQUIS : FIREBASE_SERVICE_ACCOUNT (déjà en place), et l'authentification Firebase activée
  * (elle l'est déjà pour Microsoft).
  */
-const { checkPassword, hasPassword, passwordFields, blockedMinutes, afterFailure, counterKey, sessionFor, publicAccount } = require('../_auth/core')
+const { checkPassword, hasPassword, passwordFields, blockedMinutes, afterFailure, counterKey, sessionFor, compteDesactive, publicAccount } = require('../_auth/core')
 const { admin, getDb, findAccountByIdentifiant, findAccountByEmail, linkedBenevole, clientIp, writeAudit } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 
@@ -68,6 +68,9 @@ module.exports = async (req, res) => {
         await db.doc(account.path).update(passwordFields(plain, admin.firestore.FieldValue.delete()))
       }
       await Promise.all(cs.map(c => c.ref.delete().catch(() => {})))
+      // Refonte des rôles (23/11/2026) : fiche au rôle retiré (Stand) = compte désactivé
+      const desactive = compteDesactive(account)
+      if (desactive) { res.status(403).json({ error: desactive }); return }
       res.status(200).json(await openSession(db, account, 'motdepasse')); return
     }
 
@@ -86,6 +89,8 @@ module.exports = async (req, res) => {
       }
       // La session Microsoft n'est plus utile : le jeton YllaCash la remplace
       admin.auth().revokeRefreshTokens(t.uid).catch(() => {})
+      const desactive = compteDesactive(account)
+      if (desactive) { res.status(403).json({ error: desactive }); return }
       res.status(200).json(await openSession(db, account, 'microsoft')); return
     }
 

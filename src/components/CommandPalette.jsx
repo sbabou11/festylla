@@ -25,7 +25,7 @@ const ACTIONS = [
   ['debit', 'Encaisser une vente'],
   ['credit', 'Recharger un spectateur'],
   ['commande-sur-place', 'Encaisser une commande sur place (code borne)'],
-  ['nouveau', 'Compte de secours (liaison du site en panne)'],
+  ['nouveau', 'Compte pour un billet (billet sans compte, ou liaison du site en panne)'],
   ['remboursement', 'Rembourser un spectateur'],
   ['lien-perdu', 'Donner un nouveau lien à un spectateur'],
   ['cloture', 'Clôturer une caisse'],

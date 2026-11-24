@@ -16,7 +16,7 @@ import { friendlyError } from '../../utils/errors'
 import QrCode from '../../components/QrCode'
 import QrScanner from '../../components/QrScanner'
 import { Wallet, RefreshCw, X, Banknote, CreditCard } from 'lucide-react'
-import { Button, Card, Field, SuccessCheck, AnimatedNumber, focusFirstInvalid } from '../../ui'
+import { Button, Card, Field, SuccessCheck, AnimatedNumber, focusFirstInvalid, Badge } from '../../ui'
 import s from './credit.module.css'
 
 const MONTANTS = [10, 20, 30, 50, 100]
@@ -136,7 +136,7 @@ export default function Credit() {
           <div className={s.client}>
             <div className={s.clientQr}><QrCode value={spec.id} size={56}/></div>
             <div className={s.clientInfo}>
-              <b className={s.clientName}>{spec.nom}</b>
+              <b className={s.clientName}>{spec.nom}{spec.porteMonnaieBenevole && <> <Badge tone="brand">Bénévole</Badge></>}</b>
               <span className={s.clientId}>{spec.id}</span>
               <span className={s.clientSolde}>{fmt(spec.solde)}</span>
             </div>

@@ -26,9 +26,27 @@ service cloud.firestore {
     function type() { return request.auth.token.type; }
     function isStaff() { return yc() && type() == 'staff'; }
     function isAdmin() { return isStaff() && request.auth.token.role in ['admin', 'super_admin']; }
+    // Écran 11 (24/11/2026) : onglet de rôle d'un bénévole, ouvert par le serveur pendant son créneau.
+    // Le jeton reste celui du bénévole (type 'benevole') ; roleJusqua (ms) arrête l'accès tout seul.
+    // roleMode 'complet' : comme l'équipe de ce rôle ; 'cloture' : lecture et clôture de caisse seulement.
+    function roleOuvert(ev, mode) {
+      return yc() && type() == 'benevole' && ev in request.auth.token.eventIds
+             && request.auth.token.get('roleEquipe', '') in ['billetterie', 'controle_entree', 'consultation']
+             && request.auth.token.get('roleMode', '') == mode
+             && request.time.toMillis() < request.auth.token.get('roleJusqua', 0)
+             && exceptionValable(ev);
+    }
+    // Écran 12 : un jeton d'ouverture exceptionnelle ne vaut que tant que l'admin ne l'a pas annulée
+    // (lecture de la fiche, seulement pour ces jetons-là)
+    function exceptionValable(ev) {
+      return !request.auth.token.get('roleExc', false)
+             || get(/databases/$(database)/documents/events/$(ev)/benevoles/$(benevoleId())).data.get('roleException', {}).get('jusqua', 0) > request.time.toMillis();
+    }
     // Équipe de cet événement (une fiche sans événement précis voit tous les événements, comme avant)
     function staffIn(ev) {
-      return isStaff() && (isAdmin() || request.auth.token.eventIds.size() == 0 || ev in request.auth.token.eventIds);
+      return (isStaff() && (isAdmin() || request.auth.token.eventIds.size() == 0 || ev in request.auth.token.eventIds))
+             || roleOuvert(ev, 'complet')
+             || (roleOuvert(ev, 'cloture') && request.method in ['get', 'list']);
     }
     function inEvent(ev) { return yc() && ev in request.auth.token.eventIds; }
     function sess(t, ev) { return inEvent(ev) && type() == t; }
@@ -65,10 +83,14 @@ service cloud.firestore {
       }
       match /benevoles/{id} {
         allow read: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id);
-        allow create, delete: if staffIn(ev);
+        // Écran 10 (23/11/2026) : le rôle d'équipe d'un bénévole n'est écrit que par le serveur
+        // (/api/mot-de-passe, admins seulement), jamais depuis l'appli, même par un admin
+        allow create: if staffIn(ev) && !request.resource.data.keys().hasAny(['roleEquipe', 'roleEquipeLe', 'roleEquipePar', 'roleException', 'porteMonnaie']);
+        allow delete: if staffIn(ev);
         // Sécurité (20/11/2026) : le bénévole ne modifie plus ses compteurs de consommation
         // (consommation, consoJours). Ils sont tenus par le serveur (borne) et par l'équipe.
-        allow update: if staffIn(ev) || (sess('benevole', ev) && benevoleId() == id && onlyChanges(['historique']));
+        allow update: if (staffIn(ev) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['roleEquipe', 'roleEquipeLe', 'roleEquipePar', 'roleException', 'porteMonnaie', 'username']))
+                      || (sess('benevole', ev) && benevoleId() == id && onlyChanges(['historique']));
       }
       match /benevoles-annuaire/{id} {
         allow read: if staffIn(ev) || sess('benevole', ev);
@@ -81,8 +103,9 @@ service cloud.firestore {
         allow read: if staffIn(ev);
         allow write: if false;
       }
+      // 23/11/2026 (écran 8) : les bénévoles ne contrôlent plus les billets (rôle équipe « Contrôle entrée »)
       match /entrees/{id} {
-        allow read, create, update: if staffIn(ev) || sess('benevole', ev);
+        allow read, create, update: if staffIn(ev);
         allow delete: if isAdmin();
       }
 
@@ -128,8 +151,11 @@ service cloud.firestore {
                     || (sess('spectateur', ev) && resource.data.id == request.auth.token.specId)
                     // (Sécurité, 20/11/2026 : les artistes ne lisent plus les fiches des spectateurs ;
                     // la liaison d'un espace artiste à un compte spectateur est retirée.)
-                    // Contrôle des billets à l'entrée (un code inconnu doit pouvoir répondre « Billet inconnu »)
-                    || (sess('benevole', ev) && (resource == null || resource.data.keys().hasAny(['billet'])));
+                    // (Écran 8, 23/11/2026 : les bénévoles ne lisent plus les fiches des spectateurs ;
+                    // le contrôle des billets passe au rôle équipe « Contrôle entrée ».)
+                    // Écran 13 (24/11/2026) : le bénévole lit son seul porte-monnaie
+                    || (sess('benevole', ev) && resource.data.get('benevoleId', '') == benevoleId()
+                        && resource.data.id == request.auth.token.get('specId', ''));
         // Borne : seulement le compte autorisé par le serveur (QR tournant), lu un par un
         allow get: if sess('borne', ev) && autorise(ev, doc);
         allow create: if staffIn(ev) || legacy(ev);
@@ -137,14 +163,14 @@ service cloud.firestore {
         allow update: if staffIn(ev) || legacy(ev)
                       // Borne : paiement d'une commande, sur le compte autorisé ; le solde ne peut que baisser
                       || (sess('borne', ev) && autorise(ev, doc) && onlyChanges(['solde'])
-                          && request.resource.data.solde < resource.data.solde && request.resource.data.solde >= 0)
-                      // Bénévole au contrôle : seulement le registre des entrées du billet
-                      || (sess('benevole', ev) && onlyChanges(['billet'])
-                          && request.resource.data.billet.diff(resource.data.billet).affectedKeys().hasOnly(['entrees']));
+                          && request.resource.data.solde < resource.data.solde && request.resource.data.solde >= 0);
       }
       match /transactions/{id} {
         allow read: if staffIn(ev) || legacy(ev)
-                    || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId);
+                    || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId)
+                    // Écran 13 : les mouvements du porte-monnaie du bénévole
+                    || (sess('benevole', ev) && request.auth.token.get('specId', '') != ''
+                        && resource.data.specId == request.auth.token.get('specId', ''));
         allow create: if staffIn(ev) || legacy(ev) || sess('borne', ev)
                       // Sécurité (20/11/2026) : trace d'annulation d'une ancienne réservation, à 0 € seulement
                       || (sess('spectateur', ev) && request.resource.data.specId == request.auth.token.specId
@@ -243,6 +269,10 @@ service cloud.firestore {
                               || (type() == 'benevole' && (resource.data.specId == benevoleId() || resource.data.benevoleId == benevoleId()))
                               || (type() == 'artiste' && resource.data.creneauId == request.auth.token.creneauId)));
         allow delete: if staffIn(ev) || legacy(ev);
+      }
+      // Écran 11 : 30 min après son créneau, la billetterie ne fait plus que sa clôture de caisse
+      match /clotures/{id} {
+        allow create: if roleOuvert(ev, 'cloture') && request.auth.token.get('roleEquipe', '') == 'billetterie';
       }
       match /audit/{id} {
         allow read: if staffIn(ev) || legacy(ev);

@@ -7,6 +7,7 @@
  * - requireCaller(...) : idem, et répond 401/403 à la place de la fonction appelante
  */
 const { admin, getDb } = require('../_billets/admin')
+const { roleActif, exceptionActive } = require('./role')
 
 const asAccount = (kind, eventId, d) => ({
   kind, id: d.id, eventId, data: d.data(),
@@ -70,13 +71,27 @@ async function loadAccount(db, path) {
   return { kind: m[2] === 'benevoles' ? 'benevole' : 'staff', id: m[3], eventId: m[1] || null, data: snap.data(), path }
 }
 
-async function verifyCaller(req) {
+/**
+ * Jeton de la personne qui appelle. Écran 11 (24/11/2026) : un bénévole dont l'onglet de rôle est
+ * ouvert (jusqu'à roleJusqua, heure du serveur) agit comme un membre de l'équipe de ce rôle ;
+ * { brut: true } rend le jeton tel quel (ouverture et fermeture de l'onglet).
+ */
+async function verifyCaller(req, { brut = false } = {}) {
   const m = /^Bearer\s+(.+)$/i.exec(String(req.headers.authorization || '').trim())
   if (!m) return null
   getDb()
   try {
     const t = await admin.auth().verifyIdToken(m[1].trim())
-    return t.yc ? t : null
+    if (!t.yc) return null
+    if (!brut && roleActif(t)) {
+      // Écran 12 : une ouverture exceptionnelle annulée par un admin ne donne plus rien, tout de suite
+      if (t.roleExc) {
+        const fiche = await loadAccount(getDb(), t.fiche).catch(() => null)
+        if (!exceptionActive(fiche?.data, Date.now())) return t
+      }
+      return { ...t, type: 'staff', role: t.roleEquipe, roleBenevole: true }
+    }
+    return t
   } catch { return null }
 }
 

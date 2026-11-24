@@ -27,7 +27,7 @@ import { cleanEmail, emailOk } from '../../utils/msAccount'
 const ALL_PAGES = [
   { id:'credit',             label:'Créditer',             group:'Billetterie' },
   { id:'commande-sur-place', label:'Commande sur place',    group:'Billetterie' },
-  { id:'nouveau',            label:'Compte de secours',     group:'Billetterie' },
+  { id:'nouveau',            label:'Compte pour un billet', group:'Billetterie' },
   { id:'lien-perdu',         label:'Lien perdu',            group:'Billetterie' },
   { id:'debit',              label:'Encaisser',             group:'Stand' },
   { id:'reservations-admin', label:'Réservations',          group:'Commun' },
@@ -75,9 +75,13 @@ const DEFAULT_ROLES = {
   admin:        { nom:'Admin',        couleur:'#534AB7' },
   directeur_artistique: { nom:'Directeur artistique', couleur:'#0891b2' },
   billetterie:  { nom:'Billetterie',  couleur:'#0F6E56' },
-  stand:        { nom:'Stand',        couleur:'#BA7517' },
+  // 23/11/2026 (refonte des rôles validée) : nouveau rôle, écran « Entrée » seulement
+  controle_entree: { nom:'Contrôle entrée', couleur:'#5B6CF0' },
   consultation: { nom:'Consultation', couleur:'#6b6b6b' },
 }
+// Rôles retirés : plus proposés ; les fiches qui les portent sont désactivées (connexion refusée)
+const ROLES_RETIRES = { stand: 'Stand' }
+const estDesactive = (m) => !m.role || !!ROLES_RETIRES[m.role]
 
 const initials = (nom) => (nom || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 
@@ -185,14 +189,15 @@ export default function Staff() {
     ...Object.entries(DEFAULT_ROLES).map(([id, r]) => ({ id, ...r, builtin:true })),
     ...(roles||[]).map(r => ({ ...r, builtin:false })),
   ]
-  const roleInfo = (id) => allRoles.find(r => r.id === id) || { nom:id, couleur:'#888' }
+  const roleInfo = (id) => allRoles.find(r => r.id === id) || (ROLES_RETIRES[id] ? { nom: ROLES_RETIRES[id], couleur:'#888' } : { nom:id || 'Aucun rôle', couleur:'#888' })
 
   // ── Handlers membre ───────────────────────────────────────────────
-  const openNewMember = () => { setMemberTried(false); setMemberForm({ nom:'', username:'', email:'', role:'stand', couleur:'#1a6b7a', pwd:'', eventIds:[] }) }
+  // Aucun rôle choisi d'avance (23/11/2026) : l'admin doit en choisir un
+  const openNewMember = () => { setMemberTried(false); setMemberForm({ nom:'', username:'', email:'', role:'', couleur:'#1a6b7a', pwd:'', eventIds:[] }) }
   const openEditMember = (s) => { setMemberTried(false); setMemberForm({ ...s, email: s.email || '', pwd:'', username: s.username || genUsername(s.nom), eventIds: s.eventIds || [] }) }
 
   const saveMember = async () => {
-    if (!memberForm.nom.trim() || !emailOk(memberForm.email)) { setMemberTried(true); focusFirstInvalid(memberFormRef.current); return }
+    if (!memberForm.nom.trim() || !emailOk(memberForm.email) || !memberForm.role || ROLES_RETIRES[memberForm.role]) { setMemberTried(true); focusFirstInvalid(memberFormRef.current); return }
     setSavingMember(true)
     try {
       const docId = memberForm._docId || memberForm.id
@@ -233,7 +238,12 @@ export default function Staff() {
           eventId:  forcedEventIds[0] || currentEventId || null,
         })
         // Le mot de passe est enregistré par le serveur, en empreinte (jamais en clair dans la base)
-        if (memberForm.pwd?.length >= 6) await resetStaffPassword(created.id, memberForm.pwd, null)
+        // 23/11/2026 : le membre est créé dans l'événement courant ; son mot de passe y est cherché
+        // (avant, seul le dossier racine était essayé : le mot de passe n'était pas enregistré)
+        if (memberForm.pwd?.length >= 6) {
+          const ok = await resetStaffPassword(created.id, memberForm.pwd, currentEventId)
+          if (!ok) toast.error("Le membre est créé, mais son mot de passe n'a pas été enregistré : changez-le depuis sa fiche.")
+        }
         await addAuditLog('CREATION_STAFF', { staffNom: memberForm.nom.trim(), role: memberForm.role, username: autoUsername, userType: 'admin', label: `Création staff : ${memberForm.nom.trim()} (${memberForm.role})` })
       }
       setMemberForm(null)
@@ -517,6 +527,7 @@ export default function Staff() {
                         <span className={s.mName}>
                           <span className={s.mNameText}>{m.nom}</span>
                           {m.id === user?.id && <Badge tone="brand">Vous</Badge>}
+                          {estDesactive(m) && <Badge tone="danger">désactivé</Badge>}
                         </span>
                         <span className={s.mSub}>{m.username ? `@${m.username}` : '—'} · {ri.nom || m.role}</span>
                         {rs === 'success' && <span className={clsx(s.mNote, s.mNoteOk)}>Mot de passe changé ✓</span>}
@@ -542,6 +553,11 @@ export default function Staff() {
               {' · '}{roleInfo(sheetMember.role).nom || sheetMember.role}
               {' · '}{sheetEvents.length ? sheetEvents.join(', ') : 'Aucun événement'}
             </p>
+            {estDesactive(sheetMember) && (
+              <div className={s.desactiveMsg} role="alert">
+                Compte désactivé : le rôle « {ROLES_RETIRES[sheetMember.role] || 'Stand'} » n'existe plus. Touchez « Modifier », choisissez un autre rôle et enregistrez pour le réactiver.
+              </div>
+            )}
             <Button block variant="secondary" icon={Pencil} onClick={() => fromSheet(openEditMember)}>Modifier</Button>
             <Button block variant="secondary" icon={KeyRound} onClick={() => fromSheet(handleResetPwd)}>Changer le mot de passe</Button>
             {sheetMember.role !== 'admin' && sheetMember.role !== 'super_admin' && isSuperAdmin && (
@@ -573,6 +589,7 @@ export default function Staff() {
                       <div className={s.memberName}>
                         {m.nom}
                         {isMe && <Badge tone="brand">Vous</Badge>}
+                        {estDesactive(m) && <Badge tone="danger">désactivé</Badge>}
                       </div>
                       <div className={s.memberUser}>{m.username ? `@${m.username}` : '—'}</div>
                       <RoleBadge nom={ri.nom||m.role} couleur={ri.couleur}/>
@@ -670,8 +687,14 @@ export default function Staff() {
 
             {/* Rôle */}
             <div className={s.field}>
-              <span className={s.label}>Rôle</span>
-              <div className={s.roleChoices}>
+              {/* Fiche au rôle retiré (23/11/2026) : le dire, et réactiver en choisissant un autre rôle */}
+              {isEditMember && estDesactive(memberForm) && (
+                <div className={s.desactiveMsg} role="alert">
+                  Compte désactivé : le rôle « {ROLES_RETIRES[memberForm.role] || 'Stand'} » n'existe plus. Choisissez un autre rôle et enregistrez pour le réactiver.
+                </div>
+              )}
+              <span className={s.label} id="staff-role-label">Rôle</span>
+              <div className={s.roleChoices} role="group" aria-labelledby="staff-role-label">
                 {allRoles.filter(r => (isSuperAdmin || r.id !== 'admin') && (isSuperAdmin || r.id !== 'super_admin')).map(r => (
                   <button key={r.id} type="button" onClick={() => setMemberForm(f => ({...f, role:r.id}))}
                     aria-pressed={memberForm.role===r.id}
@@ -681,6 +704,9 @@ export default function Staff() {
                   </button>
                 ))}
               </div>
+              {memberTried && (!memberForm.role || ROLES_RETIRES[memberForm.role]) && (
+                <p className={s.roleErr} role="alert">Choisissez un rôle.</p>
+              )}
             </div>
 
             {/* Couleur avatar */}

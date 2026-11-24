@@ -13,6 +13,9 @@ import { organiserCarte } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
 import CommandeDetail from '../../components/CommandeDetail'
+import { Sheet } from '../../ui'
+import { fmt } from '../../utils/helpers'
+import { repartirPanier } from '../../utils/avantagesBenevole'
 import s from './benevole/BenevoleCommander.module.css'
 
 const TYPES = ['repas', 'boisson', 'eau']
@@ -24,11 +27,20 @@ export default function BenevoleCommander({
   resaDone, setResaDone, resaLoading, resaErr, doCommande, quotaRestant, quotaDroit, setTab,
   // Espace artiste (20/11/2026) : même écran, autres textes
   textes = {},
+  // Écran 13 (24/11/2026) : bénévole avec solde → toute la carte, avantages d'abord, le reste sur le solde
+  solde, onRecharger,
 }) {
+  const avecSolde = solde !== undefined
+  const [recap, setRecap] = useState(false)
+  const panier = useMemo(() => avecSolde
+    ? repartirPanier(cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, prix: i.prix, typeConsommation: i.typeConsommation })),
+        Object.fromEntries(TYPES.map(t => [t, quotaRestant(t)])))
+    : null, [avecSolde, cartItems, quotaRestant])
+  const manque = panier && solde != null ? Math.max(0, panier.totalPaye - solde) : 0
   const T = {
     droits: "Mes droits aujourd'hui",
     ticket: 'Elle imprime votre ticket pour le stand des bénévoles.',
-    decompte: 'Vos droits seront décomptés à la borne, sur la journée du jour. Annulable sans frais avant, depuis « Résas ».',
+    decompte: 'Vos droits seront décomptés à la borne, sur la journée du jour. Annulable sans frais avant, depuis « Conso › Mes commandes ».',
     ongletCodes: 'mes-resas',
     epuise: 'Droits du jour atteints',
     ...textes,
@@ -66,15 +78,23 @@ export default function BenevoleCommander({
   return (
     <div className={s.stack}>
       <section className={s.card}>
-        <span className={s.label}>{T.droits}</span>
+        <span className={s.label}>{avecSolde ? 'Avantages offerts restants (avec ce panier)' : T.droits}</span>
         <div className={s.droits}>
-          {TYPES.map(t => (
-            <div key={t} className={clsx(s.droit, s[t])}>
-              <span>{LABEL[t]}</span>
-              <b>{quotaRestant(t)} / {quotaDroit(t)}</b>
-            </div>
-          ))}
+          {TYPES.map(t => {
+            const r = avecSolde ? panier.reste[t] : null
+            return (
+              <div key={t} className={clsx(s.droit, s[t])}>
+                <span>{LABEL[t]}</span>
+                {avecSolde
+                  ? (<><b>{r ? `${r} restant${r > 1 ? 's' : ''}` : 'Épuisé'}</b><small className={s.muted}>sur {quotaDroit(t)} par jour</small></>)
+                  : <b>{quotaRestant(t)} / {quotaDroit(t)}</b>}
+              </div>
+            )
+          })}
         </div>
+        {avecSolde && solde != null && (
+          <div className={s.soldeLigne}><span>Mon solde</span><b>{fmt(solde)}</b></div>
+        )}
       </section>
 
       {showRayons && (
@@ -118,12 +138,20 @@ export default function BenevoleCommander({
               const q = qtys[m.id] || 0
               const type = m.typeConsommation
               const stock = Number(m.stock) || 0
-              const canAdd = stock > q && dansPanier(type) < quotaRestant(type)
+              // Avec solde : tout article (stock seul) ; sinon dans la limite des droits
+              const canAdd = avecSolde ? stock > q : (stock > q && dansPanier(type) < quotaRestant(type))
+              // Une seule pastille « Inclus avantage » : article pris sur un avantage, ou qui le serait en l'ajoutant
+              const inclus = avecSolde && TYPES.includes(type) && ((panier.offertsPar[m.id] || 0) > 0 || panier.reste[type] > 0)
               return (
                 <div key={m.id} className={clsx(s.item, s.itemClick, q > 0 && s.itemOn, stock === 0 && s.itemOut)} onClick={() => setFiche(m)}>
                   <div className={s.photo}>{m.photoUrl ? <img src={m.photoUrl} alt=""/> : <span>{(m.nom || '?').charAt(0)}</span>}</div>
                   <b className={s.itemName}>{m.nom}</b>
-                  <span className={clsx(s.badge, s[type])}>{stock === 0 ? 'Épuisé' : `1 ${UNITE[type]}`}</span>
+                  {avecSolde ? (<>
+                    {stock === 0 ? <span className={s.badge}>Épuisé</span> : inclus && <span className={clsx(s.badge, s.inclus)}>Inclus avantage</span>}
+                    <span className={s.prix}>{fmt(m.prix || 0)}</span>
+                  </>) : (
+                    <span className={clsx(s.badge, s[type])}>{stock === 0 ? 'Épuisé' : `1 ${UNITE[type]}`}</span>
+                  )}
                   <span className={s.stepper} onClick={e => e.stopPropagation()}>
                     <button type="button" disabled={q === 0} aria-label={`Retirer un ${m.nom}`}
                       onClick={() => setQtys(x => ({ ...x, [m.id]: Math.max(0, (x[m.id] || 0) - 1) }))}><Minus size={16}/></button>
@@ -138,9 +166,12 @@ export default function BenevoleCommander({
           {fiche && (() => {
             const t = fiche.typeConsommation
             const q = qtys[fiche.id] || 0
-            const max = Math.max(0, Math.min((Number(fiche.stock) || 0) - q, quotaRestant(t) - dansPanier(t)))
+            const max = avecSolde
+              ? Math.max(0, (Number(fiche.stock) || 0) - q)
+              : Math.max(0, Math.min((Number(fiche.stock) || 0) - q, quotaRestant(t) - dansPanier(t)))
             return (
-              <ArticleInfoModal item={fiche} qty={q} onClose={() => setFiche(null)} sousTitre={`1 ${UNITE[t] || 'article'}`}
+              <ArticleInfoModal item={fiche} qty={q} onClose={() => setFiche(null)}
+                sousTitre={avecSolde ? fmt(fiche.prix || 0) : `1 ${UNITE[t] || 'article'}`}
                 maxAdd={max} raisonBloque={(Number(fiche.stock) || 0) === 0 ? 'Épuisé' : T.epuise}
                 onAddQty={(n) => setQtys(x => ({ ...x, [fiche.id]: (x[fiche.id] || 0) + n }))} />
             )
@@ -149,11 +180,40 @@ export default function BenevoleCommander({
       )}
 
       {resaErr && <p className={s.err} role="alert">{resaErr}</p>}
-      {cartItems.length > 0 && (
+      {cartItems.length > 0 && (avecSolde ? (
+        <div className={s.bar}>
+          <span>{cartItems.reduce((a, i) => a + i.qty, 0)} article{cartItems.reduce((a, i) => a + i.qty, 0) > 1 ? 's' : ''} · {fmt(panier.total)}</span>
+          <button type="button" onClick={() => setRecap(true)}>{panier.totalPaye ? `Commander · ${fmt(panier.totalPaye)} sur mon solde` : 'Commander'}</button>
+        </div>
+      ) : (
         <div className={s.bar}>
           <span>{resume}</span>
           <button type="button" onClick={doCommande} disabled={resaLoading}>{resaLoading ? 'Envoi…' : 'Obtenir mon code'}</button>
         </div>
+      ))}
+
+      {/* Écran 13 : récapitulatif (offert, payé sur le solde), puis le code à taper à la borne */}
+      {avecSolde && (
+        <Sheet open={recap} onClose={() => setRecap(false)} title="Ma commande">
+          <div className={s.recap}>
+            {panier.lignes.map((l, i) => (
+              <div key={i} className={s.recapLigne}><span>{l.nom}</span><b>{l.offert ? `offert (${fmt(l.prix)})` : fmt(l.prix)}</b></div>
+            ))}
+            <div className={s.recapLigne}><span>Total de la commande</span><b>{fmt(panier.total)}</b></div>
+            <div className={s.recapLigne}><span>dont offert par vos avantages</span><b>− {fmt(panier.valeurOfferte)}</b></div>
+            <div className={s.recapLigne}><span>Reste à payer sur mon solde</span><b>{fmt(panier.totalPaye)}</b></div>
+            {manque > 0 ? (<>
+              <p className={s.err} role="alert">Solde insuffisant : il manque {fmt(manque)}.</p>
+              <button type="button" className={s.btnPrimary} onClick={() => { setRecap(false); onRecharger?.() }}>Recharger</button>
+            </>) : (<>
+              {solde != null && <div className={s.recapLigne}><span>Solde après</span><b>{fmt(solde - panier.totalPaye)}</b></div>}
+              <p className={s.muted}>Vous recevez un code à 6 chiffres ; tapez-le à la borne, qui imprime un ticket par stand. Le solde est débité à ce moment-là.</p>
+              <button type="button" className={s.btnPrimary} disabled={resaLoading}
+                onClick={async () => { await doCommande(); setRecap(false) }}>{resaLoading ? 'Envoi…' : 'Obtenir mon code'}</button>
+            </>)}
+            <button type="button" className={s.btnSecondary} onClick={() => setRecap(false)}>Modifier</button>
+          </div>
+        </Sheet>
       )}
     </div>
   )

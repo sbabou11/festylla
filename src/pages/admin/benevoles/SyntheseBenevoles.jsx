@@ -7,6 +7,7 @@ import clsx from 'clsx'
 import { Plus, Users } from 'lucide-react'
 import { Button, Empty, Stat, Table, Badge } from '../../../ui'
 import { ITEM_CFG, countCreneaux } from './constants'
+import BilanBenevoles from '../../../components/BilanBenevoles'
 import s from './benevoles.module.css'
 
 export default function SyntheseBenevoles({ benevoles, totalDroits, totalConso, onAdd }) {
@@ -30,6 +31,8 @@ export default function SyntheseBenevoles({ benevoles, totalDroits, totalConso, 
 
   return (
     <div className={s.stack}>
+      {/* Écran 13 (24/11/2026) : offert et acheté à part, soldes des bénévoles */}
+      <BilanBenevoles />
       {/* KPIs globaux */}
       <div className={clsx(s.kpis, 'yc-stagger')}>
         <Stat label="Bénévoles" value={benevoles.length} icon={Users}/>

@@ -28,6 +28,8 @@ const { planRemboursement } = require('../_paiement/remboursement')
 const { montantDon, delaiDepasse, limiteRemboursement, BENEFICIAIRE, DON_MIN } = require('../_paiement/dons')
 
 const ID = /^[\w-]{1,128}$/
+// Qui a un solde : un spectateur, ou un bénévole avec son porte-monnaie (écran 13, 24/11/2026)
+const PORTEURS = ['spectateur', 'benevole']
 
 /** Corps exact de la requête, s'il est encore lisible (sinon un Buffer vide au bout d'un court délai) */
 function corpsBrut(req) {
@@ -129,8 +131,10 @@ async function creer(req, res, lu) {
   const body = lu || {}
   const ev = String(body.ev || '')
   if (!ID.test(ev)) { res.status(400).json({ error: 'Événement manquant.' }); return }
-  const caller = await verifyCaller(req)
-  if (!caller || caller.type !== 'spectateur' || !(caller.eventIds || []).includes(ev) || !caller.specId || !caller.specDoc) {
+  // Écran 13 (24/11/2026) : un bénévole recharge son porte-monnaie comme un spectateur (jeton brut :
+  // un onglet de rôle ouvert ne change pas le compte rechargé)
+  const caller = await verifyCaller(req, { brut: true })
+  if (!caller || !PORTEURS.includes(caller.type) || !(caller.eventIds || []).includes(ev) || !caller.specId || !caller.specDoc) {
     res.status(403).json({ error: 'Ouvrez votre espace avec votre lien ou votre QR pour recharger.' }); return
   }
   const montant = montantValide(body.montant)
@@ -186,8 +190,8 @@ async function rembourserStripe(cle, { paiement, montant, idem, meta }) {
 async function spectateurAppelant(req, res, body) {
   const ev = String(body.ev || '')
   if (!ID.test(ev)) { res.status(400).json({ error: 'Événement manquant.' }); return null }
-  const caller = await verifyCaller(req)
-  if (!caller || caller.type !== 'spectateur' || !(caller.eventIds || []).includes(ev) || !caller.specId || !caller.specDoc) {
+  const caller = await verifyCaller(req, { brut: true })
+  if (!caller || !PORTEURS.includes(caller.type) || !(caller.eventIds || []).includes(ev) || !caller.specId || !caller.specDoc) {
     res.status(403).json({ error: 'Ouvrez votre espace avec votre lien ou votre QR.' }); return null
   }
   return { ev, caller }

@@ -14,6 +14,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { CalendarDays, Banknote, ChevronRight, Music2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { watchPlanning, watchCachets } from '../../firebase/service'
 import useEventStore from '../../store/useEventStore'
+import useAuthStore from '../../store/useAuthStore'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 
 function GestionArtistesYllaCash({ onNavigate }) {
@@ -23,12 +24,14 @@ function GestionArtistesYllaCash({ onNavigate }) {
 
   const [planning, setPlanning] = useState([])
   const [cachets, setCachets]   = useState([])
+  // 23/11/2026 (refonte des rôles) : le directeur artistique n'a plus les cachets → ni pancarte, ni montants
+  const voitCachets = useAuthStore(st => st.canAccessPage('cachets'))
 
   useEffect(() => {
     const u1 = watchPlanning(setPlanning)
-    const u2 = watchCachets(setCachets)
+    const u2 = voitCachets ? watchCachets(setCachets) : () => {}
     return () => { u1(); u2() }
-  }, [])
+  }, [voitCachets])
 
   // Stats Planning
   const planningStats = useMemo(() => {
@@ -69,7 +72,7 @@ function GestionArtistesYllaCash({ onNavigate }) {
       {/* Grille 2 pancartes : 1 colonne mobile, 2 colonnes desktop */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+        gridTemplateColumns: isMobile || !voitCachets ? '1fr' : '1fr 1fr',
         gap: 16,
         marginBottom: 24,
       }}>
@@ -89,7 +92,7 @@ function GestionArtistesYllaCash({ onNavigate }) {
         />
 
         {/* Pancarte Cachets */}
-        <PancartePrincipale
+        {voitCachets && <PancartePrincipale
           onClick={() => onNavigate && onNavigate('cachets', 'gestion-artistes')}
           isMobile={isMobile}
           gradient="linear-gradient(135deg, #D89030 0%, #C45520 100%)"
@@ -101,11 +104,11 @@ function GestionArtistesYllaCash({ onNavigate }) {
             { label: 'À payer', value: `${cachetsStats.aPayer.toFixed(0)}€`, alert: cachetsStats.aPayer > 0 },
             { label: 'Sans cachet', value: cachetsStats.sansCachet, warning: cachetsStats.sansCachet > 0 && planningStats.total > 0 },
           ]}
-        />
+        />}
       </div>
 
       {/* Alertes synthétiques (si quelque chose à corriger) */}
-      {(cachetsStats.sansCachet > 0 || cachetsStats.countAPayer > 0) && planning.length > 0 && (
+      {voitCachets && (cachetsStats.sansCachet > 0 || cachetsStats.countAPayer > 0) && planning.length > 0 && (
         <div style={{
           background: 'var(--gold-light)',
           border: '1px solid var(--gold)',
@@ -137,7 +140,7 @@ function GestionArtistesYllaCash({ onNavigate }) {
       )}
 
       {/* Si tout est OK : feedback positif */}
-      {planning.length > 0 && cachetsStats.sansCachet === 0 && cachetsStats.countAPayer === 0 && (
+      {voitCachets && planning.length > 0 && cachetsStats.sansCachet === 0 && cachetsStats.countAPayer === 0 && (
         <div style={{
           background: 'var(--green-light)',
           border: '1px solid var(--green)',

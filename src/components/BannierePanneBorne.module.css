@@ -1,0 +1,11 @@
+/* Bandeau « Borne en panne » (écran 7, 23/11/2026) — couleurs « attention » du thème (clair et sombre) */
+.ban {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%;
+  padding: 10px 12px; margin: 0 0 12px; border-radius: 14px;
+  background: var(--gold-light); color: var(--gold-dark);
+  font: inherit; font-size: 13px; font-weight: 600; line-height: 1.45; text-align: left;
+  border: 0;
+}
+button.ban { cursor: pointer; }
+.ico { flex: none; margin-top: 1px; }
+.txt { flex: 1; min-width: 0; }

@@ -21,6 +21,13 @@ export async function identifierSpectateur(saisie, { ev, role } = {}) {
     const r = await apiFetch('/api/qr', { body: { action: 'identifier', ev, ...(jeton ? { qr: jeton } : { secours }) } })
     return r.compte.id
   }
+  // Écran 13 (24/11/2026) : QR de l'espace d'un bénévole → son porte-monnaie (vérifié par le serveur)
+  const jetonBenevole = texte.toUpperCase().match(/YB-[A-Z2-7]{2,205}-[0-9A-Z]{4,9}-[A-Z2-7]{12}/)
+  if (jetonBenevole) {
+    if (!ev) throw new Error('Aucun événement courant.')
+    const r = await apiFetch('/api/qr', { body: { action: 'identifier', ev, qr: jetonBenevole[0] } })
+    return r.compte.id
+  }
   const fy = /FY-/i.test(texte) ? extractSpecId(texte) : null
   if (fy && !ADMIN.includes(role)) {
     throw new Error('Le code « FY-… » ne suffit plus. Scannez le QR affiché dans l\'espace du spectateur.')

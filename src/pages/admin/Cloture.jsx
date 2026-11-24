@@ -5,13 +5,13 @@
  * La clôture est enregistrée dans events/{id}/clotures et peut être imprimée en procès-verbal.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronLeft, ChevronRight, Printer, RotateCcw, Banknote, CreditCard, HelpCircle, Minus, Plus, Globe } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Printer, RotateCcw, Banknote, CreditCard, HelpCircle, Minus, Plus, Globe, ShoppingCart } from 'lucide-react'
 import useAuthStore from '../../store/useAuthStore'
 import useEventStore from '../../store/useEventStore'
 import { saveCloture, watchClotures } from '../../firebase/service'
 import { usePeriodTransactions } from '../../hooks/usePeriodTransactions'
 import { dayStart } from '../../utils/dashboardData'
-import { cashiers, expectedTill, DENOMINATIONS, countTotal, MOYENS } from '../../utils/analyticsData'
+import { cashiers, expectedTill, ventesPanneBorne, DENOMINATIONS, countTotal, MOYENS } from '../../utils/analyticsData'
 import { fmt } from '../../utils/helpers'
 import { Button, Card, Badge, Table, SignaturePad, SuccessCheck, AnimatedNumber, Field, focusFirstInvalid, toast } from '../../ui'
 import { friendlyError } from '../../utils/errors'
@@ -59,6 +59,8 @@ export default function Cloture() {
   const { transactions, loading, partial } = usePeriodTransactions(day, day + DAY)
   const caisses = useMemo(() => cashiers(transactions, day, day + DAY), [transactions, day])
   const attendu = useMemo(() => expectedTill(transactions, { from: day, to: day + DAY, staff: caisse || null }), [transactions, day, caisse])
+  // Écran 7 : ventes faites pendant la panne de la borne (payées par le solde, hors caisse)
+  const panne = useMemo(() => ventesPanneBorne(transactions, { from: day, to: day + DAY, staff: caisse || null }), [transactions, day, caisse])
 
   useEffect(() => {
     if (isDemo) return
@@ -106,6 +108,7 @@ export default function Cloture() {
       signature,
       saisiPar: user?.nom || null,
       partiel: partial,
+      ...(panne.n ? { ventesPanneBorne: { n: panne.n, total: panne.total, parStaff: panne.parStaff } } : {}),
     }
     setSaving(true)
     try {
@@ -173,6 +176,7 @@ export default function Cloture() {
             </label>
 
             <Expected attendu={attendu} fond={fondC} loading={loading} />
+            {!loading && <PanneBorne panne={panne} />}
             {partial && <p className={s.warn}>Hors ligne : seules les 500 dernières transactions sont prises en compte. Reprenez la clôture une fois reconnecté.</p>}
           </div>
         </Card>
@@ -245,6 +249,7 @@ export default function Cloture() {
               <div><span>Journée</span><b>{dayLabel(day, today)}</b></div>
               <div><span>Espèces comptées</span><b>{fmt(especesCompte)}</b></div>
               <div><span>Carte bancaire</span><b>{fmt(cbCompte)}</b></div>
+              {panne.n > 0 && <div><span>Ventes panne de borne (solde, hors caisse)</span><b>{panne.n} · {fmt(panne.total)}</b></div>}
               <div><span>Écart total</span><b><Badge tone={ecartTone(ecart.total)}>{signed(ecart.total)}</Badge></b></div>
             </div>
             <Field label="Nom du signataire" error={signataire.trim() ? null : 'Indique le nom de la personne qui signe'} valid={!!signataire.trim()} showError={tried}>
@@ -292,6 +297,23 @@ function Expected({ attendu, fond, loading }) {
       <div><CreditCard size={18} /><span>Carte attendue</span><b>{fmt(attendu.cb.total)}</b><small>{attendu.cb.n} encaissement{attendu.cb.n > 1 ? 's' : ''}</small></div>
       {attendu.inconnu.n > 0 && <div><HelpCircle size={18} /><span>{MOYENS.inconnu.label}</span><b>{fmt(attendu.inconnu.total)}</b><small>{attendu.inconnu.n} recharge{attendu.inconnu.n > 1 ? 's' : ''}</small></div>}
       {attendu.enligne?.n > 0 && <div><Globe size={18} /><span>{MOYENS.enligne.label}</span><b>{fmt(attendu.enligne.total)}</b><small>{attendu.enligne.n} recharge{attendu.enligne.n > 1 ? 's' : ''}, remboursements déduits · hors caisse</small></div>}
+    </div>
+  )
+}
+
+// Écran 7 (23/11/2026) : ventes encaissées à la billetterie pendant une panne de la borne
+const hm = (ms) => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+const parQui = (parStaff = {}) => Object.entries(parStaff).sort((a, b) => b[1] - a[1]).map(([nom, n]) => `${nom} (${n})`).join(', ')
+function PanneBorne({ panne }) {
+  if (!panne.n) return null
+  return (
+    <div className={s.info} role="note">
+      <ShoppingCart size={15} />
+      <span>
+        <b>Ventes pendant la panne de la borne : {panne.n} · {fmt(panne.total)}</b>
+        {panne.debut != null && ` (${hm(panne.debut)} → ${hm(panne.fin)})`}. Encaissées par {parQui(panne.parStaff)}.
+        {' '}Payées par le solde des spectateurs : <b>pas dans la caisse</b>, sans effet sur l'écart. Reprises dans le procès-verbal.
+      </span>
     </div>
   )
 }
@@ -350,6 +372,7 @@ ${line('Espèces (fond ' + fmt(c.fondDeCaisse || 0) + ' inclus)', (c.fondDeCaiss
 ${line('Carte bancaire', c.attendu?.cb?.total || 0, c.compte?.cb || 0, c.ecart?.cb || 0)}
 <tr><td><b>Total</b></td><td></td><td></td><td><b>${signed(c.ecart?.total || 0)}</b></td></tr>
 </tbody></table>
+${c.ventesPanneBorne?.n ? `<p class="note"><b>Ventes pendant la panne de la borne :</b> ${c.ventesPanneBorne.n} pour ${fmt(c.ventesPanneBorne.total)}, encaissées par ${esc(parQui(c.ventesPanneBorne.parStaff))}. Payées par le solde des spectateurs : hors caisse, sans effet sur l'écart.</p>` : ''}
 ${c.attendu?.nonRenseigne?.n ? `<p class="muted">Recharges sans mode de paiement : ${c.attendu.nonRenseigne.n} pour ${fmt(c.attendu.nonRenseigne.total)}.</p>` : ''}
 ${rows ? `<h3>Détail des espèces</h3><table><thead><tr><th>Coupure</th><th>Nombre</th><th>Montant</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
 ${c.commentaire ? `<p class="note"><b>Commentaire :</b> ${esc(c.commentaire)}</p>` : ''}

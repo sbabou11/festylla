@@ -41,3 +41,45 @@ describe('preparerCommande', () => {
     expect(standBenevoles({})).toBeNull()
   })
 })
+
+// Écran 13 (24/11/2026) : toute la carte, avantages d'abord sur les plus chers, le reste sur le solde
+describe('repartirCommande (avantages + solde)', () => {
+  const { repartirCommande } = require('./benevole.js')
+  const carte = new Map([
+    ['plat', { nom: 'Plat athiéké poisson', prix: 1500, stock: 10, typeConsommation: 'repas', standId: 's1' }],
+    ['bissap', { nom: 'Bissap 50 cl', prix: 300, stock: 10, typeConsommation: 'boisson', standId: 's2' }],
+    ['cafe', { nom: 'Café', prix: 150, stock: 10, typeConsommation: 'boisson', standId: 's2' }],
+    ['eau', { nom: "Bouteille d'eau", prix: 100, stock: 10, typeConsommation: 'eau', standId: 's2' }],
+    ['biere', { nom: 'Bière 25 cl', prix: 400, stock: 10, standId: 's2' }],
+  ])
+  const stands = [{ id: 's1', numero: 1 }, { id: 's2', numero: 2 }]
+  // Repas épuisés, 2 boissons et 1 eau restantes (exemple de la maquette)
+  const piercillia = { droits: { repas: 2, boisson: 3, eau: 2 }, consommation: { repas: 2, boisson: 1, eau: 1 } }
+
+  it('la commande de la maquette : 23 € dont 4 € offerts, 19 € sur le solde', () => {
+    const r = repartirCommande({ benev: piercillia, jour: 'j', menuById: carte, stands, standBenev: stand,
+      lignes: [{ id: 'plat', qty: 1 }, { id: 'bissap', qty: 1 }, { id: 'biere', qty: 1 }, { id: 'eau', qty: 1 }] })
+    expect(r.valeurOfferte).toBe(400)
+    expect(r.totalPaye).toBe(1900)
+    expect(r.offerts.map(i => i.id).sort()).toEqual(['bissap', 'eau'])
+    expect(r.payes.map(i => i.id).sort()).toEqual(['biere', 'plat'])
+    expect(r.champs).toEqual({ 'consommation.boisson': 1, 'consommation.eau': 1 })
+  })
+  it('les avantages vont aux articles les plus chers', () => {
+    const r = repartirCommande({ benev: piercillia, jour: 'j', menuById: carte, stands, standBenev: stand,
+      lignes: [{ id: 'cafe', qty: 2 }, { id: 'bissap', qty: 1 }] })
+    // 2 boissons offertes : le bissap (3 €) et un café ; l'autre café est payé
+    expect(r.valeurOfferte).toBe(450)
+    expect(r.totalPaye).toBe(150)
+  })
+  it('offerts au stand des bénévoles, payés à leur stand ; tout article est possible', () => {
+    const r = repartirCommande({ benev: piercillia, jour: 'j', menuById: carte, stands, standBenev: stand,
+      lignes: [{ id: 'eau', qty: 1 }, { id: 'biere', qty: 2 }] })
+    expect(r.offerts[0]).toMatchObject({ id: 'eau', standId: 's7', total: 0 })
+    expect(r.payes[0]).toMatchObject({ id: 'biere', standId: 's2', total: 800 })
+  })
+  it('sans avantage restant, tout est payé', () => {
+    const r = repartirCommande({ benev: { droits: {}, consommation: {} }, jour: 'j', menuById: carte, stands, standBenev: stand, lignes: [{ id: 'bissap', qty: 2 }] })
+    expect(r.valeurOfferte).toBe(0); expect(r.totalPaye).toBe(600); expect(r.champs).toEqual({})
+  })
+})

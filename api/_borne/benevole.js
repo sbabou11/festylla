@@ -68,4 +68,62 @@ function preparerCommande({ benev, jour, lignes, menuById, standBenev }) {
 /** Le stand coché « Stand des bénévoles » dans settings/carte */
 const standBenevoles = (carte) => ((carte && carte.stands) || []).find(s => s.benevoles === true) || null
 
-module.exports = { TYPES, isEmFiche, quotasDuJour, restants, preparerCommande, standBenevoles }
+/**
+ * Écran 13 (24/11/2026, choix de l'organisateur) : le bénévole commande toute la carte, comme un
+ * spectateur. Ses avantages du jour couvrent d'abord les articles les plus chers de leur type (repas,
+ * boisson, eau) ; tout le reste se paie sur son solde (porte-monnaie).
+ * Les articles offerts partent au stand des bénévoles, les articles payés à leur propre stand.
+ * lignes : [{ id, qty }] ; menuById : Map ; stands : stands de settings/carte ; standBenev : stand « bénévoles »
+ * @returns {{ items, offerts, payes, parType, valeurOfferte, totalPaye, champs }}
+ */
+function repartirCommande({ benev, jour, lignes, menuById, stands = [], standBenev }) {
+  if (!benev) throw new Error('Fiche bénévole introuvable.')
+  if (!Array.isArray(lignes) || lignes.length === 0) throw new Error('Aucun article dans la commande.')
+  const standById = new Map((stands || []).map(s => [s.id, s]))
+  const unites = []
+  const qtyParArticle = new Map()
+  for (const l of lignes) {
+    const qty = Math.round(Number(l.qty) || 0)
+    if (qty < 1 || qty > 20) throw new Error('Quantité invalide.')
+    const id = String(l.id)
+    qtyParArticle.set(id, (qtyParArticle.get(id) || 0) + qty)
+  }
+  for (const [id, qty] of qtyParArticle) {
+    const m = menuById.get(id)
+    if (!m || m.actif === false) throw new Error(`Un article n'est plus à la carte.`)
+    if ((Number(m.stock) || 0) < qty) throw new Error(`Plus assez de « ${m.nom} » (${Number(m.stock) || 0} restant${(Number(m.stock) || 0) > 1 ? 's' : ''}).`)
+    const type = TYPES.includes(m.typeConsommation) ? m.typeConsommation : ''
+    for (let i = 0; i < qty; i++) unites.push({ id, m, type, prix: Number(m.prix) || 0 })
+  }
+  // Les plus chers d'abord : le bénévole paie le moins possible
+  unites.sort((a, b) => b.prix - a.prix)
+  const reste = restants(benev, jour)
+  const parType = {}
+  const offertes = new Map(), payees = new Map()
+  for (const u of unites) {
+    const cible = u.type && reste[u.type] > 0 ? offertes : payees
+    if (cible === offertes) { reste[u.type]--; parType[u.type] = (parType[u.type] || 0) + 1 }
+    cible.set(u.id, (cible.get(u.id) || 0) + 1)
+  }
+  const ligne = (id, qty, offert) => {
+    const m = menuById.get(id)
+    const prix = Number(m.prix) || 0
+    const st = offert ? standBenev : (standById.get(m.standId) || null)
+    return {
+      id, nom: String(m.nom || ''), qty, prix, prixUnit: prix, total: offert ? 0 : qty * prix, offert,
+      typeConsommation: TYPES.includes(m.typeConsommation) ? m.typeConsommation : '',
+      ...(st ? { standId: st.id, standNumero: Number(st.numero) || 0 } : {}),
+    }
+  }
+  const offerts = [...offertes].map(([id, q]) => ligne(id, q, true))
+  const payes = [...payees].map(([id, q]) => ligne(id, q, false))
+  const em = isEmFiche(benev)
+  const champs = Object.fromEntries(Object.entries(parType).map(([t, q]) => [em ? `consoJours.${jour}.${t}` : `consommation.${t}`, q]))
+  return {
+    items: [...offerts, ...payes], offerts, payes, parType, champs,
+    valeurOfferte: offerts.reduce((s, i) => s + i.qty * i.prix, 0),
+    totalPaye: payes.reduce((s, i) => s + i.total, 0),
+  }
+}
+
+module.exports = { TYPES, isEmFiche, quotasDuJour, restants, preparerCommande, standBenevoles, repartirCommande }

@@ -1,0 +1,30 @@
+/* Onglet de rôle de l'espace bénévole (écran 11, 24/11/2026) */
+.wrap { display: grid; gap: 12px; }
+.band { display: flex; gap: 10px; align-items: flex-start; border-radius: 16px; padding: 12px 14px; font-size: 14px; line-height: 1.45; }
+.ok { background: var(--green-light); color: var(--green-dark); }
+.warn { background: var(--gold-light); color: var(--gold-dark); }
+.lien { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: inherit; text-decoration: underline; cursor: pointer; }
+.carte { border-radius: 24px; padding: 6px 16px; }
+.ligne { display: flex; align-items: center; gap: 12px; min-height: 58px; }
+.ligne + .ligne { border-top: 1px solid var(--nv-line); }
+.ligne b { flex: 1; font-weight: 600; }
+.off { opacity: .4; }
+.ic { width: 42px; height: 42px; }
+.chev { color: var(--nv-mu); }
+.muted { margin: 0; color: var(--nv-mu); font-size: 14px; line-height: 1.45; }
+.verrou { border-radius: 24px; padding: 28px 18px; text-align: center; display: grid; gap: 12px; justify-items: center; }
+.verrou h2 { margin: 0; font-size: 18px; }
+.verrou :global(.nv-btn) { width: 100%; }
+.gros { width: 64px; height: 64px; }
+.form { display: grid; gap: 12px; }
+.form :global(.nv-btn) { width: 100%; }
+.champ { display: grid; gap: 6px; }
+.champ span { font-size: 13px; font-weight: 600; color: var(--muted); }
+.champ input { height: 48px; border-radius: 14px; border: 1.5px solid var(--border); background: var(--bg2); color: var(--text); padding: 0 14px; font: inherit; font-size: 16px; }
+.err { margin: 0; min-height: 20px; color: var(--red); font-size: 14px; }
+/* Étape 2 : menu cliquable, retour au menu, page de l'équipe dans l'onglet */
+button.ligne { width: 100%; border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.ligne:disabled { cursor: not-allowed; }
+.retour { justify-self: start; min-height: 40px; padding: 0 14px 0 8px; border: 0; border-radius: 99px; background: var(--nv-card2); color: var(--nv-fg); font: inherit; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.page { min-width: 0; }
+.wrap[hidden] { display: none; }

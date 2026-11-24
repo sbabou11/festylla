@@ -127,7 +127,29 @@ export const moyenOf = (t) => {
 }
 
 /** Argent reçu à la caisse : recharges, et commandes sur place payées à la billetterie (lot 3) */
-export const isEncaissementCaisse = (t) => t.type === 'credit' || (t.type === 'debit' && t.surPlace === true)
+// 23/11/2026 : une commande sur place payée avec le solde du spectateur (moyen 'solde') n'entre pas dans la caisse
+export const isEncaissementCaisse = (t) => t.type === 'credit' || (t.type === 'debit' && t.surPlace === true && t.moyen !== 'solde')
+
+/**
+ * Écran 7 (23/11/2026) : ventes encaissées à la billetterie pendant une panne de la borne.
+ * Payées par le solde : hors de la caisse et de l'écart, montrées à part dans la clôture.
+ * staff : nom du caissier, ou null pour toutes les caisses
+ */
+export function ventesPanneBorne(logs = [], { from, to, staff = null }) {
+  const out = { n: 0, total: 0, parStaff: {}, debut: null, fin: null }
+  logs.forEach(t => {
+    if (t.type !== 'debit' || t.panneBorne !== true) return
+    if (staff && (t.staff || '—') !== staff) return
+    const ms = txTime(t)
+    if (ms == null || ms < from || ms >= to) return
+    out.n++; out.total += t.montant || 0
+    const k = t.staff || '—'
+    out.parStaff[k] = (out.parStaff[k] || 0) + 1
+    out.debut = out.debut == null ? ms : Math.min(out.debut, ms)
+    out.fin = out.fin == null ? ms : Math.max(out.fin, ms)
+  })
+  return out
+}
 /** Argent rendu par la caisse : remboursement d'un ticket ou d'un code payé à la billetterie (lot 5) */
 export const isSortieCaisse = (t) => t.type === 'remboursement' && t.surPlace === true
 

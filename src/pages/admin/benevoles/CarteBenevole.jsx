@@ -9,6 +9,8 @@ import QrCode from '../../../components/QrCode'
 import useLink from '../../../hooks/useLink'
 import { Button, Badge } from '../../../ui'
 import { JOURS, CRENEAUX, ITEM_CFG, countCreneaux } from './constants'
+import { labelRoleEquipe } from '../../../utils/roleEquipe'
+import ExceptionRoleBloc from '../../../components/ExceptionRoleBloc'
 import s from './benevoles.module.css'
 
 // ── Jauge de consommation ──────────────────────────────────────────
@@ -34,7 +36,7 @@ const Jauge = ({ item, label, consomme, total, Icon }) => {
   )
 }
 
-export default function CarteBenevole({ b, onEdit, onDelete, onConsommer, onReset, onGeneratePDF, currentEventId }) {
+export default function CarteBenevole({ b, onEdit, onDelete, onConsommer, onReset, onGeneratePDF, currentEventId, roleAdmin = false }) {
   const [open, setOpen]   = useState(false)
   // Lien personnel avec clé : chargé seulement quand la carte est dépliée
   const lienBenevole = useLink(open ? currentEventId : null, 'benevole', b.id)
@@ -61,6 +63,7 @@ export default function CarteBenevole({ b, onEdit, onDelete, onConsommer, onRese
           <span className={s.benevName}>
             {b.prenom} {b.nom}
             {hasAbus && <Badge tone="danger">Dépassement</Badge>}
+            {b.roleEquipe && <Badge tone="coral">{labelRoleEquipe(b.roleEquipe)}</Badge>}
           </span>
           <span className={s.benevMeta}>{b.poste || 'Bénévole'} · {nbCreneaux} créneau{nbCreneaux>1?'x':''}</span>
         </span>
@@ -102,6 +105,9 @@ export default function CarteBenevole({ b, onEdit, onDelete, onConsommer, onRese
               </div>
             </div>
           </div>
+
+          {/* Écran 12 : ouverture exceptionnelle de l'onglet de rôle (admins seulement) */}
+          {roleAdmin && b.roleEquipe && <ExceptionRoleBloc fiche={b} eventId={currentEventId}/>}
 
           {/* Jauges détaillées */}
           <div className={s.gauges}>

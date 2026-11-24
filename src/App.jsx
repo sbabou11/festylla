@@ -34,6 +34,8 @@ import { useFirestore }  from './hooks/useFirestore'
 import { useBreakpoint } from './hooks/useBreakpoint'
 import TeamChat from './components/TeamChat'
 import useAuthStore, { ROLE_HOME } from './store/useAuthStore'
+import { doc as fsDoc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
+import { db as fsDb } from './firebase/config'
 import useAppStore from './store/useAppStore'
 import { setCurrentEvent } from './firebase/service'
 import useEventStore from './store/useEventStore'
@@ -89,14 +91,14 @@ const PAGE_TITLES = {
   finances: 'Finances',
   'editeur-template': 'Éditeur template facture',
   menu: 'Carte & menu', staff: 'Équipe', settings: 'Paramètres', credit: 'Créditer',
-  nouveau: 'Compte de secours', debit: 'Encaisser',
+  nouveau: 'Compte pour un billet', debit: 'Encaisser',
   remboursement: 'Remboursement', 'lien-perdu': 'Lien perdu',
   'commande-sur-place': 'Commande sur place',
   'mon-profil': 'Mon profil',
 }
 
 const ROLE_COLOR = {
-  super_admin: '#F07848', admin: '#F07848', billetterie: '#0E8D7A', stand: '#D89030', consultation: '#888780', directeur_artistique: '#5EB8E4',
+  super_admin: '#F07848', admin: '#F07848', billetterie: '#0E8D7A', stand: '#D89030', consultation: '#888780', directeur_artistique: '#5EB8E4', controle_entree: '#5B6CF0',
 }
 
 // Loader avec message évolutif + bouton recharger si bloqué (>10s)
@@ -269,7 +271,8 @@ function StaffApp() {
   const { theme, toggleDark }          = useTheme()
   const { isOffline, syncNow, toggleSimulate } = useOffline()
   // Données de l'équipe : seulement une fois quelqu'un de l'équipe connecté (sécurité, lot 3)
-  const staffSession = !!user && user.role !== 'benevole'
+  // Écran 11 : un onglet de rôle de bénévole charge lui-même ses données (pas l'espace équipe)
+  const staffSession = !!user && user.role !== 'benevole' && !user.roleTemporaire
   const { loading, error }             = useFirestore({ enabled: staffSession })
   React.useEffect(() => { preloadLibs() }, []) // Préchargement PDF/XLS en background
   // Essai A7 : l'équipe a utilisé l'appli en dernier, l'icône doit rouvrir la connexion de l'équipe
@@ -290,7 +293,8 @@ function StaffApp() {
 
   useEffect(() => {
     if (!user) return
-    checkSession()
+    // Session refusée (expirée, rôle retiré) : déjà fermée avec son message, ne pas l'effacer
+    if (!checkSession()) return
     // Session ouverte avant la connexion par le serveur (ou expirée) : on demande de se reconnecter
     hasYllaSession().then(ok => { if (!ok) logout() })
   }, [])
@@ -301,6 +305,15 @@ function StaffApp() {
   useEffect(() => {
     if (evId) setCurrentEvent(evId)
   }, [evId])
+  // Écran 7 (23/11/2026) : borne déclarée en panne par un admin, suivie en direct
+  // (ouvre « Encaisser » à la billetterie, voir pagesDuRole)
+  useAuthStore(st => st.borneEnPanne || st.encaissementEnCours)   // recalcule les pages ouvertes
+  useEffect(() => {
+    const setPanne = useAuthStore.getState().setBorneEnPanne
+    if (!staffSession || !evId) { setPanne(false); return }
+    return fsOnSnapshot(fsDoc(fsDb, 'events', evId, 'settings', 'global'),
+      snap => setPanne(snap.data()?.borneEnPanne === true), () => {})
+  }, [staffSession, evId])
   useEffect(() => { if (!isMobile) setMobileMenuOpen(false) }, [isMobile])
   // Nouveau style téléphone (23/11/2026) : les feuilles et fenêtres (src/ui) s'affichent dans <body>
   // par un portail, hors de la racine `.nv` ; on pose donc aussi `nv` sur <body> tant que l'espace équipe
@@ -461,9 +474,10 @@ function StaffApp() {
             )}
             <h1 className={clsx(shell.title, (nvAccueil || nvOwnTitle) && shell.srOnly)}>{PAGE_TITLES[currentPage] || currentPage}</h1>
             {nvAccueil && (
-              <button type="button" className={clsx('nv-search', 'nv-press', shell.nvSearch)} onClick={() => setPaletteOpen(true)} aria-label="Chercher une page (Ctrl K)">
-                <Search size={18} aria-hidden="true" />
-                <span className={shell.searchText}>Chercher une page</span>
+              /* 23/11/2026 : avec la discussion et le talkie dans l'entête, la barre « Chercher une page »
+                 était écrasée jusqu'à disparaître ; elle devient un bouton rond comme sur les autres pages */
+              <button type="button" className={`nv-round nv-press ${shell.pushRight}`} onClick={() => setPaletteOpen(true)} aria-label="Chercher une page (Ctrl K)" title="Chercher une page">
+                <Search size={20} aria-hidden="true" />
               </button>
             )}
             {currentEv && !isMobile && (

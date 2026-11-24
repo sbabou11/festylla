@@ -9,12 +9,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { collection, onSnapshot } from 'firebase/firestore'
-import { Banknote, CreditCard, Minus, Plus, ShoppingBag, Check, X } from 'lucide-react'
+import { Banknote, CreditCard, Minus, Plus, ShoppingBag, Check, X, UserCheck, Search } from 'lucide-react'
 import { db } from '../../firebase/config'
 import useAppStore from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
 import useAuthStore from '../../store/useAuthStore'
-import { creerCommandeSurPlace } from '../../firebase/service'
+import { creerCommandeSurPlace, utiliserCode } from '../../firebase/service'
+import ImpressionGuichet from '../../components/ImpressionGuichet'
+import BannierePanneBorne from '../../components/BannierePanneBorne'
 import { watchCarte } from '../../menu/carte'
 import { organiserCarte } from '../../menu/organiser'
 import { getIcon } from '../../menu/icons'
@@ -27,14 +29,18 @@ import s from './surPlace.module.css'
 const MOYENS = [
   { value: 'especes', label: 'Espèces', hint: 'Billets au coffre', icon: Banknote },
   { value: 'cb', label: 'Carte', hint: 'Terminal SumUp', icon: CreditCard },
+  // 23/11/2026 (refonte des rôles) : compte sans téléphone, pièce d'identité vérifiée
+  { value: 'solde', label: 'Son solde YllaCash', hint: "Compte, sans téléphone · pièce d'identité", icon: UserCheck },
 ]
+const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
 const groupe = (code) => `${code.slice(0, 3)} ${code.slice(3)}`
 
 export default function CommandeSurPlace() {
-  const { menu } = useAppStore()
+  const { menu, spectateurs } = useAppStore()
   const { currentEventId } = useEventStore()
   const { user } = useAuthStore()
+  const borneEnPanne = useAuthStore(st => st.borneEnPanne)   // écran 7 : tickets imprimés ici
   const [carte, setCarte] = useState({ rayons: [], stands: [] })
   const [categories, setCategories] = useState([])
   const [rayonId, setRayonId] = useState(null)
@@ -45,6 +51,11 @@ export default function CommandeSurPlace() {
   const [err, setErr] = useState('')
   const [done, setDone] = useState(null)       // { code, total, moyen }
   const [sheet, setSheet] = useState(false)
+  // Paiement par le solde (23/11/2026) : pièce d'identité vérifiée AVANT toute recherche par nom
+  const [soldeOpen, setSoldeOpen] = useState(false)
+  const [idOk, setIdOk] = useState(false)
+  const [q, setQ] = useState('')
+  const [compte, setCompte] = useState(null)      // { docId, id, nom, solde }
 
   useEffect(() => watchCarte(currentEventId, setCarte), [currentEventId])
   useEffect(() => {
@@ -77,18 +88,39 @@ export default function CommandeSurPlace() {
     return next
   })
 
+  const resultats = useMemo(() => {
+    const n = norm(q.trim())
+    if (!idOk || n.length < 2) return []
+    return (spectateurs || []).filter(x => x && !x.billet?.annule && norm(x.nom).includes(n)).slice(0, 8)
+  }, [q, idOk, spectateurs])
+  const choisirMoyen = (value) => {
+    setMoyen(value); setErr('')
+    if (value === 'solde') setSoldeOpen(true)
+    else { setCompte(null); setIdOk(false); setQ('') }
+  }
+  const soldeCourt = compte ? (compte.solde || 0) < total : false
+
   const encaisser = async () => {
     if (!lignes.length) return
     if (!moyen) { setErr('Choisissez le moyen de paiement.'); return }
+    if (moyen === 'solde' && (!compte || !idOk)) { setErr('Vérifiez la pièce d\'identité et choisissez le compte.'); setSoldeOpen(true); return }
     setSending(true); setErr('')
     try {
       const items = lignes.map(l => {
         const st = standById.get(l.standId)
         return { id: l.id, nom: l.nom, qty: l.qty, prixUnit: l.prix || 0, ...(st ? { standId: st.id, standNumero: st.numero } : {}) }
       })
-      const r = await creerCommandeSurPlace({ items, moyen, staff: user?.nom || 'Billetterie' }, currentEventId)
-      setDone({ ...r, moyen })
-      setCart({}); setMoyen(null); setSheet(false)
+      const r = await creerCommandeSurPlace({ items, moyen, staff: user?.nom || 'Billetterie',
+        ...(moyen === 'solde' ? { compte: { docId: compte.docId, id: compte.id, nom: compte.nom }, identiteVerifiee: idOk } : {}) }, currentEventId)
+      // Écran 7 (23/11/2026) : borne en panne, le code ne servirait à rien. La billetterie l'utilise
+      // aussitôt elle-même et imprime les tickets ; en cas d'échec, le code reste valable (affiché).
+      let commande = null, erreurTickets = ''
+      if (borneEnPanne) {
+        try { commande = await utiliserCode(r.code, currentEventId, { stands: carte.stands, guichet: user?.nom || 'Billetterie' }) }
+        catch (e) { erreurTickets = friendlyError(e, "Les tickets n'ont pas pu être préparés.") }
+      }
+      setDone({ ...r, moyen, compteNom: moyen === 'solde' ? compte.nom : null, commande, erreurTickets })
+      setCart({}); setMoyen(null); setSheet(false); setCompte(null); setIdOk(false); setQ('')
     } catch (e) {
       setErr(friendlyError(e, "La commande n'est pas passée. Rien n'a été enregistré."))
     } finally { setSending(false) }
@@ -100,17 +132,28 @@ export default function CommandeSurPlace() {
       <div className={s.donePage}>
         <div className={s.doneCard}>
           <span className={s.doneCheck}><Check size={28}/></span>
+          {done.commande ? (<>
+            <div className={s.label}>Borne en panne · tickets imprimés ici</div>
+            <ImpressionGuichet key={done.commande.numero} numero={done.commande.numero}
+              lignes={(done.commande.items || []).map(i => ({ nom: i.nom, qty: i.qty, prix: i.prixUnit, standId: i.standId }))}
+              stands={carte.stands} paiement="Payé à la billetterie" />
+          </>) : (<>
           <div className={s.label}>Code à donner au client</div>
           <div className={s.code} aria-label={`Code ${done.code.split('').join(' ')}`}>{groupe(done.code)}</div>
           <p className={s.doneText}>
             Le client tape ce code sur la borne « J'ai un code » pour recevoir ses tickets.
             Il ne sert qu'une fois.
           </p>
+          {done.erreurTickets && <p className={s.err} role="alert">{done.erreurTickets} Le code reste valable dès que la borne refonctionne.</p>}
+          </>)}
           <div className={s.doneMeta}>
             <span>{fmt(done.total)}</span>
             <span>·</span>
-            <span>{done.moyen === 'especes' ? 'Espèces, à mettre au coffre' : 'Carte SumUp'}</span>
+            <span>{done.moyen === 'especes' ? 'Espèces, à mettre au coffre' : done.moyen === 'solde' ? `Débités du solde de ${done.compteNom}` : 'Carte SumUp'}</span>
           </div>
+          {done.moyen === 'solde' && (
+            <p className={s.doneText}>Pièce d'identité vérifiée par {user?.nom || 'la billetterie'} · notée au journal d'audit · {done.compteNom} a reçu une notification.</p>
+          )}
           <Button size="lg" block onClick={() => setDone(null)}>Nouvelle commande</Button>
         </div>
       </div>
@@ -149,24 +192,26 @@ export default function CommandeSurPlace() {
       <div className={s.moyens}>
         {MOYENS.map(({ value, label, hint, icon: Icon }) => (
           <button key={value} type="button" aria-pressed={moyen === value}
-            className={clsx(s.moyen, moyen === value && s.moyenOn)} onClick={() => { setMoyen(value); setErr('') }}>
+            className={clsx(s.moyen, moyen === value && s.moyenOn)} onClick={() => choisirMoyen(value)}>
             <Icon size={20}/>
-            <span><b>{label}</b><small>{hint}</small></span>
+            <span><b>{label}</b><small>{value === 'solde' && compte ? `${compte.nom} · ${fmt(compte.solde || 0)}` : hint}</small></span>
           </button>
         ))}
       </div>
+      {moyen === 'solde' && soldeCourt && <p className={s.err} role="alert">Solde insuffisant : il manque {fmt(total - (compte.solde || 0))}. Rechargez d'abord son compte ou choisissez un autre paiement.</p>}
       {err && <p className={s.err} role="alert">{err}</p>}
       <Button variant="coral" size="lg" block loading={sending}
-        disabled={!lignes.length || sending} onClick={encaisser}>
-        {sending ? 'Enregistrement…' : `Encaissé · ${fmt(total)}`}
+        disabled={!lignes.length || sending || (moyen === 'solde' && (!compte || soldeCourt))} onClick={encaisser}>
+        {sending ? 'Enregistrement…' : moyen === 'solde' && compte ? `Débiter ${fmt(total)} de son solde` : `Encaissé · ${fmt(total)}`}
       </Button>
-      <p className={s.hint}>Validez une fois l'argent reçu : le code s'affiche ensuite.</p>
+      <p className={s.hint}>{moyen === 'solde' ? 'Le solde est débité à la validation ; le code s\'affiche ensuite.' : 'Validez une fois l\'argent reçu : le code s\'affiche ensuite.'}</p>
     </div>
   )
 
   return (
     <div className={s.page}>
       <div className={s.main}>
+        {borneEnPanne && <BannierePanneBorne texte="Borne en panne : à la validation, les tickets sont imprimés ici au lieu de donner un code." />}
         {showRayons && (
           <div className={s.rayons} role="tablist" aria-label="Rayons">
             {org.rayons.map(r => {
@@ -247,6 +292,40 @@ export default function CommandeSurPlace() {
       <Sheet open={sheet} onClose={() => setSheet(false)} title="Commande sur place"
         footer={<Button variant="secondary" icon={X} onClick={() => setSheet(false)}>Continuer</Button>}>
         {panier}
+      </Sheet>
+
+      {/* Payer avec son solde : pièce d'identité d'abord, puis recherche par nom (23/11/2026) */}
+      <Sheet open={soldeOpen} onClose={() => setSoldeOpen(false)} title="Payer avec son solde"
+        footer={<Button block disabled={!compte} onClick={() => setSoldeOpen(false)}>Choisir ce compte</Button>}>
+        <div style={{ display: 'grid', gap: 10 }}>
+          <label className={clsx(s.moyen, idOk && s.moyenOn)} style={{ cursor: 'pointer', alignItems: 'flex-start' }}>
+            <input type="checkbox" checked={idOk} onChange={e => { setIdOk(e.target.checked); setCompte(null); setQ('') }}
+              style={{ width: 22, height: 22, flex: 'none', accentColor: 'var(--brand)' }} />
+            <span><b>J'ai vérifié la pièce d'identité</b><small>Le nom sur la pièce doit être celui du compte.</small></span>
+          </label>
+          {!idOk ? (
+            <p className={s.muted}>La recherche par nom apparaît une fois la pièce vérifiée.</p>
+          ) : (<>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, height: 46, padding: '0 12px', borderRadius: 12, border: '1px solid var(--border2)', background: 'var(--bg)' }}>
+              <Search size={18} aria-hidden="true" />
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Nom du spectateur" aria-label="Nom du spectateur"
+                autoFocus style={{ flex: 1, border: 0, background: 'none', outline: 'none', font: 'inherit', color: 'var(--text)' }} />
+            </label>
+            {q.trim().length >= 2 && resultats.length === 0 && <p className={s.muted}>Aucun compte à ce nom.</p>}
+            {resultats.map(x => (
+              <button key={x._docId || x.id} type="button" aria-pressed={compte?.id === x.id}
+                className={clsx(s.moyen, compte?.id === x.id && s.moyenOn)}
+                onClick={() => setCompte({ docId: x._docId || x.id, id: x.id, nom: x.nom || x.id, solde: x.solde || 0 })}
+                style={{ justifyContent: 'space-between' }}>
+                <span><b>{x.nom || x.id}</b><small>{x.id}</small></span>
+                <b>{fmt(x.solde || 0)}</b>
+              </button>
+            ))}
+            {compte && (compte.solde || 0) < total && (
+              <p className={s.err} role="alert">Solde insuffisant : il manque {fmt(total - (compte.solde || 0))}. Rechargez d'abord son compte ou choisissez un autre paiement.</p>
+            )}
+          </>)}
+        </div>
       </Sheet>
     </div>
   )

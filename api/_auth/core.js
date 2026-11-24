@@ -65,6 +65,37 @@ function validateNewPassword(plain) {
   return null
 }
 
+// ── Rôle d'équipe d'un bénévole (écran 10, 23/11/2026) ──────────────────────
+// Un bénévole peut recevoir un rôle (onglet de son espace) ; seul un admin le donne, par le serveur.
+const ROLES_EQUIPE_BENEVOLE = ['billetterie', 'controle_entree', 'consultation']
+const ROLE_MIN_LENGTH = 8
+const SUITES_FACILES = /(0123|1234|2345|3456|4567|5678|6789|azerty|qwerty|password|motdepasse|festival|ylla)/
+
+/**
+ * Mot de passe d'un bénévole qui a un rôle : 8 caractères au moins, sans son nom, son prénom, son
+ * identifiant ni une suite facile (le mot de passe de départ « identifiant123 » est refusé).
+ */
+function validateRolePassword(plain, fiche = {}) {
+  const base = validateNewPassword(plain)
+  if (base) return base
+  const p = String(plain)
+  if (p.length < ROLE_MIN_LENGTH) return `Pour un rôle d'équipe, le mot de passe doit faire au moins ${ROLE_MIN_LENGTH} caractères.`
+  const low = p.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const mots = [fiche.username, fiche.prenom, fiche.nom]
+    .flatMap(x => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/))
+    .filter(x => x.length >= 3)
+  if (mots.some(m => low.includes(m)) || SUITES_FACILES.test(low) || /^(.)\1+$/.test(p)) {
+    return 'Mot de passe trop facile à deviner : évitez le nom, l\'identifiant et les suites simples.'
+  }
+  return null
+}
+
+/** Identifiant à partir du prénom et du nom : « awa.diallo » (sans accents ni espaces) */
+function identifiantDe(prenom, nom) {
+  const net = (x) => String(x || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '')
+  return [net(prenom), net(nom)].filter(Boolean).join('.') || 'benevole'
+}
+
 // ── Limite des essais de connexion ──────────────────────────────────────────
 const MIN = 60 * 1000
 const LIMIT = { fails: 8, windowMs: 15 * MIN, blockMs: 15 * MIN }
@@ -94,13 +125,32 @@ const counterKey = (kind, value) => `${kind}-${crypto.createHash('sha256').updat
  * account : { kind: 'staff'|'benevole', id, eventId, data }
  * Identifiant Firebase stable et claims lus par les futures règles de la base.
  */
+/**
+ * Refonte des rôles (23/11/2026, accord de l'organisateur) : le rôle « stand » n'existe plus ; les
+ * fiches de l'équipe qui l'ont encore (ou n'ont pas de rôle, ce qui valait « stand ») sont
+ * désactivées, pas supprimées : l'historique des ventes reste. Renvoie le message à afficher, ou ''.
+ */
+const ROLES_RETIRES = ['stand']
+function compteDesactive(account) {
+  if (!account || account.kind !== 'staff') return ''
+  const role = (account.data && account.data.role) || 'stand'
+  return ROLES_RETIRES.includes(role)
+    ? 'Ce compte est désactivé : le rôle « Stand » n\'existe plus. Demandez un autre rôle à l\'organisation.'
+    : ''
+}
+
 function sessionFor(account) {
   const { kind, id, eventId, data } = account
   const role = kind === 'benevole' ? 'benevole' : (data.role || 'stand')
   const scope = eventId ? `${eventId}:` : ''
   const uid = `${kind}:${scope}${id}`.slice(0, 128)
   const eventIds = Array.isArray(data.eventIds) && data.eventIds.length ? data.eventIds.slice(0, 20) : (data.eventId || eventId ? [data.eventId || eventId] : [])
-  return { uid, claims: { yc: 1, type: kind, role, eventIds, fiche: account.path } }
+  const claims = { yc: 1, type: kind, role, eventIds, fiche: account.path }
+  // Écran 13 (24/11/2026) : le porte-monnaie du bénévole est un compte de type spectateur ; sa session
+  // le désigne comme celle d'un spectateur (recharge en ligne, codes, remboursement, don)
+  const pm = kind === 'benevole' && data.porteMonnaie
+  if (pm && pm.id && pm.docId) Object.assign(claims, { specId: String(pm.id), specDoc: String(pm.docId) })
+  return { uid, claims }
 }
 
 // ── Sessions des pages publiques (lot 2) ────────────────────────────────────
@@ -139,6 +189,7 @@ function publicAccount(account) {
 
 module.exports = {
   hashPassword, checkPassword, hasPassword, passwordFields, validateNewPassword, legacyHash,
-  blockedMinutes, afterFailure, counterKey, sessionFor, publicAccount, LIMIT, PUBLIC_LIMIT,
+  ROLES_EQUIPE_BENEVOLE, validateRolePassword, identifiantDe,
+  blockedMinutes, afterFailure, counterKey, sessionFor, compteDesactive, ROLES_RETIRES, publicAccount, LIMIT, PUBLIC_LIMIT,
   isKey, sameKey, newKey, accountKey, spectatorSession, LINK_KINDS, linkDocId, deviceSession,
 }

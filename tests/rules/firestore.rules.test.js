@@ -126,11 +126,25 @@ describe('bénévole', () => {
     await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { droitsJours: { '2027-05-15': { repas: 9 } } }))
     await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { droits: { repas: 99 } }))
   })
-  it('contrôle un billet : note l\'entrée, sans pouvoir annuler le billet ni toucher au solde', async () => {
+  // Écran 13 (24/11/2026) : porte-monnaie du bénévole, lu par lui seul
+  it('lit son porte-monnaie, pas celui des autres, et ne le modifie pas', async () => {
+    await env.withSecurityRulesDisabled(async ctx => {
+      await setDoc(doc(ctx.firestore(), `events/${EV}/spectateurs/FY-BVAAAAAA`), { id: 'FY-BVAAAAAA', solde: 500, benevoleId: 'b1', porteMonnaieBenevole: true })
+      await setDoc(doc(ctx.firestore(), `events/${EV}/spectateurs/FY-BVBBBBBB`), { id: 'FY-BVBBBBBB', solde: 900, benevoleId: 'b2', porteMonnaieBenevole: true })
+    })
+    const db = as({ ...BENEV, specId: 'FY-BVAAAAAA', specDoc: 'FY-BVAAAAAA' })
+    await assertSucceeds(getDoc(doc(db, `events/${EV}/spectateurs/FY-BVAAAAAA`)))
+    await assertFails(getDoc(doc(db, `events/${EV}/spectateurs/FY-BVBBBBBB`)))
+    await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-BVAAAAAA`), { solde: 99999 }))
+    await assertFails(updateDoc(doc(db, `events/${EV}/benevoles/b1`), { porteMonnaie: { id: 'FY-BVBBBBBB', docId: 'FY-BVBBBBBB' } }))
+  })
+  // 23/11/2026 (écran 8) : le contrôle des billets passe au rôle équipe « Contrôle entrée »
+  it('ne contrôle plus les billets : ni lecture des fiches, ni entrée notée', async () => {
     const db = as(BENEV)
-    await assertSucceeds(getDoc(doc(db, `events/${EV}/spectateurs/FY-K7Q3NP`)))
-    await assertSucceeds(getDoc(doc(db, `events/${EV}/spectateurs/FY-INCONN`)))
-    await assertSucceeds(updateDoc(doc(db, `events/${EV}/spectateurs/FY-K7Q3NP`), { 'billet.entrees.2027-05-15': '14:02' }))
+    await assertFails(getDoc(doc(db, `events/${EV}/spectateurs/FY-K7Q3NP`)))
+    await assertFails(getDoc(doc(db, `events/${EV}/spectateurs/FY-INCONN`)))
+    await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-K7Q3NP`), { 'billet.entrees.2027-05-15': '14:02' }))
+    await assertFails(setDoc(doc(db, `events/${EV}/entrees/e1`), { code: 'K7Q3NP' }))
     await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-K7Q3NP`), { 'billet.annule': true }))
     await assertFails(updateDoc(doc(db, `events/${EV}/spectateurs/FY-K7Q3NP`), { solde: 0 }))
     await assertFails(getDoc(doc(db, `events/${EV}/spectateurs/FY-AB2C3D`)))
@@ -231,6 +245,37 @@ describe('équipe', () => {
   it("le programme d'Event Manager ne se modifie pas depuis YllaCash, sauf archivage par un administrateur", async () => {
     await assertFails(updateDoc(doc(as(STAND), `events/${EV}/programme-em/p12`), { artiste: 'Autre' }))
     await assertSucceeds(setDoc(doc(as(ADMIN), `events/${EV}/programme-em/p12`), { artiste: 'Awa', source: 'event-manager' }))
+  })
+  // Écran 10 (23/11/2026) : le rôle d'équipe d'un bénévole n'est écrit que par le serveur
+  it("personne ne donne un rôle d'équipe à un bénévole depuis l'appli, même un admin", async () => {
+    await assertFails(updateDoc(doc(as(STAND), `events/${EV}/benevoles/b2`), { roleEquipe: 'billetterie' }))
+    await assertFails(updateDoc(doc(as(ADMIN), `events/${EV}/benevoles/b2`), { roleEquipe: 'billetterie' }))
+    await assertFails(updateDoc(doc(as(STAND), `events/${EV}/benevoles/b2`), { username: 'awa.diallo' }))
+    await assertFails(setDoc(doc(as(ADMIN), `events/${EV}/benevoles/b9`), { prenom: 'X', roleEquipe: 'consultation' }))
+    await assertSucceeds(updateDoc(doc(as(ADMIN), `events/${EV}/benevoles/b2`), { poste: 'Bar' }))
+  })
+  // Écran 11 (24/11/2026) : onglet de rôle d'un bénévole, ouvert par le serveur jusqu'à roleJusqua
+  it("l'onglet de rôle donne l'accès de l'équipe jusqu'à l'heure prévue, puis plus rien", async () => {
+    const dans = (min) => Date.now() + min * 60000
+    const ouvert = as({ ...BENEV, roleEquipe: 'billetterie', roleMode: 'complet', roleJusqua: dans(30) })
+    const expire = as({ ...BENEV, roleEquipe: 'billetterie', roleMode: 'complet', roleJusqua: dans(-1) })
+    const cloture = as({ ...BENEV, roleEquipe: 'billetterie', roleMode: 'cloture', roleJusqua: dans(20) })
+    await assertSucceeds(getDoc(doc(ouvert, `events/${EV}/spectateurs/FY-K7Q3NP`)))
+    await assertSucceeds(updateDoc(doc(ouvert, `events/${EV}/spectateurs/FY-K7Q3NP`), { solde: 2000 }))
+    await assertFails(getDoc(doc(expire, `events/${EV}/spectateurs/FY-K7Q3NP`)))
+    await assertSucceeds(getDoc(doc(cloture, `events/${EV}/spectateurs/FY-K7Q3NP`)))
+    await assertFails(updateDoc(doc(cloture, `events/${EV}/spectateurs/FY-K7Q3NP`), { solde: 2000 }))
+    await assertSucceeds(setDoc(doc(cloture, `events/${EV}/clotures/c1`), { caisse: 'Awa' }))
+    await assertFails(updateDoc(doc(ouvert, `events/${EV}/benevoles/b2`), { roleEquipe: 'billetterie' }))
+  })
+  // Écran 12 : ouverture exceptionnelle, coupée dès que l'admin l'annule
+  it("une ouverture exceptionnelle ne vaut que tant que la fiche la porte", async () => {
+    const exc = as({ ...BENEV, roleEquipe: 'billetterie', roleMode: 'complet', roleJusqua: Date.now() + 30 * 60000, roleExc: true })
+    await env.withSecurityRulesDisabled(ctx => updateDoc(doc(ctx.firestore(), `events/${EV}/benevoles/b1`), { roleException: { jusqua: Date.now() + 20 * 60000 } }))
+    await assertSucceeds(getDoc(doc(exc, `events/${EV}/spectateurs/FY-K7Q3NP`)))
+    await env.withSecurityRulesDisabled(ctx => updateDoc(doc(ctx.firestore(), `events/${EV}/benevoles/b1`), { roleException: deleteField() }))
+    await assertFails(getDoc(doc(exc, `events/${EV}/spectateurs/FY-K7Q3NP`)))
+    await assertFails(updateDoc(doc(as(ADMIN), `events/${EV}/benevoles/b1`), { roleException: { jusqua: 1 } }))
   })
   it('personne ne lit les compteurs d\'essais, réservés au serveur', async () => {
     await assertFails(getDoc(doc(as(ADMIN), 'securite-connexions/c1')))

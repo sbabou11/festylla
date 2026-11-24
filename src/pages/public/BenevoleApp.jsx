@@ -18,7 +18,8 @@ import {
   doc, onSnapshot, addDoc, updateDoc,
   serverTimestamp, increment,
 } from 'firebase/firestore'
-import { nowStr, makeResaCode } from '../../utils/helpers'
+import { nowStr, makeResaCode, fmt } from '../../utils/helpers'
+import { repartirPanier } from '../../utils/avantagesBenevole'
 import { getSettings, watchVolunteerPosts, watchVolunteerShifts, assignBenevoleToPost, pointerArrivee, creerCodeBenevole, annulerCodeEnLigne } from '../../firebase/service'
 import { watchCarte } from '../../menu/carte'
 import { APP_VERSION_LABEL, APP_FULL_LABEL } from '../../utils/buildInfo'
@@ -35,8 +36,8 @@ import BenevoleProfil    from './BenevoleProfil'
 import QRCode from 'qrcode'
 import useQrEspace from '../../hooks/useQrEspace'
 import {
-  UtensilsCrossed, Coffee, Droplets, ShoppingCart, Home, Bookmark, User, LogOut, CalendarDays,
-  ScanLine, QrCode, Ticket, CheckCircle2, AlertCircle, Store, ChevronRight, MapPin, BellRing,
+  UtensilsCrossed, Coffee, Droplets, ShoppingCart, Home, User, LogOut, CalendarDays,
+  ScanLine, QrCode, Ticket, CheckCircle2, AlertCircle, Store, ChevronRight, MapPin, BellRing, Lock,
 } from 'lucide-react'
 import { useNotifications } from '../../hooks/useNotifications'
 import NotifBell from '../../components/NotifBell'
@@ -44,7 +45,6 @@ import TeamChat from '../../components/TeamChat'
 import ThemeToggle from '../../components/ThemeToggle'
 import BenevolePlanning from '../../components/BenevolePlanning'
 import QrScanner from '../../components/QrScanner'
-import EntreeControl from '../../components/EntreeControl'
 import CommandeDetail from '../../components/CommandeDetail'
 import DetailSheet from '../../components/DetailSheet'
 import { parisNow } from '../../billets/entree'
@@ -53,6 +53,8 @@ import useAuthStore from '../../store/useAuthStore'
 import { useTheme } from '../../hooks/useTheme'
 import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, SuccessCheck, SessionBanner, toast } from '../../ui'
 import s from './benevole/BenevoleApp.module.css'
+import OngletRole, { useOngletRole, ROLE_ONGLET } from './benevole/OngletRole'
+import { usePorteMonnaie, CarteSolde, RechargerSheet, useRetourStripe } from './benevole/PorteMonnaie'
 
 const BRAND    = 'var(--brand)'
 const AMBER    = 'var(--gold-dark)'
@@ -106,7 +108,15 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const [posts,       setPosts]       = useState(demo?.posts || [])
   const [shifts,      setShifts]      = useState(demo?.shifts || [])
   const { logout } = useAuthStore()
-  const [tab,         setTab]         = useState('accueil')
+  const [tab,         setTabBrut]     = useState('accueil')
+  // Écran 9 (23/11/2026) : « Résas » est rangé dans « Conso », vues « Commander » et « Mes commandes ».
+  // Les anciens liens vers 'mes-resas' ouvrent « Conso › Mes commandes » ; vers 'commander', « Commander ».
+  const [consoVue,    setConsoVue]    = useState('commander')
+  const setTab = (t) => {
+    if (t === 'mes-resas') { setConsoVue('resas'); setTabBrut('commander'); return }
+    if (t === 'commander') setConsoVue('commander')
+    setTabBrut(t)
+  }
   const [qtys,        setQtys]        = useState({})
   const [resaLoading, setResaLoading] = useState(false)
   const [resaErr,     setResaErr]     = useState('')
@@ -182,7 +192,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   useEffect(() => {
     if (!eventId || demo) return
     const unsub = onSnapshot(menuCol(), snap => {
-      setMenu(snap.docs.map(d => ({ ...d.data(), id: d.id })).filter(m => m.typeConsommation))
+      // Écran 13 (24/11/2026) : toute la carte (avantages + solde), comme un spectateur
+      setMenu(snap.docs.map(d => ({ ...d.data(), id: d.id })).filter(m => m.actif !== false))
     }, refusBase)
     return () => unsub()
   }, [eventId])
@@ -254,6 +265,14 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
   const benevNom = `${benev?.prenom||''} ${benev?.nom||''}`.trim()
   const myId = benev?.id || docId
+  // Écran 11 (24/11/2026) : onglet du rôle d'équipe, verrouillé hors créneau (vérifié par le serveur)
+  const roleEquipe = ROLE_ONGLET[benev?.roleEquipe] ? benev.roleEquipe : ''
+  const ongletRole = useOngletRole({ eventId, role: roleEquipe, actif: !demo && !!roleEquipe, demo: !!demo })
+  useEffect(() => { if (!roleEquipe && tab === 'role') setTabBrut('accueil') }, [roleEquipe, tab])
+  // Écran 13 (24/11/2026) : solde du bénévole (porte-monnaie de type spectateur), recharge en ligne
+  const porteMonnaie = usePorteMonnaie({ eventId, actif: !demo && !!benev, demo: !!demo })
+  const [rechargeOuverte, setRechargeOuverte] = useState(false)
+  useRetourStripe()
 
   const changePwd = async () => {
     setPwdMsg(null)
@@ -379,12 +398,10 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
     if (!benev || !cartItems.length) return
     setResaLoading(true); setResaErr('')
     try {
-      const grouped = {}
-      cartItems.forEach(i => { grouped[i.typeConsommation] = (grouped[i.typeConsommation] || 0) + i.qty })
-      for (const [type, qty] of Object.entries(grouped)) {
-        const restant = quotaRestant(type)
-        if (qty > restant) throw new Error(`Droits insuffisants pour ${TYPE_CFG[type]?.label || type} aujourd'hui (il en reste ${restant}).`)
-      }
+      // Écran 13 : au-delà des avantages, la commande se paie sur le solde (vérifié de nouveau à la borne)
+      const panier = repartirPanier(cartItems, Object.fromEntries(['repas', 'boisson', 'eau'].map(t => [t, quotaRestant(t)])))
+      const solde = porteMonnaie.compte?.solde ?? 0
+      if (panier.totalPaye > solde) throw new Error(`Solde insuffisant : il manque ${fmt(panier.totalPaye - solde)}. Rechargez votre solde.`)
       if (demo) {
         const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0')
         setCodes(c => [{ code, origine: 'benevole', statut: 'en_attente', items: cartItems.map(i => ({ nom: i.nom, qty: i.qty })), timestamp: new Date().toISOString() }, ...c])
@@ -392,7 +409,7 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
       }
       const r = await creerCodeBenevole({
         benevoleId: docId, benevoleNom: benevNom,
-        items: cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, typeConsommation: i.typeConsommation })),
+        items: cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, typeConsommation: i.typeConsommation || '', prixUnit: Number(i.prix) || 0 })),
       }, eventId)
       setResaDone(r); setQtys({})
     } catch (e) { setResaErr(friendlyError(e, "La commande n'a pas été enregistrée.")) }
@@ -508,15 +525,18 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
 
   const NAV = [
     { id: 'accueil',   label: 'Accueil',  icon: Home },
-    ...(canControl ? [{ id: 'entree', label: 'Entrée', icon: Ticket }] : []),
+    // 23/11/2026 (écran 8) : plus d'onglet « Entrée » ; le contrôle des billets passe au compte équipe « Contrôle entrée »
     ...(em ? [] : [{ id: 'planning',  label: 'Planning', icon: CalendarDays }]),   // planning dans Event Manager
-    { id: 'commander', label: 'Conso',    icon: ShoppingCart },
-    { id: 'mes-resas', label: 'Résas',    icon: Bookmark, badge: readyResas.length || pendingResas || 0 },
+    // Écran 9 : la pastille des commandes passe sur « Conso » (plus d'onglet « Résas »)
+    { id: 'commander', label: 'Conso',    icon: ShoppingCart, badge: readyResas.length || pendingResas || 0 },
+    // Écran 11 : onglet du rôle d'équipe (cadenas tant qu'il est verrouillé)
+    ...(roleEquipe ? [{ id: 'role', label: ROLE_ONGLET[roleEquipe].label, icon: ROLE_ONGLET[roleEquipe].icon, verrou: !ongletRole.ouvert }] : []),
     ...(em ? [] : [{ id: 'profil',    label: 'Profil',   icon: User }]),           // entrée par lien, sans mot de passe
   ]
   // Nouveau style (23/11/2026) : la pastille de l'onglet actif glisse d'un onglet à l'autre
   // (transition sur transform, l'élément reste monté)
   const navIndex = NAV.findIndex(n => n.id === tab)
+  const mesCommandes = tab === 'commander' && consoVue === 'resas'
   // Accueil sur dégradé ; les autres onglets sur le fond de liste (disposition inchangée)
   const surDegrade = tab === 'accueil'
   // Créneau : « Mon prochain créneau · dans 18 min » ou « Mon créneau · en cours · fin dans 1h10 »
@@ -608,6 +628,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         {tab === 'accueil' && (
           benev ? (
             <div className={`nv-st ${s.stack}`}>
+              {/* Écran 13 (24/11/2026) : mon solde, comme un spectateur ; les avantages s'y ajoutent */}
+              <CarteSolde pm={porteMonnaie} onRecharger={() => setRechargeOuverte(true)} onCommander={() => setTab('commander')}/>
               {!em && (
               /* Mon créneau : carte de verre principale (nouveau style, 23/11/2026) */
                 slot && ribbon ? (
@@ -676,13 +698,14 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
                 </button>
               )}
 
-              {/* Contrôle des billets aujourd'hui (Event Manager) */}
-              {em && canControl && (
+              {/* Contrôle des billets aujourd'hui (Event Manager ou planning) : renvoie vers le compte
+                  équipe « Contrôle entrée » (écran 8, 23/11/2026) */}
+              {canControl && (
                 <button type="button" className={`nv-glass nv-press ${s.notice}`} onClick={() => setCarteOuverte('entree')} aria-haspopup="dialog">
                   <span className={`nv-ic ${s.icBillets}`}><Ticket size={20}/></span>
                   <span className={s.noticeText}>
                     <b>Vous contrôlez les billets aujourd'hui</b>
-                    <span>Ouvrez l'onglet Entrée pour scanner les billets</span>
+                    <span>Avec l'appli équipe, compte « Contrôle entrée »</span>
                   </span>
                   <ChevronRight size={18} className={s.chev}/>
                 </button>
@@ -760,43 +783,61 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           )
         )}
 
-        {tab === 'entree' && canControl && benev && (
-          <EntreeControl eventId={eventId} par={{ type: 'benevole', id: myId, nom: [benev.prenom, benev.nom].filter(Boolean).join(' ') }}/>
-        )}
-
         {tab === 'planning' && benev && (
           <BenevolePlanning benev={{ ...benev, id: myId }} eventId={eventId} benevoles={benevoles}
             posts={posts} shifts={shifts} onAssign={demo ? demoAssign : undefined}/>
         )}
 
           {tab === 'commander' && (
+            <div className={s.consoSw} role="tablist" aria-label="Conso">
+              <button type="button" role="tab" aria-selected={consoVue === 'commander'} className={`nv-press ${consoVue === 'commander' ? s.consoSwOn : ''}`}
+                onClick={() => setConsoVue('commander')}>Commander</button>
+              <button type="button" role="tab" aria-selected={consoVue === 'resas'} className={`nv-press ${consoVue === 'resas' ? s.consoSwOn : ''}`}
+                onClick={() => setConsoVue('resas')}>
+                Mes commandes
+                {(readyResas.length || pendingResas) > 0 && <span className={s.consoSwBadge}>{readyResas.length || pendingResas}</span>}
+              </button>
+            </div>
+          )}
+          {tab === 'commander' && consoVue === 'commander' && (
             <BenevoleCommander
               menu={menu} categories={categories} carte={carte} cartItems={cartItems} quotaDroit={quotaDroit}
               qtys={qtys} setQtys={setQtys} resaDone={resaDone} setResaDone={setResaDone}
               resaLoading={resaLoading} resaErr={resaErr} doCommande={doCommande}
               quotaRestant={quotaRestant} TYPE_CFG={TYPE_CFG} BRAND={BRAND}
               setTab={setTab} benev={benev}
+              solde={porteMonnaie.compte ? porteMonnaie.compte.solde || 0 : null} onRecharger={() => setRechargeOuverte(true)}
             />
           )}
 
-        {tab === 'mes-resas' && <MesCodes codes={codes} onCancel={setCancelCode}/>}
+        {mesCommandes && <MesCodes codes={codes} onCancel={setCancelCode}/>}
         {/* Session fermée (20/11/2026) : une liste vide n'est pas présentée comme « aucune réservation » */}
-        {tab === 'mes-resas' && fermee && resas.length === 0 && (
+        {mesCommandes && fermee && resas.length === 0 && (
           <section className={`nv-card nv-pad ${s.card}`}>
-            <div className={s.cardHead}><h2>Mes réservations</h2></div>
+            <div className={s.cardHead}><h2>Mes commandes</h2></div>
             <div className={s.noSlot}>
               <b>Réservations non chargées</b>
               <p>Elles réapparaîtront dès que votre espace sera rouvert.</p>
             </div>
           </section>
         )}
-        {tab === 'mes-resas' && !(fermee && resas.length === 0) && (
+        {mesCommandes && !(fermee && resas.length === 0) && (
           <BenevoleResas
             resas={resas} BRAND={BRAND} AMBER={AMBER} AMBER_L={AMBER_L}
             cancelResa={(id, code) => setCancelAsk({ id, code })}
           />
         )}
 
+        {/* Reste monté pendant l'ouverture (une vente en cours survit à un changement d'onglet) */}
+        {roleEquipe && <OngletRole role={roleEquipe} onglet={ongletRole} visible={tab === 'role'}
+          eventId={eventId} nom={benevNom} ficheId={myId}/>}
+
+        {tab === 'profil' && roleEquipe && ongletRole.ouvert && (
+          <button type="button" className="nv-btn-sec nv-press" style={{ width: '100%', marginBottom: 12 }}
+            onClick={() => ongletRole.verrouiller().then(() => toast.info('Onglet verrouillé')).catch(() => {})}>
+            <Lock size={18} aria-hidden="true"/> Verrouiller l'onglet « {ROLE_ONGLET[roleEquipe].label} »
+          </button>
+        )}
         {tab === 'profil' && benev && (
           <BenevoleProfil
             benev={benev} BRAND={BRAND}
@@ -825,9 +866,10 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           const on = tab === item.id
           return (
             <button key={item.id} type="button" className="nv-press"
-              onClick={() => setTab(item.id)} aria-current={on ? 'page' : undefined}>
+              onClick={() => setTabBrut(item.id)} aria-current={on ? 'page' : undefined}>
               <Icon size={22} aria-hidden="true"/>
               {item.badge > 0 && <span className="nv-tab-badge" aria-label={`${item.badge} en cours`}>{item.badge}</span>}
+              {item.verrou && <span className={s.tabVerrou} aria-label="verrouillé"><Lock size={10} strokeWidth={3} aria-hidden="true"/></span>}
               {item.label}
             </button>
           )
@@ -926,8 +968,13 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         title="Contrôle des billets" icon={Ticket} color="var(--brand)"
         status={{ label: "Aujourd'hui", tone: 'brand' }}
         sub={em ? dayLabel(jour) : ''}
-        sections={[{ content: <p className={s.muted}>Vous contrôlez les billets à l'entrée aujourd'hui. L'onglet Entrée ouvre le scanner des billets.</p> }]}
-        actions={<button type="button" className="nv-btn nv-press" onClick={() => { setCarteOuverte(null); setTab('entree') }}><Ticket size={20}/> Ouvrir l'onglet Entrée</button>} />
+        sections={[
+          { content: <p className={s.muted}>Vous êtes au contrôle des billets aujourd'hui. Le scanner n'est plus dans l'espace bénévole : ouvrez l'appli équipe avec le compte « Contrôle entrée » que l'organisation vous a remis (identifiant et mot de passe).</p> },
+          { content: <p className={s.muted}>Pas de compte ? Demandez-le au responsable de l'entrée.</p> },
+        ]}
+        actions={<button type="button" className="nv-btn nv-press" onClick={() => setCarteOuverte(null)}>J'ai compris</button>} />
+
+      <RechargerSheet open={rechargeOuverte} onClose={() => setRechargeOuverte(false)} pm={porteMonnaie} eventId={eventId} demo={!!demo}/>
 
       <CommandeDetail commande={cmdPrete} benevole onClose={() => setCmdPrete(null)}
         statut={cmdPrete ? (RESA_STATUTS[cmdPrete.status] || RESA_STATUTS.pending) : null}/>

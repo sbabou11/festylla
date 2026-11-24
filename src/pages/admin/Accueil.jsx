@@ -39,6 +39,7 @@ import {
 } from './accueil/Blocks'
 import { pastilleTx, pastilleAlerte } from '../../utils/nvPastilles'
 import DetailSheet from '../../components/DetailSheet'
+import BannierePanneBorne from '../../components/BannierePanneBorne'
 import {
   TxDetailSheet, Repartition, BarresHeures, Note, grouper, parHeure, moyenLabel, nettoyer, TX_TYPE_LABEL,
 } from '../../components/detailContenus'
@@ -75,7 +76,7 @@ const ACTIONS = [
   { key: 'debit',            icon: ShoppingCart,  tone: 'coral',   label: 'Encaisser',           desc: 'Vente au stand' },
   { key: 'commande-sur-place', icon: ShoppingBag, tone: 'coral',   label: 'Commande sur place',  desc: 'Client sans compte, code pour la borne' },
   { key: 'remboursement',    icon: Banknote,      tone: 'gold',    label: 'Remboursement',       desc: 'Ticket, code ou solde' },
-  { key: 'nouveau',          icon: QrCode,        tone: 'gold',    label: 'Compte de secours',   desc: 'Si la liaison du site tombe' },
+  { key: 'nouveau',          icon: QrCode,        tone: 'gold',    label: 'Compte pour un billet', desc: 'Billet acheté sans compte' },
 ]
 const ACTION_KEYS = ACTIONS.map(a => a.key)
 
@@ -90,7 +91,7 @@ const TX_STYLE = {
 
 // Nouveau style téléphone (23/11/2026) : libellés courts des actions rondes,
 // blocs rendus en carte de verre tels quels (les autres ont un rendu téléphone dédié)
-const ACTION_SHORT = { credit: 'Créditer', debit: 'Encaisser', 'commande-sur-place': 'Sur place', remboursement: 'Rembourser', nouveau: 'Secours' }
+const ACTION_SHORT = { credit: 'Créditer', debit: 'Encaisser', 'commande-sur-place': 'Sur place', remboursement: 'Rembourser', nouveau: 'Compte' }
 const NV_GLASS = new Set(['flow', 'goal', 'resas', 'top-articles', 'cachets', 'planning', 'stocks', 'depenses', 'spectateurs', 'benevoles'])
 const ALERT_TONE = { danger: 'Critique', warning: 'Attention', info: 'Information' }
 // Gros montant : euros en grand, centimes et symbole plus petits
@@ -425,7 +426,9 @@ export default function Accueil({ onNavigate, view }) {
   const isAdmin = role === 'admin' || role === 'super_admin'
   // Lot D : pages passées dans Event Manager (planning, cachets, finances) masquées si l'événement y est relié
   const emEvent = events.find(e => e.id === currentEventId)
-  const can = useCallback((page) => !pageRetiree(emEvent, page) && (isAdmin || !!canAccessPage?.(page)), [isAdmin, canAccessPage, emEvent])
+  // Écran 7 : « Encaisser » s'ouvre à la billetterie pendant une panne de borne
+  const borneEnPanne = useAuthStore(st => st.borneEnPanne)
+  const can = useCallback((page) => !pageRetiree(emEvent, page) && (isAdmin || !!canAccessPage?.(page)), [isAdmin, canAccessPage, emEvent, borneEnPanne])   // eslint-disable-line react-hooks/exhaustive-deps
   // Vue « événement » (tous les chiffres) pour l'admin et les rôles qui ont l'analytics (consultation)
   const globalView = isAdmin || can('analytics')
   const canCredit = can('credit')
@@ -988,6 +991,8 @@ export default function Accueil({ onNavigate, view }) {
         </Button>
       </header>
       )}
+
+      {role === 'billetterie' && borneEnPanne && <BannierePanneBorne onOuvrir={() => go('debit')} />}
 
       {/* Blocs, dans l'ordre choisi */}
       {shown.length === 0 ? (

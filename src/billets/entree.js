@@ -44,6 +44,18 @@ export function describeEntree(r) {
     case 'deja': return { tone: 'warn', title: `Déjà entré aujourd'hui à ${r.heure}`, detail: 'Une seule entrée par jour.' }
     case 'epuise': return { tone: 'bad', title: 'Billet déjà utilisé', detail: `Entré ${r.jours.length > 1 ? 'les' : 'le'} ${r.jours.map(fmtJour).join(', ')}.` }
     case 'annule': return { tone: 'bad', title: 'Billet annulé', detail: r.commande ? `Commande ${r.commande} annulée ou remboursée.` : 'Commande annulée ou remboursée.' }
-    default: return { tone: 'bad', title: 'Billet inconnu', detail: 'Ce code ne correspond à aucun billet.' }
+    // Essai B1 (23/11/2026) : dire ce qui a été lu, pour quel événement, et la vraie raison d'un échec
+    case 'pas-billet': {
+      const lu = String(r.lu || '').trim()
+      const extrait = lu.length > 40 ? lu.slice(0, 40) + '…' : lu
+      return { tone: 'bad', title: 'Ce QR n\'est pas un billet', detail: `${extrait ? `Lu : « ${extrait} ». ` : ''}Présentez le QR du billet ou celui de l'espace YllaCash du spectateur.` }
+    }
+    case 'erreur': return { tone: 'bad', title: 'Contrôle impossible', detail: r.raison || 'Le contrôle n\'a pas abouti. Réessayez.' }
+    default: return {
+      tone: 'bad', title: 'Billet inconnu',
+      detail: r.specId
+        ? `${r.specId} n'existe pas${r.evenement ? ` pour l'événement « ${r.evenement} »` : ' pour cet événement'}. Vérifiez l'événement choisi dans l'appli.`
+        : 'Ce code ne correspond à aucun billet.',
+    }
   }
 }

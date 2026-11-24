@@ -40,6 +40,7 @@ function buildDemo() {
     eventMeta: { nom: 'Festylla 2027', emoji: '🎵' },
     benev: {
       _id: 'b-awa', id: 'b-awa', prenom: 'Awa', nom: 'Diallo', poste: 'Accueil', username: 'awa', password: 'awa123',
+      roleEquipe: 'billetterie',   // écran 11 : onglet de rôle (déverrouillage simulé en démo)
       droits: { repas: 3, boisson: 6, eau: 1 },
       consommation: { repas: 2, boisson: 2, eau: 1 },
     },

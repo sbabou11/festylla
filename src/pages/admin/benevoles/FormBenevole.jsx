@@ -8,9 +8,14 @@ import { Save, X, Check } from 'lucide-react'
 import { Button, Field, focusFirstInvalid } from '../../../ui'
 import { JOURS, CRENEAUX, ITEM_CFG, calcDroits, countCreneaux } from './constants'
 import { cleanEmail, emailOk } from '../../../utils/msAccount'
+import RoleEquipeBloc, { etatRoleEquipe } from '../../../components/RoleEquipeBloc'
 import s from './benevoles.module.css'
 
-export default function FormBenevole({ initial, onSave, onCancel }) {
+export default function FormBenevole({ initial, onSave, onCancel, roleAdmin = false, staff = [] }) {
+  // Écran 10 : rôle d'équipe (admins seulement), enregistré par le serveur après la fiche
+  const [role, setRole] = useState(initial?.roleEquipe || '')
+  const [mdpRole, setMdpRole] = useState('')
+  const etatRole = etatRoleEquipe(initial || {}, role, mdpRole)
   const [nom, setNom]           = useState(initial?.nom || '')
   const [prenom, setPrenom]     = useState(initial?.prenom || '')
   const [poste, setPoste]       = useState(initial?.poste || '')
@@ -32,10 +37,13 @@ export default function FormBenevole({ initial, onSave, onCancel }) {
 
   const handleSave = async () => {
     if (!nom.trim() || !prenom.trim() || !emailOk(email)) { setTried(true); focusFirstInvalid(formRef.current); return }
+    if (roleAdmin && !etatRole.ok) { setTried(true); formRef.current?.querySelector('#role-mdp')?.focus(); return }
     setSaving(true)
     try {
-      await onSave({ nom: nom.trim(), prenom: prenom.trim(), poste: poste.trim(), email: cleanEmail(email), creneaux, droits })
-    } finally { setSaving(false) }
+      await onSave({ nom: nom.trim(), prenom: prenom.trim(), poste: poste.trim(), email: cleanEmail(email), creneaux, droits },
+        roleAdmin && etatRole.change ? { role, mdp: mdpRole } : null)
+    } catch { /* message déjà affiché ; le formulaire reste ouvert */ }
+    finally { setSaving(false) }
   }
 
   return (
@@ -109,6 +117,11 @@ export default function FormBenevole({ initial, onSave, onCancel }) {
             )
           })}
         </div>
+      )}
+
+      {roleAdmin && (
+        <RoleEquipeBloc fiche={{ ...(initial || {}), prenom, nom }} role={role} setRole={setRole}
+          mdp={mdpRole} setMdp={setMdpRole} staff={staff} showError={tried} />
       )}
 
       <div className={s.formActions}>

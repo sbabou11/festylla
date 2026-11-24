@@ -14,8 +14,10 @@ const ROLE_LABELS = {
   super_admin:  'Super Admin',
   consultation: 'Consultation',
   directeur_artistique: 'Directeur artistique',
+  controle_entree: 'Contrôle entrée',
 }
 const ROLE_SUBTITLES = {
+  controle_entree: 'Scanner les billets à l\'entrée',
   stand:        'Caisse, encaissements',
   billetterie:  'Recharges, nouveaux comptes',
   admin:        'Caisse, encaissements',

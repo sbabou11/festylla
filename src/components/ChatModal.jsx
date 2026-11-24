@@ -24,6 +24,7 @@ const ROLE_COLORS = {
   billetterie:          'var(--green)',   // Vert teal foncé
   stand:                'var(--gold)',    // Or
   consultation:         'var(--muted)',   // Gris
+  controle_entree:      '#5B6CF0',        // Indigo (refonte des rôles, 23/11/2026)
   benevole:             'var(--brand)',   // Teal signature
 }
 const ROLE_LABELS = {
@@ -33,6 +34,7 @@ const ROLE_LABELS = {
   billetterie:          'Billetterie',
   stand:                'Stand',
   consultation:         'Consultation',
+  controle_entree:      'Contrôle entrée',
   benevole:             'Bénévole',
 }
 

@@ -24,7 +24,7 @@ export default function BenevoleResas({ resas, BRAND, AMBER, AMBER_L, cancelResa
         fontSize: 14, fontWeight: 800, color: 'var(--text)',
         marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8,
       }}>
-        📦 Mes réservations
+        📦 Mes commandes
         {resas.length > 0 && (
           <span style={{
             fontSize: 11, fontWeight: 700,

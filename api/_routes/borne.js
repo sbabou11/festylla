@@ -30,7 +30,8 @@ const { blockedMinutes, afterFailure, counterKey, PUBLIC_LIMIT } = require('../_
 const { admin, getDb, clientIp, verifyCaller } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { festDay } = require('../_em/retour')
-const { restants, preparerCommande, standBenevoles } = require('../_borne/benevole')
+const { restants, standBenevoles, repartirCommande } = require('../_borne/benevole')
+const euros = (c) => ((Number(c) || 0) / 100).toFixed(2).replace('.', ',') + ' €'
 const { avantagesDe, dejaPris, restantsArtiste, preparerCommandeArtiste } = require('../_borne/artiste')
 const { lireJetonEspace, jetonEspaceValable, nouveauPassage, passageValable } = require('../_qr/espace')
 
@@ -271,57 +272,88 @@ module.exports = async (req, res) => {
           if (st !== 'en_attente') throw new Refus(409, 'Ce code a déjà été utilisé.')
         }
         const menuById = new Map(menuSnaps.filter(s => s.exists).map(s => [s.id, s.data()]))
-        const standBenev = standBenevoles(carteSnap.exists ? carteSnap.data() : null)
+        const carte = carteSnap.exists ? carteSnap.data() : null
+        const standBenev = standBenevoles(carte)
+        // Écran 13 (24/11/2026) : toute la carte ; avantages d'abord, le reste sur le solde du bénévole
         let prep
-        try { prep = preparerCommande({ benev: bSnap.data(), jour, lignes, menuById, standBenev }) }
+        try { prep = repartirCommande({ benev: bSnap.data(), jour, lignes, menuById, stands: (carte && carte.stands) || [], standBenev }) }
         catch (e) { throw new Refus(409, e.message) }
+
+        // Porte-monnaie (lu avant toute écriture) : il doit couvrir la part payée
+        let pmRef = null, pm = null
+        if (prep.totalPaye > 0) {
+          const lien = bSnap.data().porteMonnaie
+          if (!lien || !lien.docId) throw new Refus(409, `Solde insuffisant : il manque ${euros(prep.totalPaye)}. Rechargez votre solde dans votre espace ou à la billetterie.`)
+          pmRef = evRef.collection('spectateurs').doc(String(lien.docId))
+          const pmSnap = await t.get(pmRef)
+          if (!pmSnap.exists || pmSnap.data().benevoleId !== benevId) throw new Refus(409, 'Solde introuvable : passez à la billetterie.')
+          pm = pmSnap.data()
+          const solde = Number(pm.solde) || 0
+          if (solde < prep.totalPaye) throw new Refus(409, `Solde insuffisant : il manque ${euros(prep.totalPaye - solde)}. Rechargez votre solde dans votre espace ou à la billetterie.`)
+        }
 
         const benevNom = nomDe(bSnap.data())
         const resume = prep.items.map(i => i.nom + (i.qty > 1 ? ` ×${i.qty}` : '')).join(', ')
+        const resumeDe = (l) => l.map(i => i.nom + (i.qty > 1 ? ` ×${i.qty}` : '')).join(', ')
         const ts = admin.firestore.FieldValue.serverTimestamp()
         const inc = admin.firestore.FieldValue.increment
         const date = parisDate.format(new Date(now)), heure = parisTime.format(new Date(now)), iso = new Date(now).toISOString()
         const resaCode = code || `BNV-${numero}`
 
-        t.update(bRef, Object.fromEntries(Object.entries(prep.champs).map(([k, q]) => [k, inc(q)])))
+        if (Object.keys(prep.champs).length) t.update(bRef, Object.fromEntries(Object.entries(prep.champs).map(([k, q]) => [k, inc(q)])))
+        if (pmRef) {
+          const avant = Number(pm.solde) || 0
+          t.update(pmRef, { solde: avant - prep.totalPaye })
+          t.set(evRef.collection('transactions').doc(), {
+            specId: pm.id, specNom: pm.nom || benevNom, benevoleId: benevId, achatBenevole: true, type: 'debit',
+            label: `Commande #${numero}${code ? ` (code ${code})` : ''} — ${resumeDe(prep.payes)}`,
+            items: prep.payes.map(({ nom, qty, prixUnit, total }) => ({ nom, qty, prixUnit, total })),
+            montant: prep.totalPaye, staff: 'Borne', soldeBefore: avant, soldeAfter: avant - prep.totalPaye,
+            ...(code ? { code } : {}), commandeNumero: numero, date, timestamp: iso, heure, createdAt: ts,
+          })
+        }
         prep.items.forEach(i => t.update(evRef.collection('menu').doc(i.id), { stock: inc(-i.qty) }))
         const resaRef = evRef.collection('reservations').doc()
         t.set(resaRef, {
           benevoleId: benevId, benevoleNom: benevNom, isBenev: true, jourConso: jour,
-          items: prep.items.map(({ id, nom, prix, qty, typeConsommation }) => ({ id, nom, prix, qty, typeConsommation })),
-          total: prep.valeur, status: 'collected', code: resaCode, numero, source: code ? 'code-benevole' : 'borne-benevole',
+          items: prep.items.map(({ id, nom, prix, qty, typeConsommation, offert }) => ({ id, nom, prix, qty, typeConsommation, offert })),
+          total: prep.valeurOfferte, totalPaye: prep.totalPaye, status: 'collected', code: resaCode, numero, source: code ? 'code-benevole' : 'borne-benevole',
           date, createdAt: ts, collectedAt: ts, collectedBy: 'Ticket imprimé',
         })
         const cmdRef = evRef.collection('commandes').doc()
         t.set(cmdRef, {
           numero, numeroDay: parisDay.format(new Date(now)), specId: null, specNom: benevNom, benevoleId: benevId,
-          items: prep.items.map(({ id, nom, qty, prixUnit, standId, standNumero, typeConsommation }) => ({
-            id, nom, qty, prixUnit, total: 0, typeConsommation, ...(standId ? { standId, standNumero } : {}),
+          items: prep.items.map(({ id, nom, qty, prixUnit, total, offert, standId, standNumero, typeConsommation }) => ({
+            id, nom, qty, prixUnit, total, offert, typeConsommation, ...(standId ? { standId, standNumero } : {}),
           })),
-          total: 0, status: 'collected', paid: true, paidAt: ts, paidBy: 'Droits bénévole',
+          total: prep.totalPaye, status: 'collected', paid: true, paidAt: ts,
+          paidBy: prep.totalPaye ? (prep.offerts.length ? 'Droits bénévole + solde' : 'Solde bénévole') : 'Droits bénévole',
           createdAt: ts, createdBy: 'Borne (bénévole)', collectedAt: ts, collectedBy: 'Ticket imprimé',
           readyAt: null, readyBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null, refunded: false,
           date, timestamp: iso, heure, source: 'benevole', code: resaCode, reservationId: resaRef.id,
         })
-        t.set(evRef.collection('transactions').doc(), {
+        // Consommations offertes seulement (les achats sur le solde ont leur propre vente, ci-dessus)
+        if (prep.offerts.length) t.set(evRef.collection('transactions').doc(), {
           benevoleId: benevId, benevoleNom: benevNom, specId: null, specNom: null, type: 'benev-retrait',
-          label: `Retrait bénévole #${numero} (borne) : ${resume}`, items: prep.items.map(({ nom, qty, prix }) => ({ nom, qty, prix })),
-          montant: prep.valeur, staff: 'Borne', resaId: resaRef.id, resaCode, commandeNumero: numero,
+          label: `Retrait bénévole #${numero} (borne) : ${resumeDe(prep.offerts)}`, items: prep.offerts.map(({ nom, qty, prix }) => ({ nom, qty, prix })),
+          montant: prep.valeurOfferte, staff: 'Borne', resaId: resaRef.id, resaCode, commandeNumero: numero,
           date, timestamp: iso, heure, createdAt: ts,
         })
         if (codeRef) t.update(codeRef, { statut: 'utilise', utiliseLe: ts, commandeId: cmdRef.id, commandeNumero: numero })
-        return { items: prep.items, parType: prep.parType, benevNom, stand: standBenev, commandeId: cmdRef.id }
+        return { items: prep.items, parType: prep.parType, benevNom, stand: standBenev, commandeId: cmdRef.id, totalPaye: prep.totalPaye, stands: (carte && carte.stands) || [] }
       })
 
       await evRef.collection('audit').add({
-        action: 'RETRAIT_BENEV_BORNE', benevoleId: benevId, montant: 0, staff: 'Borne',
-        label: `Commande bénévole #${numero} à la borne${code ? ` (code ${code})` : ''}`,
+        action: 'RETRAIT_BENEV_BORNE', benevoleId: benevId, montant: r.totalPaye || 0, staff: 'Borne',
+        label: `Commande bénévole #${numero} à la borne${code ? ` (code ${code})` : ''}${r.totalPaye ? ` · ${euros(r.totalPaye)} sur son solde` : ''}`,
         timestamp: new Date(now).toISOString(), createdAt: admin.firestore.FieldValue.serverTimestamp(),
       }).catch(() => {})
       res.status(200).json({
-        numero, benevole: r.benevNom, parType: r.parType,
+        numero, benevole: r.benevNom, parType: r.parType, totalPaye: r.totalPaye || 0,
         stand: r.stand ? { id: r.stand.id, numero: r.stand.numero, nom: r.stand.nom } : null,
-        items: r.items.map(({ nom, qty, typeConsommation, standId }) => ({ nom, qty, typeConsommation, standId })),
+        // Écran 13 : un ticket par stand (offerts au stand des bénévoles, payés à leur stand)
+        stands: (r.stands || []).map(st => ({ id: st.id, numero: st.numero, nom: st.nom || '' })),
+        items: r.items.map(({ nom, qty, typeConsommation, standId, offert, prix }) => ({ nom, qty, typeConsommation, standId, offert, prix })),
       })
       return
     }

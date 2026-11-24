@@ -27,6 +27,15 @@ describe('contrôle des billets à l\'entrée : les cinq réponses', () => {
 })
 
 describe('heure de Paris', () => {
+  it('explique un refus (essai B1)', () => {
+    expect(describeEntree({ status: 'inconnu', specId: 'FY-K7Q3NP', evenement: "Fest'Ylla 2027" }).detail)
+      .toBe("FY-K7Q3NP n'existe pas pour l'événement « Fest'Ylla 2027 ». Vérifiez l'événement choisi dans l'appli.")
+    expect(describeEntree({ status: 'pas-billet', lu: 'https://exemple.fr/promo' }).title).toBe("Ce QR n'est pas un billet")
+    expect(describeEntree({ status: 'pas-billet', lu: 'https://exemple.fr/promo' }).detail).toContain('« https://exemple.fr/promo »')
+    expect(describeEntree({ status: 'erreur', raison: 'Pas de réseau.' })).toMatchObject({ title: 'Contrôle impossible', detail: 'Pas de réseau.' })
+    expect(describeEntree({ status: 'inconnu' }).detail).toBe('Ce code ne correspond à aucun billet.')
+  })
+
   it('donne le jour et l\'heure de Paris', () => {
     // 15 mai 2027, 22:30 UTC = 16 mai 00:30 à Paris (heure d'été)
     expect(parisNow(new Date('2027-05-15T22:30:00Z'))).toEqual({ jour: '2027-05-16', heure: '00:30' })

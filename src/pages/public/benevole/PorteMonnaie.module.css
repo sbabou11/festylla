@@ -1,0 +1,18 @@
+/* Solde du bénévole (écran 13, 24/11/2026) */
+.carte { border-radius: 24px; padding: 16px 18px; display: grid; gap: 10px; }
+.mu { margin: 0; color: var(--nv-mu); font-size: 13px; line-height: 1.45; }
+.centre { text-align: center; }
+.solde { font-size: 36px; line-height: 1.1; }
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.duo :global(.nv-btn), .duo :global(.nv-btn-sec) { width: 100%; }
+.liste { display: grid; gap: 4px; }
+.ligne { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; padding: 6px 0; border-top: 1px solid var(--nv-line); }
+.ligne span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recharge { display: grid; gap: 10px; justify-items: center; text-align: center; }
+.montant { font-size: 40px; }
+.stripe { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--nv-mu); }
+.autre { display: grid; gap: 6px; width: 100%; text-align: left; }
+.autre span { font-size: 13px; font-weight: 600; color: var(--muted); }
+.autre input { height: 46px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); padding: 0 12px; font: inherit; font-size: 16px; }
+.err { margin: 0; color: var(--red); font-size: 14px; }
+.payer { width: 100%; }

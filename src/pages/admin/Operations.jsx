@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import useAppStore  from '../../store/useAppStore'
 import PancartePrincipale from '../../components/PancartePrincipale'
-import useAuthStore, { ROLE_PAGES } from '../../store/useAuthStore'
+import useAuthStore, { pagesDuRole } from '../../store/useAuthStore'
 import useEventStore from '../../store/useEventStore'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
 import { getSettings } from '../../firebase/service'
@@ -103,7 +103,8 @@ export default function Operations({ onNavigate }) {
 
   // Pages autorisées pour ce user : rôle builtin OU rôle custom (créé via Settings)
   const customRole = (roles || []).find(r => r.id === user?.role)
-  const allowedPages = ROLE_PAGES[user?.role] || customRole?.pages || []
+  useAuthStore(st => st.borneEnPanne)   // écran 7 : « Encaisser » apparaît pendant une panne de borne
+  const allowedPages = pagesDuRole(user?.role) || customRole?.pages || []
 
   // Charge les seuils d'alertes paramétrables
   const [seuils, setSeuils] = useState(DEFAULT_SEUILS)
@@ -252,8 +253,8 @@ export default function Operations({ onNavigate }) {
             isMobile={isMobile}
             gradient="linear-gradient(135deg, #D89030 0%, #A87020 100%)"
             icon={<QrCode size={isMobile ? 36 : 44} strokeWidth={2}/>}
-            titre="Compte de secours"
-            description="Seulement si la liaison du site tombe"
+            titre="Compte pour un billet"
+            description="Billet acheté sans compte, à la demande du spectateur"
             stats={[
               { label: 'Comptes', value: (spectateurs || []).length },
               { label: 'Avec solde', value: (spectateurs || []).filter(s => (s.solde || 0) > 0).length },
@@ -275,8 +276,9 @@ export default function Operations({ onNavigate }) {
             ]}
           />
 
-          {/* Pancarte 4 : Liste des spectateurs */}
-          <PancartePrincipale
+          {/* Pancarte 4 : Liste des spectateurs — seulement pour les rôles qui ont la page
+              (23/11/2026 : plus la billetterie) */}
+          {allowedPages.includes('spectateurs') && <PancartePrincipale
             onClick={() => onNavigate && onNavigate('spectateurs', 'operations')}
             isMobile={isMobile}
             gradient="linear-gradient(135deg, #14B5B5 0%, #009090 100%)"
@@ -288,7 +290,7 @@ export default function Operations({ onNavigate }) {
               { label: 'Actifs', value: (spectateurs || []).filter(s => (s.solde || 0) > 0).length },
               { label: 'Solde total', value: fmtEShort((spectateurs || []).reduce((s, sp) => s + (Number(sp.solde) || 0), 0) / 100) },
             ]}
-          />
+          />}
 
           {/* Pancarte 5 : Remboursement (rendre le solde ou corriger un débit) */}
           <PancartePrincipale

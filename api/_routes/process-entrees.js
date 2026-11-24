@@ -51,7 +51,8 @@ module.exports = async (req, res) => {
   if (!parSecret) {
     const { verifyCaller } = require('../_auth/server')
     const caller = await verifyCaller(req).catch(() => null)
-    if (!caller || !['staff', 'benevole'].includes(caller.type)) { res.status(401).json({ error: 'Non autorisé.' }); return }
+    // 23/11/2026 (écran 8) : les bénévoles ne contrôlent plus les billets, seule l'équipe relance l'envoi
+    if (!caller || caller.type !== 'staff') { res.status(401).json({ error: 'Non autorisé.' }); return }
   }
   const url = process.env.YLLA_EM_URL || EM_URL
 

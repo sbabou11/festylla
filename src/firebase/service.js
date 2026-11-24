@@ -15,7 +15,7 @@ import {
   serverTimestamp, increment, runTransaction, writeBatch,
   arrayUnion, Timestamp } from 'firebase/firestore'
 import { db }        from './config'
-import { nowStr, uid, makeResaCode } from '../utils/helpers'
+import { nowStr, uid, makeResaCode, fmt } from '../utils/helpers'
 import { toCents } from '../utils/money'
 import { lireNumeroTicket } from '../menu/organiser'
 
@@ -2216,7 +2216,9 @@ export const getNextCommandeNumero = async (evId = null) => {
  * @param {string|null} evId           - ID de l'événement
  * @returns {Promise<{id, numero}>}    - L'ID Firestore et le numéro attribué
  */
-export const createCommande = async ({ specId, specDocId = null, specNom, items, payNow, staff, code, source, remise = false }, evId = null) => {
+// marque (écran 7, 23/11/2026) : champs ajoutés à la commande ET à la vente, ex. { panneBorne: true }
+// pour les ventes encaissées à la billetterie pendant une panne de la borne (comptées à part).
+export const createCommande = async ({ specId, specDocId = null, specNom, items, payNow, staff, code, source, remise = false, marque = null }, evId = null) => {
   const eventId = evId || getEventId()
   if (!eventId) throw new Error('Aucun événement courant')
   if (!specId) throw new Error('Spectateur requis')
@@ -2294,6 +2296,7 @@ export const createCommande = async ({ specId, specDocId = null, specNom, items,
     // Champs optionnels (omis si non définis pour ne pas polluer les cmd staff)
     ...(code   ? { code }   : {}),  // ex: 'BRN-XXXX-NNN' pour les cmd borne
     ...(source ? { source } : {}),  // ex: 'borne' / 'staff' / 'app'
+    ...(marque || {}),
   }
 
   let commandeId
@@ -2336,6 +2339,8 @@ export const createCommande = async ({ specId, specDocId = null, specNom, items,
         soldeBefore,
         soldeAfter,
         commandeNumero: numero,
+        ...(source ? { source } : {}),
+        ...(marque || {}),
         date: nowStr(),
         timestamp: now.toISOString(),
         heure: now.toLocaleTimeString('fr-FR'),
@@ -2349,9 +2354,9 @@ export const createCommande = async ({ specId, specDocId = null, specNom, items,
   })
 
   // Audit log (hors transaction, non bloquant)
-  await audit('COMMANDE_CREEE', {
+  await audit(marque?.panneBorne ? 'VENTE_PANNE_BORNE' : 'COMMANDE_CREEE', {
     specId, montant: total, staff,
-    label: `Commande #${numero} créée${payNow ? ' (débitée)' : ' (à débiter au retrait)'}`,
+    label: `Commande #${numero} créée${payNow ? ' (débitée)' : ' (à débiter au retrait)'}${marque?.panneBorne ? ' à la billetterie, borne en panne' : ''}`,
   })
 
   return { id: commandeId, numero, code: code || null }
@@ -2371,14 +2376,19 @@ export const CODE_RE = /^\d{6}$/
 const genererCode = () => String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0')
 
 /**
- * items : [{ id, nom, qty, prixUnit, standId?, standNumero? }] ; moyen : 'especes' | 'cb'
+ * items : [{ id, nom, qty, prixUnit, standId?, standNumero? }] ; moyen : 'especes' | 'cb' | 'solde'
+ * moyen 'solde' (23/11/2026, refonte des rôles) : spectateur qui a un compte mais pas son téléphone ;
+ *   compte = { docId, id, nom } choisi après « J'ai vérifié la pièce d'identité » ; son solde est
+ *   débité dans la même transaction, la vente porte son nom, l'audit et une notification suivent.
  * @returns {{ code, total, transactionId }}
  */
-export const creerCommandeSurPlace = async ({ items, moyen, staff }, evId = null) => {
+export const creerCommandeSurPlace = async ({ items, moyen, staff, compte = null, identiteVerifiee = false }, evId = null) => {
   const eventId = evId || getEventId()
   if (!eventId) throw new Error('Aucun événement courant')
   if (!Array.isArray(items) || items.length === 0) throw new Error('Aucun article dans la commande')
-  if (!['especes', 'cb'].includes(moyen)) throw new Error('Moyen de paiement à choisir')
+  if (!['especes', 'cb', 'solde'].includes(moyen)) throw new Error('Moyen de paiement à choisir')
+  if (moyen === 'solde' && (!compte?.docId || !identiteVerifiee)) throw new Error('Vérifiez la pièce d\'identité et choisissez le compte.')
+  const specRef = moyen === 'solde' ? doc(db, 'events', eventId, 'spectateurs', compte.docId) : null
   const lignes = items.map(it => ({
     id: it.id || '', nom: String(it.nom || ''),
     qty: Math.max(1, Number(it.qty) || 1), prixUnit: Number(it.prixUnit) || 0,
@@ -2401,11 +2411,24 @@ export const creerCommandeSurPlace = async ({ items, moyen, staff }, evId = null
         if (!data) throw new Error(`Article "${l.nom}" introuvable`)
         if ((data.stock || 0) < l.qty) throw new Error(`Stock insuffisant pour "${l.nom}" (${data.stock || 0} dispo)`)
       })
-      // Écritures : stock, vente encaissée, code
+      // Paiement par le solde : compte relu dans la transaction (solde à jour, billet valable)
+      let spec = null
+      if (specRef) {
+        const sSnap = await txn.get(specRef)
+        spec = sSnap.data()
+        if (!spec) throw new Error('Compte introuvable.')
+        if (spec.billet?.annule) throw new Error('Ce billet a été annulé : son solde ne peut pas servir.')
+        if ((spec.solde || 0) < total) throw new Error(`Solde insuffisant : il manque ${fmt(total - (spec.solde || 0))}.`)
+      }
+      // Écritures : stock, vente encaissée (ou débit du solde), code
       lignes.forEach((l, i) => txn.update(stockRefs[i], { stock: (stockDocs[i].data().stock || 0) - l.qty }))
+      if (specRef) txn.update(specRef, { solde: (spec.solde || 0) - total })
       txn.set(txRef, {
-        type: 'debit', surPlace: true, specId: null, specNom: 'Vente sur place',
-        label: `Commande sur place ${code} — ` + lignes.map(l => l.nom + (l.qty > 1 ? ` ×${l.qty}` : '')).join(', '),
+        type: 'debit', surPlace: true,
+        ...(specRef
+          ? { specId: spec.id || compte.id, specDoc: compte.docId, specNom: spec.nom || compte.nom || '', soldeBefore: spec.solde || 0, soldeAfter: (spec.solde || 0) - total, identiteVerifiee: true }
+          : { specId: null, specNom: 'Vente sur place' }),
+        label: `Commande sur place ${code}${specRef ? ' (solde, pièce vérifiée)' : ''} — ` + lignes.map(l => l.nom + (l.qty > 1 ? ` ×${l.qty}` : '')).join(', '),
         items: lignes.map(({ nom, qty, prixUnit, total: t }) => ({ nom, qty, prixUnit, total: t })),
         montant: total, moyen, staff: staff || '—', code,
         date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'),
@@ -2419,7 +2442,15 @@ export const creerCommandeSurPlace = async ({ items, moyen, staff }, evId = null
       return true
     })
     if (ok) {
-      await audit('COMMANDE_SUR_PLACE', { montant: total, staff, moyen, label: `Commande sur place ${code} (${moyen === 'especes' ? 'espèces' : 'carte'})` })
+      if (moyen === 'solde') {
+        await audit('COMMANDE_SUR_PLACE_SOLDE', { montant: total, staff, moyen, specId: compte.id, specNom: compte.nom,
+          label: `Commande sur place ${code} payée avec le solde de ${compte.nom || compte.id} (pièce d'identité vérifiée par ${staff || 'la billetterie'})` })
+        await notif('COMMANDE_GUICHET', 'Commande passée à votre place au guichet',
+          `${fmt(total)} ont été débités de votre solde pour une commande passée à la billetterie (code ${code}). Si ce n'est pas vous, prévenez l'organisation.`,
+          { specId: compte.id })
+      } else {
+        await audit('COMMANDE_SUR_PLACE', { montant: total, staff, moyen, label: `Commande sur place ${code} (${moyen === 'especes' ? 'espèces' : 'carte'})` })
+      }
       return { code, total, transactionId: txRef.id }
     }
   }
@@ -2466,9 +2497,10 @@ export const creerCodeEnLigne = async ({ specId, specNom, specDocId, items }, ev
 export const creerCodeBenevole = async ({ benevoleId, benevoleNom, items }, evId) => {
   if (!evId) throw new Error('Aucun événement courant')
   if (!Array.isArray(items) || items.length === 0) throw new Error('Aucun article dans la commande')
+  // Écran 13 (24/11/2026) : toute la carte ; le prix sert à l'affichage, la borne le recalcule
   const lignes = items.map(it => ({
     id: it.id || '', nom: String(it.nom || ''), qty: Math.max(1, Number(it.qty) || 1),
-    typeConsommation: it.typeConsommation || '',
+    typeConsommation: it.typeConsommation || '', prixUnit: Number(it.prixUnit) || 0,
   }))
   let last = null
   for (let essai = 0; essai < 8; essai++) {
@@ -2683,7 +2715,9 @@ export const lireCode = async (code, evId = null) => {
  * stands : stands de la carte, pour le numéro imprimé sur chaque ticket
  * @returns {{ id, numero, code, items, total, origine }}
  */
-export const utiliserCode = async (code, evId = null, { stands = [] } = {}) => {
+// guichet (écran 7, 23/11/2026) : nom de la personne de la billetterie qui imprime elle-même les
+// tickets pendant une panne de la borne (le code n'est alors jamais remis au client).
+export const utiliserCode = async (code, evId = null, { stands = [], guichet = null } = {}) => {
   const eventId = evId || getEventId()
   if (!CODE_RE.test(code || '')) throw new Error('Code à 6 chiffres attendu')
   const numero = await getNextCommandeNumero(eventId)
@@ -2742,8 +2776,9 @@ export const utiliserCode = async (code, evId = null, { stands = [] } = {}) => {
       items, total,
       // Ticket imprimé à la borne : vaut remise (aucun écran au stand)
       status: 'collected', paid: true, paidAt: serverTimestamp(), paidBy,
-      createdAt: serverTimestamp(), createdBy: 'Borne (code)',
-      readyAt: null, readyBy: null, collectedAt: serverTimestamp(), collectedBy: 'Ticket imprimé',
+      createdAt: serverTimestamp(), createdBy: guichet ? `Billetterie (${guichet})` : 'Borne (code)',
+      readyAt: null, readyBy: null, collectedAt: serverTimestamp(), collectedBy: guichet ? 'Ticket imprimé au guichet' : 'Ticket imprimé',
+      ...(guichet ? { panneBorne: true } : {}),
       cancelledAt: null, cancelledBy: null, cancelReason: null, refunded: false,
       date: nowStr(), timestamp: now.toISOString(), heure: now.toLocaleTimeString('fr-FR'),
       code, source: enLigne ? 'code-en-ligne' : 'code', moyen: enLigne ? 'solde' : (data.moyen || null),
@@ -2754,7 +2789,8 @@ export const utiliserCode = async (code, evId = null, { stands = [] } = {}) => {
     })
     return { items, total, origine: data.origine || 'billetterie', specId }
   })
-  await audit('CODE_UTILISE', { specId: r.specId, montant: r.total, staff: 'Borne', label: `Code ${code} utilisé · commande #${numero}` })
+  await audit('CODE_UTILISE', { specId: r.specId, montant: r.total, staff: guichet || 'Borne',
+    label: `Code ${code} utilisé · commande #${numero}${guichet ? ' · tickets imprimés à la billetterie (borne en panne)' : ''}` })
   return { id: commandeRef.id, numero, code, items: r.items, total: r.total, origine: r.origine }
 }
 

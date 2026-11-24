@@ -46,6 +46,9 @@ const SCANNER_TARGET_SIZE = 280
 // hint     : consigne sous la caméra
 // simulate : valeurs du bouton « Simuler un scan », affiché en développement seulement
 export default function QrScanner({
+  // onIllisible(texte) (23/11/2026, essai B1) : un QR a été lu mais ne correspond à rien ; sans ce
+  // rappel, la caméra l'ignore en silence (comportement d'origine)
+  onIllisible = null,
   onScan, onManual, placeholder = 'Code de secours (ex : KT-4821)',
   parse = parseSpecId,
   hint = "Pointez la caméra vers le QR affiché dans l'espace du spectateur",
@@ -71,6 +74,9 @@ export default function QrScanner({
   const scannerRef = useRef(null)
   const containerRef = useRef(null)
   const mountedRef = useRef(true)
+  const illisibleRef = useRef(onIllisible)
+  illisibleRef.current = onIllisible
+  const dernierIllisible = useRef({ texte: '', at: 0 })
   // Track caméra active (récupérée après démarrage) pour applyConstraints
   const videoTrackRef = useRef(null)
 
@@ -198,6 +204,14 @@ export default function QrScanner({
           if (mountedRef.current && onScan) {
             const id = parse(decodedText)
             if (id) onScan(id)
+            else if (illisibleRef.current) {
+              // La caméra relit le même QR plusieurs fois par seconde : un seul signal toutes les 3 s
+              const now = Date.now(), l = dernierIllisible.current
+              if (l.texte !== decodedText || now - l.at > 3000) {
+                dernierIllisible.current = { texte: decodedText, at: now }
+                illisibleRef.current(decodedText)
+              }
+            }
           }
         },
         () => {} // erreurs de frame silencieuses
@@ -372,13 +386,19 @@ export default function QrScanner({
           border: 0 !important;
           position: relative !important;
         }
+        /* 23/11/2026 : sur iPhone, la vidéo arrive en portrait (9:16) et restait dessinée en bande
+           étroite au milieu du carré noir. Elle remplit maintenant tout le carré (recadrée, jamais
+           déformée), quelle que soit l'orientation livrée par la caméra. */
         #${SCANNER_ID} video,
         #${SCANNER_ID} canvas {
-          width: ${size}px !important;
-          height: ${size}px !important;
-          max-width: 100% !important;
-          max-height: ${size}px !important;
+          position: absolute !important;
+          inset: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          max-width: none !important;
+          max-height: none !important;
           object-fit: cover !important;
+          object-position: center !important;
           display: block !important;
         }
         /* Le carré "qrbox" overlay de la lib peut aussi déborder */

@@ -17,7 +17,9 @@ import {
   onSnapshot, serverTimestamp, query, orderBy,
 } from 'firebase/firestore'
 import { nowStr } from '../../utils/helpers'
-import { setPasswordFor } from '../../store/useAuthStore'
+import useAuthStore, { setPasswordFor, setRoleBenevole } from '../../store/useAuthStore'
+import useAppStore from '../../store/useAppStore'
+import { labelRoleEquipe } from '../../utils/roleEquipe'
 import { friendlyError } from '../../utils/errors'
 import { addAuditLog } from '../../firebase/service'
 import { genUsername } from '../../store/useAuthStore'
@@ -43,6 +45,20 @@ function BenevolesYllaCash() {
   // Fenêtres de confirmation (remplacent window.confirm)
   const [pendingDel, setPendingDel]     = useState(null)
   const [pendingReset, setPendingReset] = useState(null)
+  // Écran 10 : rôle d'équipe d'un bénévole, donné par un admin seulement (vérifié aussi par le serveur)
+  const roleAdmin = ['admin', 'super_admin'].includes(useAuthStore(st => st.user?.role))
+  const staff = useAppStore(st => st.staff) || []
+  // roleChange : { role, mdp } ou null ; envoyé au serveur après l'enregistrement de la fiche
+  const enregistrerRole = async (id, roleChange) => {
+    if (!roleChange || !currentEventId) return
+    try {
+      await setRoleBenevole(`events/${currentEventId}/benevoles/${id}`, roleChange.role, roleChange.mdp || undefined)
+      toast.success(roleChange.role ? `Rôle « ${labelRoleEquipe(roleChange.role)} » donné · noté au journal d'audit` : 'Rôle d\'équipe retiré')
+    } catch (e) {
+      toast.error(friendlyError(e, 'La fiche est enregistrée, mais pas le rôle d\'équipe.'))
+      throw e
+    }
+  }
 
   // Annuaire des bénévoles (prénom, nom, poste) lu par l'espace bénévole pour afficher les noms du
   // planning : les fiches complètes restent réservées à l'équipe (sécurité, lot 3)
@@ -75,7 +91,7 @@ function BenevolesYllaCash() {
   }, [])
 
   // ── CRUD ─────────────────────────────────────────────────────────
-  const createBenevole = async (data) => {
+  const createBenevole = async (data, roleChange = null) => {
     // Générer les identifiants de connexion
     const username = genUsername(data.prenom + ' ' + data.nom)
     // Mot de passe de départ inchangé (identifiant + 123), mais enregistré par le serveur en empreinte
@@ -104,10 +120,12 @@ function BenevolesYllaCash() {
       userType: 'admin',
       label: `Création bénévole : ${data.prenom} ${data.nom}`,
     })
+    // La fiche existe déjà : en cas d'échec du rôle, on ferme quand même (le rôle se redonne en modifiant)
+    try { await enregistrerRole(docRef.id, roleChange) } catch { /* message déjà affiché */ }
     setShowForm(false)
   }
 
-  const saveBenevole = async (data) => {
+  const saveBenevole = async (data, roleChange = null) => {
     // Recalculer les droits et ajuster la consommation si besoin
     const old    = editing
     const newDroits = data.droits
@@ -131,6 +149,7 @@ function BenevolesYllaCash() {
       userType: 'admin',
       label: `Modification bénévole : ${data.prenom} ${data.nom}`,
     })
+    await enregistrerRole(old.id, roleChange)
     setEditing(null)
   }
 
@@ -237,12 +256,12 @@ function BenevolesYllaCash() {
 
       {/* Formulaire création */}
       {showForm && !editing && (
-        <FormBenevole onSave={createBenevole} onCancel={() => setShowForm(false)}/>
+        <FormBenevole onSave={createBenevole} onCancel={() => setShowForm(false)} roleAdmin={roleAdmin} staff={staff}/>
       )}
 
       {/* Formulaire édition */}
       {editing && (
-        <FormBenevole initial={editing} onSave={saveBenevole} onCancel={() => setEditing(null)}/>
+        <FormBenevole initial={editing} onSave={saveBenevole} onCancel={() => setEditing(null)} roleAdmin={roleAdmin} staff={staff}/>
       )}
 
       {/* ── SECTION PLANNING ── */}
@@ -277,7 +296,7 @@ function BenevolesYllaCash() {
           ) : (
             <div className={clsx(s.list, 'yc-stagger')}>
               {filtered.map(b => (
-                <CarteBenevole key={b.id} b={b}
+                <CarteBenevole key={b.id} b={b} roleAdmin={roleAdmin}
                   onEdit={setEditing}
                   onGeneratePDF={(b) => generateBenevrolePDF(b, null, currentEventId)}
                   onDelete={deleteBenevole}

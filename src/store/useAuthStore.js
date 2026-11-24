@@ -80,6 +80,8 @@ export const PERMISSIONS = {
   stand:        { credit:false, debit:true,  retrait:true,  rapports:false, menu:false, staff:false, studio:false, reservations:true,  analytics:false, alertes:false },
   consultation: { credit:false, debit:false, retrait:false, rapports:true,  menu:false, staff:false, studio:false, reservations:true,  analytics:true,  alertes:false },
   directeur_artistique: { credit:false, debit:false, retrait:false, rapports:false, menu:false, staff:false, studio:false, reservations:false, analytics:false, alertes:false },
+  // 23/11/2026 (refonte des rôles) : scanner les billets à l'entrée, rien d'autre
+  controle_entree: { credit:false, debit:false, retrait:false, rapports:false, menu:false, staff:false, studio:false, reservations:false, analytics:false, alertes:false },
 }
 
 // Ouvre la session YllaCash d'une fiche renvoyée par le serveur (mot de passe ou Microsoft).
@@ -105,6 +107,18 @@ function openSession(set, compte, method) {
 }
 
 /** Fixe le mot de passe d'une fiche (administrateur) : 'events/<ev>/staff/<id>', 'staff/<id>' ou 'events/<ev>/benevoles/<id>' */
+// Écran 10 (23/11/2026) : un admin donne ou retire le rôle d'équipe d'un bénévole, par le serveur.
+// nouveau : mot de passe du rôle (obligatoire pour donner un rôle). Renvoie { ok, username }.
+export async function setRoleBenevole(cible, role, nouveau) {
+  return apiFetch('/api/mot-de-passe', { body: { mode: 'role-benevole', cible, role: role || '', ...(nouveau ? { nouveau } : {}) } })
+}
+
+// Écran 12 (24/11/2026) : ouverture exceptionnelle de l'onglet de rôle par un admin (serveur)
+export const ouvrirExceptionRole = (cible, minutes, motif) =>
+  apiFetch('/api/mot-de-passe', { body: { mode: 'role-exception', cible, minutes, motif } })
+export const annulerExceptionRole = (cible) =>
+  apiFetch('/api/mot-de-passe', { body: { mode: 'role-exception-annuler', cible } })
+
 export async function setPasswordFor(cible, nouveau) {
   await apiFetch('/api/mot-de-passe', { body: { mode: 'definir', cible, nouveau } })
   return true
@@ -113,15 +127,32 @@ export async function setPasswordFor(cible, nouveau) {
 export const ROLE_PAGES = {
   super_admin:  ['evenements','accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','debit','remboursement','lien-perdu','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
   admin:        ['accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','debit','remboursement','lien-perdu','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
-  billetterie:  ['accueil','operations','spectateurs-hub','credit','commande-sur-place','nouveau','cloture','remboursement','lien-perdu','transactions','spectateurs','qr-entree','entree','mon-profil'],
+  // 23/11/2026 (refonte des rôles) : plus de Spectateurs & Accès, liste des spectateurs, QR code entrée
+  // ni contrôle des billets (rôle « Contrôle entrée »)
+  billetterie:  ['accueil','operations','credit','commande-sur-place','nouveau','cloture','remboursement','lien-perdu','transactions','mon-profil'],
   stand:        ['accueil','operations','debit','reservations-admin','transactions','mon-profil'],
   consultation: ['accueil','transactions','reservations-admin','analytics','comptabilite','mon-profil'],
-  directeur_artistique: ['accueil','gestion-artistes','planning','cachets','mon-profil'],
+  // 23/11/2026 (refonte des rôles) : plus de « Cachets », gérés par les admins
+  directeur_artistique: ['accueil','gestion-artistes','planning','mon-profil'],
+  controle_entree: ['entree','mon-profil'],
   benevole:     ['mon-profil'],
 }
 
+// Écran 7 (23/11/2026) : « Encaisser » n'est ouvert à la billetterie que pendant une panne de la
+// borne déclarée par un admin (réglage borneEnPanne, suivi en direct par l'espace équipe).
+export const PAGES_PANNE_BORNE = { billetterie: ['debit'] }
+export function pagesDuRole(role) {
+  const base = ROLE_PAGES[role]
+  if (!base) return base
+  const enPlus = PAGES_PANNE_BORNE[role]
+  // Jamais au milieu d'une vente : si la panne est levée pendant un encaissement, la page reste
+  // ouverte jusqu'à la fin de cette vente (encaissementEnCours, posé par la caisse)
+  const st = useAuthStore.getState()
+  return enPlus && (st.borneEnPanne || st.encaissementEnCours) ? [...base, ...enPlus] : base
+}
+
 export const ROLE_HOME = {
-  super_admin:'evenements', admin:'accueil', billetterie:'accueil', stand:'accueil', consultation:'accueil', directeur_artistique:'accueil', benevole:'mon-profil',
+  super_admin:'evenements', admin:'accueil', billetterie:'accueil', stand:'accueil', consultation:'accueil', directeur_artistique:'accueil', controle_entree:'entree', benevole:'mon-profil',
 }
 
 const useAuthStore = create(
@@ -131,6 +162,20 @@ const useAuthStore = create(
       // Connexion expirée (20/11/2026) : la base a refusé une écoute de l'équipe alors que quelqu'un
       // est connecté. Jamais gardé sur l'appareil ; remis à zéro à la connexion et à la déconnexion.
       sessionExpiree:false,
+      // Borne déclarée en panne par un admin (jamais gardé sur l'appareil : relu en direct)
+      borneEnPanne:false,
+      setBorneEnPanne: (v) => { if (get().borneEnPanne !== !!v) set({ borneEnPanne: !!v }) },
+      // Écran 11 (24/11/2026) : onglet de rôle d'un bénévole ouvert. Les pages de l'équipe lisent `user` :
+      // pendant l'ouverture, `user` prend le rôle (billetterie…) et le nom du bénévole ; `userAvant` garde
+      // la personne d'avant (ou null) et revient au verrouillage. Jamais gardé sur l'appareil.
+      userAvant: undefined,
+      ouvrirRoleBenevole: ({ role, nom, ficheId, eventId }) => set(s => ({
+        userAvant: s.userAvant !== undefined ? s.userAvant : s.user,
+        user: { id: ficheId, nom, role, email: '', username: '', avatar: null, eventId, isBenevole: true, roleTemporaire: true, via: 'role' },
+      })),
+      fermerRoleBenevole: () => set(s => (s.userAvant === undefined ? {} : { user: s.userAvant, userAvant: undefined })),
+      encaissementEnCours:false,
+      setEncaissementEnCours: (v) => { if (get().encaissementEnCours !== !!v) set({ encaissementEnCours: !!v }) },
       signalerSessionExpiree: () => { if (get().user && !get().sessionExpiree) set({ sessionExpiree:true }) },
 
       login: async (username, password) => {
@@ -204,7 +249,7 @@ const useAuthStore = create(
         const { user } = get()
         // L'audit part encore avec la session, puis la session Firebase est fermée
         const audit = user ? writeAudit('DECONNEXION', { staff: user.nom, role: user.role, userType: user.role === 'benevole' ? 'benevole' : 'staff', label: `Déconnexion de ${user.nom}` }).catch(()=>{}) : Promise.resolve()
-        set({ user:null, token:null, loginError:null, espaceChoisi:'', sessionExpiree:false })
+        set({ user:null, token:null, loginError:null, espaceChoisi:'', sessionExpiree:false, userAvant: undefined, encaissementEnCours:false })
         audit.finally(() => closeFirebaseSession())
       },
 
@@ -214,6 +259,12 @@ const useAuthStore = create(
         try {
           const payload = JSON.parse(atob(token))
           if (payload.exp < Date.now()) { set({ user:null, token:null }); return false }
+          // Refonte des rôles (23/11/2026) : une session ouverte avec le rôle « stand », retiré, se ferme
+          if (payload.role === 'stand' || get().user?.role === 'stand') {
+            closeFirebaseSession()
+            set({ user:null, token:null, espaceChoisi:'', loginError: 'Ce compte est désactivé : le rôle « Stand » n\'existe plus. Demandez un autre rôle à l\'organisation.' })
+            return false
+          }
           return true
         } catch { set({ user:null, token:null }); return false }
       },
@@ -255,7 +306,7 @@ const useAuthStore = create(
         const { user } = get()
         if (!user) return false
         // Rôles intégrés
-        if (ROLE_PAGES[user.role]) return ROLE_PAGES[user.role].includes(pageId)
+        if (ROLE_PAGES[user.role]) return pagesDuRole(user.role).includes(pageId)
         // Rôles personnalisés — lire depuis le store via le registre global
         try {
           // Accès indirect pour éviter les imports circulaires
@@ -277,7 +328,8 @@ const useAuthStore = create(
       setAvatar: (src) => set(s => ({ user: s.user ? { ...s.user, avatar:src } : null })),
       setNom:    (nom) => set(s => ({ user: s.user ? { ...s.user, nom } : null })),
     }),
-    { name:'yllacash-auth', partialize:(s) => ({ user:s.user, token:s.token }) }
+    // Écran 11 : l'identité prise par un onglet de rôle n'est jamais gardée (on garde la personne d'avant)
+    { name:'yllacash-auth', partialize:(s) => ({ user: s.user?.roleTemporaire ? (s.userAvant ?? null) : s.user, token:s.token }) }
   )
 )
 

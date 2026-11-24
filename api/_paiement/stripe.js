@@ -27,7 +27,9 @@ function retourValide(retour, host) {
   try { u = new URL(String(retour || '')) } catch { return null }
   const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(u.host)
   if (!host || u.host !== host || (u.protocol !== 'https:' && !(local && u.protocol === 'http:'))) return null
-  if (!['/solde', '/balance', '/spectateur'].includes(u.pathname)) return null
+  // /benevole : porte-monnaie du bénévole (écran 13, 24/11/2026)
+  // « / » : bénévole connecté par mot de passe (son espace s'ouvre à l'accueil de l'appli)
+  if (!['/solde', '/balance', '/spectateur', '/benevole', '/'].includes(u.pathname)) return null
   u.searchParams.delete('recharge')
   u.searchParams.delete('annule')
   return u.toString()

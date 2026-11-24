@@ -27,7 +27,9 @@ import s from './EntreeControl.module.css'
 
 const ICON = { ok: CheckCircle2, warn: AlertTriangle, bad: XCircle }
 
-export default function EntreeControl({ eventId, par, showSendIssues = false }) {
+// evenement : nom de l'événement (messages « Billet inconnu »)
+// voirAuteur : montre « Enregistrée par » (23/11/2026 : administrateurs et consultation seulement)
+export default function EntreeControl({ eventId, par, showSendIssues = false, evenement = '', voirAuteur = false }) {
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)
   const [entrees, setEntrees] = useState([])
@@ -41,7 +43,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
 
   const control = async (raw) => {
     const specId = lireBillet(raw)
-    if (!specId) { setResult({ status: 'inconnu' }); return }
+    if (!specId) { setResult({ status: 'pas-billet', lu: raw }); return }
     // La caméra relit le même billet plusieurs fois par seconde : on ne le traite qu'une fois
     const now = Date.now()
     if (busyRef.current || (last.current.id === specId && now - last.current.at < 4000)) return
@@ -49,10 +51,12 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
     busyRef.current = true; setBusy(true)
     try {
       const r = await controlerBillet({ eventId, specId, par })
-      setResult(r)
+      setResult(r.status === 'inconnu' ? { ...r, specId, evenement } : r)
       navigator.vibrate?.(r.status === 'valable' ? 40 : [80, 60, 80])
     } catch (e) {
-      toast.error(friendlyError(e, 'Le contrôle n\'a pas abouti.'))
+      // La vraie raison reste affichée à la place du résultat (réseau, droits…)
+      setResult({ status: 'erreur', raison: friendlyError(e, 'Le contrôle n\'a pas abouti.') })
+      navigator.vibrate?.([80, 60, 80])
     } finally { busyRef.current = false; setBusy(false) }
   }
 
@@ -60,7 +64,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
   const controlRef = useRef(control)
   controlRef.current = control
   useEffect(() => {
-    const wedge = createWedge({ onScan: (code) => controlRef.current(code), onTournant: (jeton) => controlRef.current(jeton), onUnknown: () => setResult({ status: 'inconnu' }) })
+    const wedge = createWedge({ onScan: (code) => controlRef.current(code), onTournant: (jeton) => controlRef.current(jeton), onUnknown: (texte) => setResult({ status: 'pas-billet', lu: typeof texte === 'string' ? texte : '' }) })
     const onKey = (e) => { if (wedge.feed(e)) e.preventDefault() }
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('keydown', onKey, true); wedge.reset() }
@@ -97,7 +101,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
       )}
 
       {/* parse dédié : saisie du code seul (pas de recherche par nom ni de « récemment servis ») */}
-      <QrScanner onScan={control} parse={lireBillet} placeholder="Code du billet (ex : K7Q3NP)" hint="Présentez le billet devant la caméra ou le lecteur"
+      <QrScanner onScan={control} parse={lireBillet} onIllisible={(texte) => setResult({ status: 'pas-billet', lu: texte })} placeholder="Code du billet (ex : K7Q3NP)" hint="Présentez le billet devant la caméra ou le lecteur"
         simulate={['FY-K7Q3NP', 'FY-AB2C3D', 'FY-ZZ9Z9Z']}/>
 
       <div aria-live="assertive" className={s.resultZone}>
@@ -150,7 +154,7 @@ export default function EntreeControl({ eventId, par, showSendIssues = false }) 
           ] },
           { label: 'Entrée', rows: [
             ['Heure', ouverteE.heure || '—'],
-            ['Enregistrée par', ouverteE.par?.nom || null],
+            ['Enregistrée par', voirAuteur ? (ouverteE.par?.nom || null) : null],
             ['État', ouverteE.annulee ? 'Annulée' : 'Valable'],
           ] },
         ] : []}
