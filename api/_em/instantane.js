@@ -47,6 +47,18 @@ const links = (v) => {
   if (isObj(v)) for (const k of LINKS) { const u = httpsUrl(v[k]); if (u) out[k] = u }
   return out
 }
+// Version 1.2 (§3.2, 24/11/2026) : créneaux des postes qui ouvrent un rôle de YllaCash.
+// Créneau incomplet : jour, debut ou fin à null (horaire manquant). Seul `role` fait foi.
+const ROLES_CRENEAU = ['billetterie', 'controle_entree', 'consultation']
+const creneaux = (v) => (Array.isArray(v) ? v : [])
+  .filter(c => isObj(c) && ROLES_CRENEAU.includes(c.role))
+  .slice(0, 200)
+  .map(c => ({
+    jour: typeof c.jour === 'string' && DAY.test(c.jour) ? c.jour : null,
+    debut: typeof c.debut === 'string' && HOUR.test(c.debut) ? c.debut : null,
+    fin: typeof c.fin === 'string' && HOUR.test(c.fin) ? c.fin : null,
+    poste: text(c.poste, 80), role: c.role,
+  }))
 const uniqueById = (list) => {
   const seen = new Set()
   return list.filter(x => x && !seen.has(x.id) && seen.add(x.id))
@@ -84,7 +96,11 @@ function normalizeSnapshot(json) {
 
   const benevoles = uniqueById(json.benevoles.map(b => {
     if (!isObj(b) || !id(b.id)) return null
-    return { id: id(b.id), prenom: text(b.prenom, 60), nom: text(b.nom, 80), droits: perDay(b.droits), controleBillets: days(b.controleBillets) }
+    return {
+      id: id(b.id), prenom: text(b.prenom, 60), nom: text(b.nom, 80), droits: perDay(b.droits), controleBillets: days(b.controleBillets),
+      // Version 1.2 (§3.2) : présent seulement si Event Manager l'envoie (sinon YllaCash attend)
+      ...(Array.isArray(b.creneaux) ? { creneaux: creneaux(b.creneaux) } : {}),
+    }
   }))
 
   return {
@@ -195,7 +211,9 @@ function equipeDocs(data) {
   return {
     benevoles: data.benevoles.map(b => ({
       docId: 'em-' + docId(b.id),
-      data: { emId: b.id, prenom: b.prenom, nom: b.nom, droitsJours: parJour(b.droits), controleBillets: b.controleBillets },
+      data: { emId: b.id, prenom: b.prenom, nom: b.nom, droitsJours: parJour(b.droits), controleBillets: b.controleBillets,
+        // Version 1.2 : créneaux des postes à rôle (onglet de rôle de l'espace bénévole, écran 11)
+        ...(b.creneaux ? { creneauxEm: b.creneaux } : {}) },
     })),
     artistes: data.artistes.map(a => ({
       docId: 'em-' + docId(a.id),

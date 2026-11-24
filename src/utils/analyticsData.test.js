@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { expectedTill, countTotal, ventesPanneBorne } from './analyticsData'
+import { expectedTill, countTotal, ventesPanneBorne, codesEnAttente } from './analyticsData'
 import { makeResaCode } from './helpers'
 
 const H = 3600 * 1000
@@ -65,6 +65,26 @@ describe('clôture : ventes payées par le solde (23/11/2026)', () => {
     expect(tout.parStaff).toEqual({ Awa: 2, Malik: 1 })
     expect(expectedTill(logs, { from: day, to: day + 24 * H }).inconnu.n).toBe(0)
     expect(ventesPanneBorne(logs, { from: day, to: day + 24 * H, staff: 'Malik' }).total).toBe(500)
+  })
+})
+
+describe('clôture : codes payés pas encore imprimés (24/11/2026)', () => {
+  const iso = (h) => new Date(day + h * H).toISOString()
+  const codes = [
+    { code: '482913', origine: 'billetterie', statut: 'en_attente', total: 1200, moyen: 'especes', staff: 'Awa', timestamp: iso(2) },
+    { code: '105774', origine: 'billetterie', statut: 'en_attente', total: 600, moyen: 'cb', staff: 'Awa', timestamp: iso(3) },
+    { code: '777777', origine: 'billetterie', statut: 'utilise', total: 900, staff: 'Awa', timestamp: iso(1) },   // ticket imprimé
+    { code: '888888', origine: 'en-ligne', statut: 'en_attente', total: 500, timestamp: iso(1) },                 // spectateur, pas la caisse
+    { code: '999999', origine: 'billetterie', statut: 'en_attente', total: 300, staff: 'Karim', timestamp: iso(2) },
+    { code: '111111', origine: 'billetterie', statut: 'en_attente', total: 400, staff: 'Awa', timestamp: iso(30) }, // autre jour
+  ]
+  it('ne garde que les codes de la billetterie en attente, sur la période', () => {
+    const r = codesEnAttente(codes, { from: day, to: day + 24 * H })
+    expect(r.n).toBe(3); expect(r.total).toBe(2100)
+  })
+  it('par caisse', () => {
+    const r = codesEnAttente(codes, { from: day, to: day + 24 * H, staff: 'Awa' })
+    expect(r.liste.map(c => c.code)).toEqual(['482913', '105774']); expect(r.total).toBe(1800)
   })
 })
 

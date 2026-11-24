@@ -389,8 +389,7 @@ export default function QrScanner({
         /* 23/11/2026 : sur iPhone, la vidéo arrive en portrait (9:16) et restait dessinée en bande
            étroite au milieu du carré noir. Elle remplit maintenant tout le carré (recadrée, jamais
            déformée), quelle que soit l'orientation livrée par la caméra. */
-        #${SCANNER_ID} video,
-        #${SCANNER_ID} canvas {
+        #${SCANNER_ID} video {
           position: absolute !important;
           inset: 0 !important;
           width: 100% !important;
@@ -400,6 +399,12 @@ export default function QrScanner({
           object-fit: cover !important;
           object-position: center !important;
           display: block !important;
+        }
+        /* 24/11/2026 : la toile de lecture du QR reste cachée. Placée par-dessus la vidéo (réglage du
+           23/11), elle apparaissait en blanc sur iPhone et masquait la caméra. La bibliothèque la lit
+           sans qu'elle soit affichée. */
+        #${SCANNER_ID} canvas {
+          display: none !important;
         }
         /* Le carré "qrbox" overlay de la lib peut aussi déborder */
         #${SCANNER_ID} #qr-shaded-region {

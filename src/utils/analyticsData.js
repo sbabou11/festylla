@@ -131,6 +131,21 @@ export const moyenOf = (t) => {
 export const isEncaissementCaisse = (t) => t.type === 'credit' || (t.type === 'debit' && t.surPlace === true && t.moyen !== 'solde')
 
 /**
+ * Clôture (24/11/2026) : commandes sur place payées à la billetterie dont le ticket n'est pas encore
+ * imprimé à la borne (code en attente). Déjà comptées dans l'attendu ; signalées à part.
+ * codes : events/{ev}/codes ; staff : nom du caissier, ou null pour toutes les caisses
+ */
+export function codesEnAttente(codes = [], { from, to, staff = null }) {
+  const liste = codes.filter(c => {
+    if (c.origine !== 'billetterie' || c.statut !== 'en_attente') return false
+    if (staff && (c.staff || '—') !== staff) return false
+    const ms = Date.parse(c.timestamp || '')
+    return Number.isFinite(ms) && ms >= from && ms < to
+  }).sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)))
+  return { n: liste.length, total: liste.reduce((s, c) => s + (Number(c.total) || 0), 0), liste }
+}
+
+/**
  * Écran 7 (23/11/2026) : ventes encaissées à la billetterie pendant une panne de la borne.
  * Payées par le solde : hors de la caisse et de l'écart, montrées à part dans la clôture.
  * staff : nom du caissier, ou null pour toutes les caisses

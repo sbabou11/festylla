@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { normalizeSnapshot, lectureDue, classify, nextLecture, parisToMs, programmeDocs, INTERVAL_MS } = require('./instantane.js')
+const { normalizeSnapshot, lectureDue, classify, nextLecture, parisToMs, programmeDocs, equipeDocs, INTERVAL_MS } = require('./instantane.js')
 const { refreshEvent } = require('./lecture.js')
 
 const V = '0123456789abcdef0123456789abcdef'
@@ -33,6 +33,22 @@ describe('normalizeSnapshot', () => {
     expect(r.data.artistes[0].avantages).toEqual([{ jour: '2027-05-15', repas: 2, boissons: 4, eau: 4 }])
     expect(r.data.benevoles[0]).not.toHaveProperty('email')
     expect(r.data.benevoles[0].controleBillets).toEqual(['2027-05-15'])
+  })
+  // Règle d'échange 1.2 (24/11/2026) : créneaux des postes à rôle
+  it('garde les créneaux à rôle, horaires manquants à null ; absents si non envoyés', () => {
+    const s = sample()
+    s.benevoles[0].creneaux = [
+      { jour: '2027-05-15', debut: '12:35', fin: '15:35', poste: 'Billetterie', role: 'billetterie', note: 'privé' },
+      { jour: '2027-05-16', debut: null, fin: null, poste: 'Billetterie', role: 'billetterie' },
+      { jour: '2027-05-15', debut: '10:00', fin: '11:00', poste: 'Bar', role: 'admin' },   // rôle inconnu : écarté
+    ]
+    const r = normalizeSnapshot(s)
+    expect(r.data.benevoles[0].creneaux).toEqual([
+      { jour: '2027-05-15', debut: '12:35', fin: '15:35', poste: 'Billetterie', role: 'billetterie' },
+      { jour: '2027-05-16', debut: null, fin: null, poste: 'Billetterie', role: 'billetterie' },
+    ])
+    expect(normalizeSnapshot(sample()).data.benevoles[0]).not.toHaveProperty('creneaux')
+    expect(equipeDocs(r.data).benevoles[0].data.creneauxEm).toHaveLength(2)
   })
   it('refuse une réponse incomplète', () => {
     expect(normalizeSnapshot(null).ok).toBe(false)

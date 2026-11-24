@@ -33,7 +33,7 @@ import { useOffline }    from './hooks/useOffline'
 import { useFirestore }  from './hooks/useFirestore'
 import { useBreakpoint } from './hooks/useBreakpoint'
 import TeamChat from './components/TeamChat'
-import useAuthStore, { ROLE_HOME } from './store/useAuthStore'
+import useAuthStore, { ROLE_HOME, ROLES_AUDIT } from './store/useAuthStore'
 import { doc as fsDoc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 import { db as fsDb } from './firebase/config'
 import useAppStore from './store/useAppStore'
@@ -570,7 +570,7 @@ function StaffApp() {
         )}
 
         {/* Journal d'audit */}
-        <AuditPanel open={auditOpen} onClose={() => setAuditOpen(false)} />
+        {ROLES_AUDIT.includes(user.role) && <AuditPanel open={auditOpen} onClose={() => setAuditOpen(false)} />}
 
         {/* Chat équipe — pour tous les staff connectés avec un événement actif */}
         {evStore.currentEventId && (

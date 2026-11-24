@@ -275,7 +275,8 @@ service cloud.firestore {
         allow create: if roleOuvert(ev, 'cloture') && request.auth.token.get('roleEquipe', '') == 'billetterie';
       }
       match /audit/{id} {
-        allow read: if staffIn(ev) || legacy(ev);
+        // 24/11/2026 : lecture réservée aux admins, super admins et consultation (l'écriture reste ouverte à tous)
+        allow read: if (staffIn(ev) && (isAdmin() || request.auth.token.role == 'consultation')) || legacy(ev);
         allow create: if staffIn(ev) || legacy(ev) || inEvent(ev);
         allow update, delete: if false;
       }

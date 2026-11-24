@@ -22,7 +22,7 @@ const {
   spectatorSession, LINK_KINDS, linkDocId, deviceSession, sessionFor, publicAccount, newKey,
   checkPassword, ROLES_EQUIPE_BENEVOLE,
 } = require('../_auth/core')
-const { creneauxDuRole, fenetreRole, claimsRole, avecException, exceptionActive } = require('../_auth/role')
+const { creneauxDuRole, creneauxEmDuRole, fenetreRole, claimsRole, avecException, exceptionActive } = require('../_auth/role')
 const { assurerPorteMonnaie, nomFiche } = require('../_auth/porteMonnaie')
 const { admin, getDb, clientIp, verifyCaller, loadAccount, writeAudit, ADMIN_ROLES } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
@@ -66,9 +66,14 @@ async function ongletRole(req, res, db, ev, body) {
     if (!ROLES_EQUIPE_BENEVOLE.includes(role)) { res.status(200).json({ role: '', etat: 'sans-role', maintenant: now }); return }
     let creneaux = []
     let attenteEm = false
+    let sansHoraire = false
     if (account.data.source === 'event-manager') {
-      // Les créneaux d'Event Manager ne sont pas encore envoyés (règle d'échange 1.2 en discussion)
-      attenteEm = true
+      // Règle d'échange 1.2 (§3.2) : créneaux des postes à rôle, copiés de l'instantané d'Event Manager.
+      // Pas encore reçus (ancienne version) : on attend.
+      if (Array.isArray(account.data.creneauxEm)) {
+        const r = creneauxEmDuRole(account.data.creneauxEm, role)
+        creneaux = r.creneaux; sansHoraire = r.sansHoraire
+      } else attenteEm = true
     } else {
       const evRef = db.collection('events').doc(ev)
       const [shifts, posts] = await Promise.all([evRef.collection('volunteer-shifts').get(), evRef.collection('volunteer-posts').get()])
@@ -84,7 +89,7 @@ async function ongletRole(req, res, db, ev, body) {
     if (body.mode === 'role-etat') {
       // Un jeton d'ouverture exceptionnelle n'est plus valable si l'admin l'a annulée
       const jetonValable = !!t.roleEquipe && Number(t.roleJusqua) > now && (!t.roleExc || !!exceptionActive(account.data, now))
-      res.status(200).json({ role, ...fenetre, attenteEm, ouvert: jetonValable, maintenant: now }); return
+      res.status(200).json({ role, ...fenetre, attenteEm, sansHoraire, ouvert: jetonValable, maintenant: now }); return
     }
 
     // Déverrouillage : identifiant et mot de passe de la fiche, essais limités
@@ -99,7 +104,9 @@ async function ongletRole(req, res, db, ev, body) {
     }
     await essais.delete().catch(() => {})
     if (fenetre.etat !== 'ouvert' && fenetre.etat !== 'cloture') {
-      res.status(403).json({ error: attenteEm ? 'Vos créneaux ne sont pas encore arrivés d\'Event Manager : l\'onglet reste fermé.' : 'Pas de créneau en cours sur un poste de votre rôle : l\'onglet reste fermé.', ...fenetre }); return
+      res.status(403).json({ error: attenteEm ? 'Vos créneaux ne sont pas encore arrivés d\'Event Manager : l\'onglet reste fermé.'
+        : sansHoraire ? 'Créneau sans horaire dans Event Manager : demandez à l\'organisation de le compléter.'
+        : 'Pas de créneau en cours sur un poste de votre rôle : l\'onglet reste fermé.', ...fenetre }); return
     }
     const claims = claimsRole(base.claims, { role, fenetre })
     const a = (ms) => new Date(ms).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })

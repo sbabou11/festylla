@@ -55,6 +55,22 @@ function creneauxDuRole({ shifts = [], posts = {}, benevId, role }) {
 }
 
 /**
+ * Créneaux envoyés par Event Manager (règle d'échange 1.2, §3.2) pour ce rôle.
+ * Renvoie { creneaux, sansHoraire } : sansHoraire = un créneau de ce rôle n'a pas d'horaire complet.
+ */
+function creneauxEmDuRole(creneauxEm = [], role) {
+  const out = []
+  let sansHoraire = false
+  for (const c of creneauxEm || []) {
+    if (!c || c.role !== role) continue
+    const b = c.jour && c.debut ? bornes(c.jour, c.debut, c.fin) : null
+    if (!b || !c.fin) { sansHoraire = true; if (!b) continue }
+    out.push({ ...b, poste: c.poste || '' })
+  }
+  return { creneaux: out.sort((a, b) => a.debut - b.debut), sansHoraire }
+}
+
+/**
  * État de l'onglet à l'instant now :
  *  { etat: 'ouvert', debut, fin, jusqua, poste }   déverrouillable (accès jusqu'à fin + 10 min)
  *  { etat: 'cloture', fin, jusqua, poste }         billetterie : clôture de caisse seule, 30 min
@@ -123,4 +139,4 @@ function roleActif(t, now = Date.now()) {
     && t.roleMode === 'complet' && Number(t.roleJusqua) > now
 }
 
-module.exports = { posteRole, bornes, creneauxDuRole, fenetreRole, claimsRole, roleActif, exceptionActive, avecException, EXCEPTION_MINUTES, AVANT_MS, CLOTURE_MS, MARGE_MS }
+module.exports = { posteRole, bornes, creneauxDuRole, creneauxEmDuRole, fenetreRole, claimsRole, roleActif, exceptionActive, avecException, EXCEPTION_MINUTES, AVANT_MS, CLOTURE_MS, MARGE_MS }

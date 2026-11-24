@@ -277,6 +277,15 @@ describe('équipe', () => {
     await assertFails(getDoc(doc(exc, `events/${EV}/spectateurs/FY-K7Q3NP`)))
     await assertFails(updateDoc(doc(as(ADMIN), `events/${EV}/benevoles/b1`), { roleException: { jusqua: 1 } }))
   })
+  // 24/11/2026 : journal d'audit lu par les admins et la consultation seulement
+  it("seuls les admins et la consultation lisent le journal d'audit", async () => {
+    await env.withSecurityRulesDisabled(ctx => setDoc(doc(ctx.firestore(), `events/${EV}/audit/a1`), { action: 'TEST' }))
+    await assertSucceeds(getDoc(doc(as(ADMIN), `events/${EV}/audit/a1`)))
+    await assertSucceeds(getDoc(doc(as({ uid: 'staff:c', type: 'staff', role: 'consultation' }), `events/${EV}/audit/a1`)))
+    await assertFails(getDoc(doc(as({ uid: 'staff:b', type: 'staff', role: 'billetterie' }), `events/${EV}/audit/a1`)))
+    await assertFails(getDoc(doc(as({ ...BENEV, roleEquipe: 'billetterie', roleMode: 'complet', roleJusqua: Date.now() + 600000 }), `events/${EV}/audit/a1`)))
+    await assertSucceeds(setDoc(doc(as({ uid: 'staff:b', type: 'staff', role: 'billetterie' }), `events/${EV}/audit/a2`), { action: 'TEST' }))
+  })
   it('personne ne lit les compteurs d\'essais, réservés au serveur', async () => {
     await assertFails(getDoc(doc(as(ADMIN), 'securite-connexions/c1')))
   })

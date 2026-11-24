@@ -1,6 +1,6 @@
 # Ylla Event Manager ↔ YllaCash : règle d'échange
 
-Version 1.1 du 18/11/2026. La 1.0 a été **validée par l'organisateur** (les quatre points du §8) ; la 1.1 ajoute au programme le type, la photo, la présentation et les liens de l'artiste (§3.1, option B choisie par l'organisateur le 18/11/2026), et le format du retour vers Event Manager (§7, validé le même jour).
+Version 1.2 du 24/11/2026 : créneaux des postes à rôle pour les bénévoles (§3.2). Version 1.1 du 18/11/2026. La 1.0 a été **validée par l'organisateur** (les quatre points du §8) ; la 1.1 ajoute au programme le type, la photo, la présentation et les liens de l'artiste (§3.1, option B choisie par l'organisateur le 18/11/2026), et le format du retour vers Event Manager (§7, validé le même jour).
 
 Avancement : Event Manager sert l'instantané (commit 7ff66af, détail dans `EventManager/docs/api-yllacash.md`). YllaCash le lit (lot A : `api/_em/`, copie dans `em-instantanes/{événement}`, réservée au serveur, état dans la fenêtre « Liaisons »). Lot B : le programme lu est publié dans `events/{événement}/programme-em` (lecture publique) et remplace le planning de YllaCash dans l'espace spectateur et sur `/live` dès que `events/{événement}.emProgramme` existe. Lot C : bénévoles et artistes publiés dans `events/{événement}/benevoles/em-…` et `artistes/em-…` (`emEquipe` sur l'événement) ; droits par journée (coupure à 6 h, non reportés), contrôle des billets les jours envoyés, accès par lien personnel ; articles des artistes choisis dans YllaCash (`settings/artistes.articles`) ; pages Bénévoles et Artistes en lecture. Lot D : pour un événement relié, Planning, Cachets, Exposants, Finances et l'éditeur de factures sont masqués (`src/em/pages.js`), « Gestion artistes » devient « Artistes » ; rien n'est effacé, les archives et événements non reliés gardent tout. Retour (§7) : YllaCash envoie consommations et bilan (`api/_em/retour.js`, `envoiRetour.js`, appelés par la tâche de `api/process-entrees.js` ; état dans `liaisons-em/{événement}.retour`), pour les événements dont l'équipe vient d'Event Manager ; Event Manager doit encore accepter ces messages.
 
@@ -78,6 +78,26 @@ Pour garder l'écran du programme tel qu'il est aujourd'hui (filtres par type, p
 - **presentation** : texte public, 600 caractères au plus, ou `""`.
 - **liens** : liens publics de l'artiste, seulement en `https://`, parmi `spotify`, `instagram`, `facebook`, `tiktok`, `youtube`, `site`. Les liens vides sont omis.
 - Ces champs sont facultatifs : sans eux, YllaCash affiche le passage avec une icône neutre.
+
+### 3.2 Bénévoles : créneaux des postes à rôle, version 1.2 (validée le 24/11/2026)
+
+Proposée par YllaCash le 23/11/2026 (refonte des rôles, écran 11), validée par l'organisateur côté Event Manager le 24/11/2026 et codée dans Event Manager (pas encore en ligne au 24/11/2026). Miroir : `EventManager/docs/api-yllacash.md`. Champ **ajouté**, rien n'est retiré.
+
+Chaque élément de `benevoles[]` porte :
+
+```json
+"creneaux": [ { "jour": "2027-05-15", "debut": "12:35", "fin": "15:35", "poste": "Contrôle à l'entrée", "role": "controle_entree" } ]
+```
+
+- **Postes à rôle** : dans Event Manager, chaque poste a un réglage « Rôle YllaCash ouvert par ce poste » (Aucun, Billetterie, Contrôle entrée, Consultation). Seuls les créneaux des postes qui ont un rôle partent, **passés compris**, rangés par jour puis par heure.
+- **role** : `billetterie`, `controle_entree` ou `consultation`, jamais autre chose. Il est réglé par poste : identique pour tous les créneaux d'un même poste. **Seul `role` fait foi** ; `poste` est un libellé d'affichage, jamais une clé.
+- **Créneau incomplet** : il part avec `debut` et `fin` à `null`. `jour` reste renseigné s'il est connu, `null` seulement si le créneau n'a pas de jour. Pour YllaCash : `debut` à `null` = horaire manquant ; l'onglet reste fermé avec « Créneau sans horaire dans Event Manager : demandez à l'organisation de le compléter » (Event Manager signale aussi ces créneaux à l'organisateur, dans la fenêtre du poste).
+- **Minuit** : une `fin` plus tôt que `debut` est le lendemain de `jour`.
+- **Bénévole sans droits** : un bénévole qui n'a qu'un créneau sur un poste à rôle figure dans `benevoles` (avec `droits: []` et `controleBillets: []`).
+- **controleBillets** : inchangé, déduit du rôle `controle_entree` (les postes déjà cochés « contrôle les billets » ont été convertis) ; YllaCash s'appuie sur `creneaux` dès qu'il est présent.
+- **version** change dès qu'un créneau, un poste, un rôle ou une inscription change.
+- **Ce qui reste dans YllaCash** : quel bénévole a quel rôle (fiche, réglé par un admin), son identifiant et son mot de passe. Un créneau n'ouvre l'onglet que si son `role` est celui de la fiche ; les autres sont ignorés.
+- **Achats des bénévoles sur leur solde** (écran 13) : ce sont des ventes ordinaires de YllaCash, dans le bilan de caisse ; ils ne sont pas envoyés comme consommations (§7 ne porte que les consommations offertes).
 
 ## 4. Ce que YllaCash en fait
 

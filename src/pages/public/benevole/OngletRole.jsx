@@ -266,6 +266,8 @@ export default function OngletRole({ role, onglet, visible = true, eventId, nom,
   let texte, bouton = null
   if (!etat) texte = 'Vérification de votre créneau…'
   else if (etat.attenteEm && e !== 'ouvert' && e !== 'cloture') texte = 'Vos créneaux ne sont pas encore arrivés d\'Event Manager : l\'onglet reste fermé pour l\'instant.'
+  // Règle d'échange 1.2 : un créneau de votre rôle n'a pas d'horaire dans Event Manager
+  else if (etat.sansHoraire && e === 'ferme') texte = 'Créneau sans horaire dans Event Manager : demandez à l\'organisation de le compléter.'
   else if (e === 'ouvert' && etat.exception) { texte = `Ouverture exceptionnelle accordée par ${etat.exception.parNom || 'l\'organisation'} jusqu'à ${hm(etat.fin)}. Identifiez-vous pour déverrouiller.`; bouton = 'Déverrouiller' }
   else if (e === 'ouvert') { texte = `Créneau ${hm(etat.debut)} – ${hm(etat.fin)}${poste ? ` au poste « ${poste} »` : ''}. Identifiez-vous ; l'onglet se verrouillera tout seul à ${hm(etat.fin)}.`; bouton = 'Déverrouiller' }
   else if (e === 'cloture') { texte = `Votre créneau est terminé. Vous pouvez encore clôturer votre caisse jusqu'à ${hm(etat.jusqua)}.`; bouton = 'Déverrouiller pour la clôture' }

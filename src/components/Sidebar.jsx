@@ -15,7 +15,7 @@ import {
 import clsx from 'clsx'
 import useAppStore   from '../store/useAppStore'
 import useEventStore from '../store/useEventStore'
-import { pagesDuRole } from '../store/useAuthStore'
+import useAuthStore, { pagesDuRole, ROLES_AUDIT } from '../store/useAuthStore'
 import { APP_FULL_LABEL } from '../utils/buildInfo'
 import { useBreakpoint }   from '../hooks/useBreakpoint'
 import { useOfflineQueue } from '../hooks/useOfflineQueue'
@@ -88,6 +88,7 @@ export default function Sidebar({
   onAudit, auditOpen,
 }) {
   const { reservations, roles } = useAppStore()
+  const voitAudit = ROLES_AUDIT.includes(useAuthStore(st => st.user?.role))
   const { online, queueSize, syncing } = useOfflineQueue()
   const { isMobile, isTablet } = useBreakpoint()
   const { events, currentEventId } = useEventStore()
@@ -281,7 +282,8 @@ export default function Sidebar({
           {isMobile && isAdmin && (
             <Item icon={Palette} label="Studio" active={studioOpen} onClick={() => { onMobileClose?.(); setTimeout(() => onStudio?.(), 50) }} />
           )}
-          <Item icon={ClipboardList} label="Journal d'audit" active={auditOpen} onClick={onAudit} />
+          {/* 24/11/2026 : journal d'audit réservé aux admins, super admins et consultation */}
+          {voitAudit && <Item icon={ClipboardList} label="Journal d'audit" active={auditOpen} onClick={onAudit} />}
           {!isMobile && !isTablet && (
             <Item icon={collapsed ? PanelLeftOpen : PanelLeftClose} label={collapsed ? 'Déplier le menu' : 'Replier le menu'} onClick={toggle} />
           )}

@@ -146,3 +146,7 @@
 .doneBadges { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
 .doneIcon { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 50%; background: var(--green-light); color: var(--green-dark); }
 .doneActions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
+
+/* 24/11/2026 : commandes payées dont le ticket n'est pas encore imprimé (signalées, déjà dans l'attendu) */
+.attente { display: grid; gap: 6px; border-radius: 14px; padding: 10px 12px; background: var(--gold-light); color: var(--gold-dark); font-size: 13px; line-height: 1.45; }
+.attenteLigne { display: flex; justify-content: space-between; gap: 8px; }

@@ -11,7 +11,9 @@ import useEventStore from '../../store/useEventStore'
 import { saveCloture, watchClotures } from '../../firebase/service'
 import { usePeriodTransactions } from '../../hooks/usePeriodTransactions'
 import { dayStart } from '../../utils/dashboardData'
-import { cashiers, expectedTill, ventesPanneBorne, DENOMINATIONS, countTotal, MOYENS } from '../../utils/analyticsData'
+import { cashiers, expectedTill, ventesPanneBorne, codesEnAttente, DENOMINATIONS, countTotal, MOYENS } from '../../utils/analyticsData'
+import { collection, onSnapshot, query, where } from 'firebase/firestore'
+import { db } from '../../firebase/config'
 import { fmt } from '../../utils/helpers'
 import { Button, Card, Badge, Table, SignaturePad, SuccessCheck, AnimatedNumber, Field, focusFirstInvalid, toast } from '../../ui'
 import { friendlyError } from '../../utils/errors'
@@ -61,6 +63,14 @@ export default function Cloture() {
   const attendu = useMemo(() => expectedTill(transactions, { from: day, to: day + DAY, staff: caisse || null }), [transactions, day, caisse])
   // Écran 7 : ventes faites pendant la panne de la borne (payées par le solde, hors caisse)
   const panne = useMemo(() => ventesPanneBorne(transactions, { from: day, to: day + DAY, staff: caisse || null }), [transactions, day, caisse])
+  // 24/11/2026 : commandes sur place payées dont le ticket n'est pas encore imprimé (déjà dans l'attendu)
+  const [codes, setCodes] = useState([])
+  useEffect(() => {
+    if (isDemo || !currentEventId) return
+    return onSnapshot(query(collection(db, 'events', currentEventId, 'codes'), where('origine', '==', 'billetterie'), where('statut', '==', 'en_attente')),
+      snap => setCodes(snap.docs.map(d => d.data())), () => setCodes([]))
+  }, [currentEventId, isDemo])
+  const enAttente = useMemo(() => codesEnAttente(codes, { from: day, to: day + DAY, staff: caisse || null }), [codes, day, caisse])
 
   useEffect(() => {
     if (isDemo) return
@@ -109,6 +119,7 @@ export default function Cloture() {
       saisiPar: user?.nom || null,
       partiel: partial,
       ...(panne.n ? { ventesPanneBorne: { n: panne.n, total: panne.total, parStaff: panne.parStaff } } : {}),
+      ...(enAttente.n ? { codesEnAttente: { n: enAttente.n, total: enAttente.total, codes: enAttente.liste.map(c => c.code) } } : {}),
     }
     setSaving(true)
     try {
@@ -176,6 +187,7 @@ export default function Cloture() {
             </label>
 
             <Expected attendu={attendu} fond={fondC} loading={loading} />
+            {!loading && <CodesEnAttente enAttente={enAttente} />}
             {!loading && <PanneBorne panne={panne} />}
             {partial && <p className={s.warn}>Hors ligne : seules les 500 dernières transactions sont prises en compte. Reprenez la clôture une fois reconnecté.</p>}
           </div>
@@ -301,8 +313,27 @@ function Expected({ attendu, fond, loading }) {
   )
 }
 
+// 24/11/2026 : commandes payées au guichet dont le client n'a pas encore imprimé le ticket à la borne
+function CodesEnAttente({ enAttente }) {
+  if (!enAttente.n) return null
+  const groupe = (c) => `${String(c).slice(0, 3)} ${String(c).slice(3)}`
+  return (
+    <div className={s.attente} role="note">
+      <b>Commandes payées, ticket pas encore imprimé : {enAttente.n} · {fmt(enAttente.total)}</b>
+      {enAttente.liste.map(c => (
+        <div key={c.code} className={s.attenteLigne}>
+          <span>Code {groupe(c.code)} · {c.moyen === 'cb' ? 'carte' : c.moyen === 'solde' ? 'solde' : 'espèces'}{c.timestamp ? ` · ${hm(Date.parse(c.timestamp))}` : ''}</span>
+          <b>{fmt(c.total || 0)}</b>
+        </div>
+      ))}
+      <span>Déjà comptées dans l'attendu : l'argent est dans la caisse. Le client peut encore imprimer son ticket à la borne ;
+        un code annulé se rembourse dans « Remboursement › Code non utilisé ».</span>
+    </div>
+  )
+}
+
 // Écran 7 (23/11/2026) : ventes encaissées à la billetterie pendant une panne de la borne
-const hm = (ms) => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+const hm =(ms) => new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 const parQui = (parStaff = {}) => Object.entries(parStaff).sort((a, b) => b[1] - a[1]).map(([nom, n]) => `${nom} (${n})`).join(', ')
 function PanneBorne({ panne }) {
   if (!panne.n) return null
@@ -372,7 +403,8 @@ ${line('Espèces (fond ' + fmt(c.fondDeCaisse || 0) + ' inclus)', (c.fondDeCaiss
 ${line('Carte bancaire', c.attendu?.cb?.total || 0, c.compte?.cb || 0, c.ecart?.cb || 0)}
 <tr><td><b>Total</b></td><td></td><td></td><td><b>${signed(c.ecart?.total || 0)}</b></td></tr>
 </tbody></table>
-${c.ventesPanneBorne?.n ? `<p class="note"><b>Ventes pendant la panne de la borne :</b> ${c.ventesPanneBorne.n} pour ${fmt(c.ventesPanneBorne.total)}, encaissées par ${esc(parQui(c.ventesPanneBorne.parStaff))}. Payées par le solde des spectateurs : hors caisse, sans effet sur l'écart.</p>` : ''}
+${c.codesEnAttente?.n ? `<p class="note"><b>Commandes payées, ticket pas encore imprimé :</b> ${c.codesEnAttente.n} pour ${fmt(c.codesEnAttente.total)} (codes ${esc((c.codesEnAttente.codes || []).join(', '))}). Déjà comptées dans l'attendu.</p>` : ''}
+${c.ventesPanneBorne?.n ?`<p class="note"><b>Ventes pendant la panne de la borne :</b> ${c.ventesPanneBorne.n} pour ${fmt(c.ventesPanneBorne.total)}, encaissées par ${esc(parQui(c.ventesPanneBorne.parStaff))}. Payées par le solde des spectateurs : hors caisse, sans effet sur l'écart.</p>` : ''}
 ${c.attendu?.nonRenseigne?.n ? `<p class="muted">Recharges sans mode de paiement : ${c.attendu.nonRenseigne.n} pour ${fmt(c.attendu.nonRenseigne.total)}.</p>` : ''}
 ${rows ? `<h3>Détail des espèces</h3><table><thead><tr><th>Coupure</th><th>Nombre</th><th>Montant</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
 ${c.commentaire ? `<p class="note"><b>Commentaire :</b> ${esc(c.commentaire)}</p>` : ''}

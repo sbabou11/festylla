@@ -151,6 +151,9 @@ export function pagesDuRole(role) {
   return enPlus && (st.borneEnPanne || st.encaissementEnCours) ? [...base, ...enPlus] : base
 }
 
+// 24/11/2026 : qui lit le journal d'audit (les règles de la base appliquent la même liste)
+export const ROLES_AUDIT = ['admin', 'super_admin', 'consultation']
+
 export const ROLE_HOME = {
   super_admin:'evenements', admin:'accueil', billetterie:'accueil', stand:'accueil', consultation:'accueil', directeur_artistique:'accueil', controle_entree:'entree', benevole:'mon-profil',
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
-const { posteRole, bornes, creneauxDuRole, fenetreRole, claimsRole, roleActif, avecException, exceptionActive } = require('./role.js')
+const { posteRole, bornes, creneauxDuRole, creneauxEmDuRole, fenetreRole, claimsRole, roleActif, avecException, exceptionActive } = require('./role.js')
 
 const MIN = 60000
 // 15 mai 2027 : heure d'été, Paris = UTC+2
@@ -45,6 +45,20 @@ describe('onglet de rôle (écran 11)', () => {
   it('pas de clôture après la fin pour les autres rôles', () => {
     const c = creneauxDuRole({ shifts, posts, benevId: 'b2', role: 'controle_entree' })
     expect(fenetreRole(c, 'controle_entree', paris(18, 10)).etat).toBe('ferme')
+  })
+  it("créneaux d'Event Manager (règle 1.2) : seuls ceux du rôle, horaire manquant signalé", () => {
+    const em = [
+      { jour: '2027-05-15', debut: '12:35', fin: '15:35', poste: 'Billetterie', role: 'billetterie' },
+      { jour: '2027-05-15', debut: '20:00', fin: '01:30', poste: 'Billetterie', role: 'billetterie' },
+      { jour: '2027-05-16', debut: null, fin: null, poste: 'Billetterie', role: 'billetterie' },
+      { jour: '2027-05-15', debut: '16:00', fin: '18:00', poste: 'Porte', role: 'controle_entree' },
+    ]
+    const r = creneauxEmDuRole(em, 'billetterie')
+    expect(r.creneaux).toHaveLength(2); expect(r.sansHoraire).toBe(true)
+    expect(r.creneaux[1].fin).toBe(paris(1, 30, 16))
+    expect(fenetreRole(r.creneaux, 'billetterie', paris(13)).etat).toBe('ouvert')
+    expect(creneauxEmDuRole(em, 'controle_entree')).toMatchObject({ sansHoraire: false })
+    expect(creneauxEmDuRole([], 'billetterie')).toEqual({ creneaux: [], sansHoraire: false })
   })
   it('ouverture exceptionnelle (écran 12) : hors créneau, jusqu\'à l\'heure choisie', () => {
     const c = creneauxDuRole({ shifts, posts, benevId: 'b1', role: 'billetterie' })
