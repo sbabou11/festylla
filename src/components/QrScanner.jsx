@@ -34,6 +34,7 @@ import { extractSpecId } from '../utils/specCode'
 import { parseQrTournant } from '../utils/qrTournant'
 import { redessinerVideo } from '../utils/redessin'
 import { vibrerSucces } from '../utils/vibration'
+import useEcranAllume from '../hooks/useEcranAllume'
 
 const SCANNER_ID = 'qr-reader-' + Math.random().toString(36).slice(2, 7)
 
@@ -58,6 +59,8 @@ export default function QrScanner({
   codeLength, codeStatus = null, completerBillet = true,
 }) {
   const [mode, setMode] = useState('camera') // 'camera' | 'manual'
+  // Écran toujours allumé pendant les scans (24/11/2026) : pas de mise en veille entre deux clients
+  useEcranAllume(true)
   const [camError, setCamError] = useState(null)
   const [scanning, setScanning] = useState(false)
   const [manualVal, setManualVal] = useState('')

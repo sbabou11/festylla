@@ -11,6 +11,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { CheckCircle2, XCircle, AlertTriangle, Undo2, RefreshCw, Ticket } from 'lucide-react'
 import QrScanner from './QrScanner'
+import useEcranAllume from '../hooks/useEcranAllume'
 import DetailSheet from './DetailSheet'
 import { Button, toast } from '../ui'
 import { friendlyError } from '../utils/errors'
@@ -30,6 +31,8 @@ const ICON = { ok: CheckCircle2, warn: AlertTriangle, bad: XCircle }
 // evenement : nom de l'événement (messages « Billet inconnu »)
 // voirAuteur : montre « Enregistrée par » (23/11/2026 : administrateurs et consultation seulement)
 export default function EntreeControl({ eventId, par, showSendIssues = false, evenement = '', voirAuteur = false }) {
+  // Écran toujours allumé pendant les scans (24/11/2026) : pas de mise en veille entre deux clients
+  useEcranAllume(true)
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)
   const [entrees, setEntrees] = useState([])
