@@ -244,6 +244,8 @@ service cloud.firestore {
       match /jetons-lien/{id} { allow get: if staffIn(ev); allow list, write: if false; }
       match /autorisations/{id} { allow read, write: if false; }
       match /codes-secours/{id} { allow read, write: if false; }
+      // Bracelets de secours (24/11/2026) : empreinte du code et essais, serveur seulement
+      match /bracelets/{id} { allow read, write: if false; }
       // Demandes de remboursement du solde (20/11/2026) : créées par le serveur (api/paiement) ;
       // le spectateur lit les siennes ; la billetterie traite les parts SumUp et espèces.
       match /demandes-remboursement/{id} {
@@ -321,7 +323,7 @@ service cloud.firestore {
       // (Les règles s'additionnent : les collections protégées ci-dessus sont exclues d'ici,
       // sinon cette règle générale leur rendrait des droits qu'on leur a retirés.)
       match /{other}/{id} {
-        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire', 'programme-em', 'artistes', 'autorisations', 'codes-secours', 'cles', 'jetons-lien'])
+        allow read, write: if !(other in ['staff', 'benevoles', 'liens', 'billetterie-recus', 'entrees', 'benevoles-annuaire', 'programme-em', 'artistes', 'autorisations', 'codes-secours', 'cles', 'jetons-lien', 'bracelets'])
                               && (staffIn(ev) || legacy(ev));
       }
     }

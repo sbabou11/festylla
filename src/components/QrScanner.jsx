@@ -53,7 +53,7 @@ export default function QrScanner({
   parse = parseSpecId,
   hint = "Pointez la caméra vers le QR affiché dans l'espace du spectateur",
   simulate = ['FY-4A2B', 'FY-9C7E', 'FY-1F3D'],
-  codeLength, codeStatus = null,
+  codeLength, codeStatus = null, completerBillet = true,
 }) {
   const [mode, setMode] = useState('camera') // 'camera' | 'manual'
   const [camError, setCamError] = useState(null)
@@ -275,7 +275,8 @@ export default function QrScanner({
 
   const handleManualSubmit = (raw = manualVal) => {
     // Un code de billet tapé sans « FY- » est complété (sauf en saisie d'un code court de poste)
-    const val = (codeLength ? null : extractSpecId(raw)) || String(raw).trim().toUpperCase()
+    // completerBillet false (bracelets, 24/11/2026) : un numéro tapé n'est pas pris pour un billet
+    const val = (codeLength || !completerBillet ? null : extractSpecId(raw)) || String(raw).trim().toUpperCase()
     if (!val) { setManualTried(true); focusFirstInvalid(manualRef.current); return }
     setManualTried(false)
     if (onScan) onScan(val)

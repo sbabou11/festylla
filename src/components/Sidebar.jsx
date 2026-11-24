@@ -11,6 +11,7 @@ import {
   BarChart3, AlertTriangle, PanelLeftClose, PanelLeftOpen, X, LogOut,
   Sun, Moon, Palette, ClipboardList, Calculator,
   Music2, ChevronDown, ArrowLeftRight, Banknote, Briefcase, Building2, KeyRound,
+  Watch,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../store/useAppStore'
@@ -54,6 +55,7 @@ export const ALL_PAGES = {
   nouveau:              { icon: QrCode,          label: 'Compte pour un billet' },
   remboursement:        { icon: Banknote,        label: 'Remboursement' },
   'lien-perdu':         { icon: KeyRound,        label: 'Lien perdu' },
+  bracelets:            { icon: Watch,           label: 'Bracelets' },
   debit:                { icon: ShoppingCart,    label: 'Encaisser' },
   carte:                { icon: UtensilsCrossed, label: 'La carte' },
   'mon-profil':         { icon: User,            label: 'Mon profil' },
@@ -70,7 +72,7 @@ const LS_OPEN = 'yllacash-sidebar-rubriques' // rubriques dépliées
 
 // Pages rangées sous chaque rubrique : elles se déplient sur place dans le menu
 const HUB_CHILDREN = {
-  operations:         ['debit', 'credit', 'commande-sur-place', 'nouveau', 'remboursement', 'lien-perdu', 'transactions', 'reservations-admin', 'alertes'],
+  operations:         ['debit', 'credit', 'commande-sur-place', 'nouveau', 'remboursement', 'lien-perdu', 'bracelets', 'transactions', 'reservations-admin', 'alertes'],
   'equipe-hub':       ['staff', 'benevoles'],
   'spectateurs-hub':  ['entree', 'spectateurs', 'qr-entree'],
   finances:           ['exposants', 'cachets'],
@@ -119,7 +121,7 @@ export default function Sidebar({
   // (Elles restent accessibles via les pancartes des hubs.)
   const HUB_HIDDEN_FROM_SIDEBAR = [
     // Hub Opérations
-    'credit', 'commande-sur-place', 'debit', 'remboursement', 'lien-perdu', 'transactions', 'reservations-admin', 'nouveau', 'alertes',
+    'credit', 'commande-sur-place', 'debit', 'remboursement', 'lien-perdu', 'bracelets', 'transactions', 'reservations-admin', 'nouveau', 'alertes',
     // Hub Équipe & Bénévoles
     'benevoles', 'staff',
     // Hub Spectateurs & Accès

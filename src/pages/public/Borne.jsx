@@ -25,7 +25,7 @@
  *   - Pas d'historique, pas d'infos personnelles affichées.
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
-import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2, ScanLine, KeyRound, Delete, Printer } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Plus, Minus, ShoppingCart, Clock, X, Maximize2, ScanLine, KeyRound, Delete, Printer, Lock, Watch } from 'lucide-react'
 import useKioskMode from '../../hooks/useKioskMode'
 import ArticleInfoModal from '../../components/ArticleInfoModal'
 import { createWedge } from '../../utils/scanWedge'
@@ -58,6 +58,8 @@ const STEP = {
   TICKET:         'ticket',
   // Code à 6 chiffres remis par la billetterie (commande déjà payée)
   CODE:           'code',
+  // Bracelet de secours (écran 3, 24/11/2026) : bracelet lu, code à 4 chiffres
+  BRACELET:       'bracelet',
 }
 
 // ─── Helpers couleur ────────────────────────────────────────────────────
@@ -254,6 +256,42 @@ export default function Borne() {
     }
   }, [])
 
+  // ─── Bracelet de secours (écran 3, 24/11/2026, maquette LKRMfBEdABCNBHPPcPfcPB) ───
+  // Téléphone déchargé : le bracelet présenté au lecteur identifie le compte, le code à 4 chiffres
+  // autorise le paiement. Le serveur vérifie le code et compte les essais (3 faux : bloqué) ; un bon
+  // code ouvre le compte 10 minutes, comme le QR de l'espace. Le code ne se choisit jamais ici.
+  // bracelet : { numero, etat: 'verif' | 'code' | 'libre' | 'bloque', motif, err }
+  const [bracelet, setBracelet] = useState(null)
+  const ouvrirBracelet = useCallback(async (numero) => {
+    setError(''); setStep(STEP.BRACELET); setBracelet({ numero, etat: 'verif' }); setLoading(true)
+    try {
+      await apiFetch('/api/qr', { body: { action: 'identifier', ev: new URLSearchParams(window.location.search).get('ev'), bracelet: numero } })
+      setBracelet({ numero, etat: 'code' })
+    } catch (e) {
+      const d = e.data || {}
+      if (d.etat === 'libre' || d.etat === 'bloque') setBracelet({ numero, etat: d.etat, motif: d.motif || null, err: e.message })
+      else setBracelet({ numero, etat: 'code', err: e.status ? e.message : 'Erreur de connexion. Réessayez dans un instant.' })
+    } finally { setLoading(false) }
+  }, [])
+  const validerBracelet = useCallback(async (code) => {
+    const numero = bracelet?.numero
+    if (!numero) return
+    setLoading(true)
+    try {
+      const ev = new URLSearchParams(window.location.search).get('ev')
+      const r = await apiFetch('/api/qr', { body: { action: 'identifier', ev, bracelet: numero, code } })
+      const snap = await getDoc(doc(db, 'events', ev, 'spectateurs', r.compte.docId))
+      if (!snap.exists()) { setBracelet({ numero, etat: 'code', err: 'Compte introuvable. Demandez à la billetterie.' }); return }
+      setSpec({ ...snap.data(), _docId: snap.id })
+      setBracelet(null)
+      setStep(STEP.MENU)
+    } catch (e) {
+      const d = e.data || {}
+      if (d.etat === 'bloque' || d.etat === 'libre') setBracelet({ numero, etat: d.etat, motif: d.motif || null, err: e.message })
+      else setBracelet({ numero, etat: 'code', err: e.status ? e.message : 'Erreur de connexion. Réessayez dans un instant.' })
+    } finally { setLoading(false) }
+  }, [bracelet?.numero])
+
   // Relit le compte déjà autorisé (10 minutes après le QR) : sert après une recharge faite sur le téléphone
   const rafraichirSolde = useCallback(async () => {
     const ev = new URLSearchParams(window.location.search).get('ev')
@@ -345,6 +383,8 @@ export default function Borne() {
   benevRef.current = ouvrirBenevole
   const artisteRef = useRef(ouvrirArtiste)
   artisteRef.current = ouvrirArtiste
+  const braceletRef = useRef(null)
+  braceletRef.current = (numero) => ouvrirBracelet(numero)
   useEffect(() => {
     if (!scanActive) return
     const wedge = createWedge({
@@ -352,6 +392,7 @@ export default function Borne() {
       // QR du billet (« FY-… » ou ancien lien) : il sert à l'entrée, pas à payer
       // QR tournant de l'espace bénévole ou artiste (23/11/2026)
       onEspace: (q) => { if (q.kind === 'artiste') artisteRef.current(q); else benevRef.current(q) },
+      onBracelet: (numero) => braceletRef.current(numero),
       onScan: () => { setStep(STEP.IDENTIFICATION); setError('C\'est le QR de votre billet : il sert à l\'entrée. Pour payer, ouvrez votre espace YllaCash sur votre téléphone et présentez le QR qui s\'y affiche.') },
       onUnknown: (texte, lectureCodes, lectureTouches) => {
         setStep(STEP.IDENTIFICATION)
@@ -379,6 +420,7 @@ export default function Borne() {
     setCart({})
     setLastResa(null)
     setError('')
+    setBracelet(null)
     setStep(STEP.ACCUEIL)
   }, [])
 
@@ -419,6 +461,8 @@ export default function Borne() {
           onTimeout={resetSession}
           onOccupe={setValidationEnfant}
           onConfirmed={(resa) => { setLastResa(resa); setStep(STEP.TICKET) }}/>
+      ) : step === STEP.BRACELET && bracelet ? (
+        <BraceletCode lu={bracelet} loading={loading} onCode={validerBracelet} onCancel={resetSession}/>
       ) : step === STEP.IDENTIFICATION ? (
         <Identification
           onValidated={validateSpec}
@@ -643,7 +687,7 @@ function Accueil({ onStart, onCode, logoUrl, festival = '' }) {
       }}>
         Pas d'attente, paiement direct sur votre solde.
         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, fontWeight: 600 }}>
-          <ScanLine size={18} aria-hidden="true"/> Présentez votre QR devant le lecteur pour commencer
+          <ScanLine size={18} aria-hidden="true"/> Présentez votre QR ou votre bracelet devant le lecteur
         </span>
       </div>
       <div style={{
@@ -761,7 +805,7 @@ function Identification({ onValidated, onCancel, loading, error, secours = false
         <div style={{ fontSize: 13, color: COLORS.muted }}>
           {secours
             ? 'Présentez le QR de votre espace devant le lecteur, ou tapez le code affiché sous votre QR (ex : KT-4821)'
-            : 'Ouvrez votre espace YllaCash sur votre téléphone et présentez son QR devant le lecteur'}
+            : 'Ouvrez votre espace YllaCash sur votre téléphone et présentez son QR devant le lecteur. Téléphone déchargé ? Présentez votre bracelet.'}
         </div>
       </div>
 
@@ -828,6 +872,117 @@ function Identification({ onValidated, onCancel, loading, error, secours = false
           `}</style>
         </div>
       )}
+    </div>
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Bracelet de secours : code à 4 chiffres (écran 3, 24/11/2026)
+// ════════════════════════════════════════════════════════════════════
+// Cases masquées, même clavier que « J'ai un code » ; 30 s sans toucher l'écran : retour à l'accueil.
+const BRACELET_INACTIF_S = 30
+function BraceletCode({ lu, loading, onCode, onCancel }) {
+  const [digits, setDigits] = useState('')
+  const [reste, setReste] = useState(BRACELET_INACTIF_S)
+  const touche = useRef(Date.now())
+  const numero = `${lu.numero.slice(0, 4)} ${lu.numero.slice(4)}`
+  const fini = lu.etat === 'libre' || lu.etat === 'bloque'
+
+  // Code refusé : on repart de cases vides
+  useEffect(() => { if (lu.err) setDigits('') }, [lu])   // chaque réponse du serveur est un nouvel objet
+  useEffect(() => {
+    const t = setInterval(() => {
+      const r = BRACELET_INACTIF_S - Math.floor((Date.now() - touche.current) / 1000)
+      setReste(Math.max(0, r))
+      if (r <= 0 && !loading) onCancel()
+    }, 1000)
+    return () => clearInterval(t)
+  }, [loading, onCancel])
+
+  const add = (d) => {
+    if (loading || digits.length >= 4) return
+    touche.current = Date.now()
+    const v = digits + d
+    setDigits(v)
+    if (v.length === 4) onCode(v)
+  }
+  const del = () => { touche.current = Date.now(); setDigits(x => x.slice(0, -1)) }
+
+  const keyStyle = {
+    background: '#06222F', color: '#fff', border: 'none', borderRadius: 20,
+    fontSize: 'clamp(22px, 4vh, 30px)', fontWeight: 700, fontFamily: 'inherit',
+    padding: 'clamp(12px, 2.6vh, 22px) 0', cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+    display: 'grid', placeItems: 'center',
+  }
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 'clamp(12px, 2vh, 24px)', background: COLORS.bg, overflow: 'hidden', position: 'relative' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'clamp(8px, 1.5vh, 16px)', flexShrink: 0 }}>
+        <button onClick={onCancel} style={{ background: 'transparent', border: 'none', color: COLORS.muted, fontSize: 14, padding: '8px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+          <ArrowLeft size={16}/> {fini ? 'Terminer' : 'Annuler'}
+        </button>
+        <div style={{ fontSize: 12, color: reste <= 10 ? COLORS.red : COLORS.muted, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Clock size={13}/> {reste}s
+        </div>
+      </div>
+
+      {fini ? (
+        <div style={{ flex: 1, display: 'grid', placeItems: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 20, border: `0.5px solid ${COLORS.border}`, padding: 'clamp(24px, 5vh, 40px)', textAlign: 'center', maxWidth: 560, display: 'grid', gap: 14, justifyItems: 'center' }}>
+            <div style={{ width: 76, height: 76, borderRadius: '50%', display: 'grid', placeItems: 'center',
+              background: lu.etat === 'bloque' ? '#FBE1DF' : '#FAEED4', color: lu.etat === 'bloque' ? '#8E211C' : '#8A5A00' }}>
+              {lu.etat === 'bloque' ? <Lock size={34} aria-hidden="true"/> : <Watch size={34} aria-hidden="true"/>}
+            </div>
+            <div style={{ fontSize: 'clamp(22px, 4vh, 28px)', fontWeight: 700, color: COLORS.marine }}>
+              {lu.etat === 'bloque' ? 'Bracelet bloqué' : 'Bracelet pas encore relié'}
+            </div>
+            <div style={{ fontSize: 16, color: COLORS.muted, lineHeight: 1.5 }}>
+              {lu.err}{lu.etat === 'bloque' && <><br/>Passez à la billetterie avec une pièce d'identité.</>}
+            </div>
+            <button onClick={onCancel} style={{ background: COLORS.coral, color: '#fff', border: 'none', borderRadius: 20, padding: '18px 40px', fontSize: 19, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Terminer
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ fontSize: 'clamp(20px, 3.4vh, 26px)', fontWeight: 700, color: COLORS.marine, marginBottom: 4, textAlign: 'center' }}>
+            Votre code de bracelet
+          </div>
+          <div style={{ fontSize: 14, color: COLORS.muted, marginBottom: 18, textAlign: 'center', maxWidth: 560 }}>
+            Bracelet n° {numero}. Tapez votre code à 4 chiffres, celui choisi dans votre espace ou au guichet.
+          </div>
+          <div style={{ display: 'flex', gap: 'clamp(6px, 1.2vw, 12px)', marginBottom: 18 }} aria-label={`${digits.length} chiffre${digits.length > 1 ? 's' : ''} saisi${digits.length > 1 ? 's' : ''} sur 4`}>
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} style={{
+                width: 'clamp(48px, 7vw, 64px)', height: 'clamp(56px, 9vh, 76px)', borderRadius: 20,
+                display: 'grid', placeItems: 'center', background: '#fff',
+                border: `2px solid ${i === digits.length ? COLORS.coral : COLORS.border}`,
+                fontSize: 'clamp(26px, 4.5vh, 38px)', fontWeight: 800, color: COLORS.marine,
+              }}>{i < digits.length ? '•' : ''}</div>
+            ))}
+          </div>
+          {lu.err && (
+            <div role="alert" style={{ background: '#FBE1DF', color: '#8E211C', border: '0.5px solid #E9A19C', borderRadius: 14,
+              padding: '12px 16px', fontSize: 15, marginBottom: 14, textAlign: 'center', maxWidth: 520 }}>
+              {lu.err}
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'clamp(6px, 1.2vh, 10px)', width: '100%', maxWidth: 420 }}>
+            {['1','2','3','4','5','6','7','8','9'].map(d => (
+              <button key={d} style={keyStyle} disabled={loading || lu.etat === 'verif'} onClick={() => add(d)}>{d}</button>
+            ))}
+            <button style={{ ...keyStyle, background: '#E4DDD2', color: '#06222F' }} disabled={loading || !digits} onClick={del} aria-label="Effacer">
+              <Delete size={24}/>
+            </button>
+            <button style={keyStyle} disabled={loading || lu.etat === 'verif'} onClick={() => add('0')}>0</button>
+            <div style={{ display: 'grid', placeItems: 'center', color: COLORS.muted }}>
+              {loading && <RefreshCw size={22} style={{ animation: 'borne-spin 1s linear infinite' }}/>}
+            </div>
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes borne-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
@@ -2489,3 +2644,6 @@ function TicketBenevole({ resa, onDone, logoUrl, festival = '' }) {
     </div>
   )
 }
+
+// Écran du code du bracelet, exporté pour pouvoir l'afficher seul pendant les vérifications
+export { BraceletCode }

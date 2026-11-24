@@ -97,3 +97,30 @@ describe('codes de billet du site (6 caractères)', () => {
     expect(onScan).toHaveBeenCalledWith('FY-K7Q3NP')
   })
 })
+
+describe('bracelet de secours au lecteur de la borne (24/11/2026)', () => {
+  it('reconnaît le QR du bracelet', () => {
+    const clock = { t: 0 }, onBracelet = vi.fn(), onScan = vi.fn(), onUnknown = vi.fn()
+    const w = createWedge({ onBracelet, onScan, onUnknown, now: () => clock.t })
+    type(w, us('FYB-TESTQR26'), clock)
+    expect(onBracelet).toHaveBeenCalledWith('TESTQR26')
+    expect(onScan).not.toHaveBeenCalled()
+    expect(onUnknown).not.toHaveBeenCalled()
+  })
+
+  it('résiste à un lecteur QWERTY sur une tablette AZERTY', () => {
+    // Touches physiques justes (code), caractères reçus faux (key) : « - » devient « ) », A/Q échangés
+    const clock = { t: 0 }, onBracelet = vi.fn()
+    const w = createWedge({ onBracelet, now: () => clock.t })
+    const lu = us('FYB-TESTQR26').map(k => ({ ...k, key: k.key === '-' ? ')' : k.key === 'Q' ? 'A' : k.key }))
+    type(w, lu, clock)
+    expect(onBracelet).toHaveBeenCalledWith('TESTQR26')
+  })
+
+  it('sans onBracelet, le QR du bracelet reste inconnu', () => {
+    const clock = { t: 0 }, onUnknown = vi.fn()
+    const w = createWedge({ onUnknown, now: () => clock.t })
+    type(w, us('FYB-TESTQR26'), clock)
+    expect(onUnknown).toHaveBeenCalled()
+  })
+})

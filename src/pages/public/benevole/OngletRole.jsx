@@ -8,7 +8,7 @@
  * Étape 2 : les écrans du rôle (billetterie, entrée, suivi), ceux de l'espace équipe, dans l'onglet.
  */
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
-import { Lock, LockOpen, KeyRound, Clock, ChevronRight, ChevronLeft, Ticket, DoorOpen, BarChart3, Plus, ShoppingBag, ShoppingCart, Wallet, Link2, List, ScanLine, Bookmark } from 'lucide-react'
+import { Lock, LockOpen, KeyRound, Clock, ChevronRight, ChevronLeft, Ticket, DoorOpen, BarChart3, Plus, ShoppingBag, ShoppingCart, Wallet, Link2, List, ScanLine, Bookmark, Watch } from 'lucide-react'
 import { doc, onSnapshot } from 'firebase/firestore'
 import { apiFetch, openFirebaseSession } from '../../../firebase/session'
 import { auth, db } from '../../../firebase/config'
@@ -35,6 +35,7 @@ const PAGES_ROLE = {
   nouveau:              lazy(() => import('../../billetterie/Nouveau')),
   remboursement:        lazy(() => import('../../billetterie/Remboursement')),
   'lien-perdu':         lazy(() => import('../../billetterie/LienPerdu')),
+  bracelets:            lazy(() => import('../../billetterie/Bracelets')),
   transactions:         lazy(() => import('../../admin/Transactions')),
   cloture:              lazy(() => import('../../admin/Cloture')),
   debit:                lazy(() => import('../../stand/Debit')),
@@ -46,7 +47,7 @@ const PAGES_ROLE = {
 // Menu de chaque rôle : [page, icône, libellé]
 const MENU_ROLE = {
   billetterie: [['credit', Plus, 'Recharger un compte'], ['commande-sur-place', ShoppingBag, 'Commande sur place'], ['nouveau', Ticket, 'Compte pour un billet'],
-    ['remboursement', Wallet, 'Remboursement'], ['lien-perdu', Link2, 'Lien perdu'], ['transactions', List, 'Mes transactions'], ['cloture', Lock, 'Clôture de caisse']],
+    ['remboursement', Wallet, 'Remboursement'], ['lien-perdu', Link2, 'Lien perdu'], ['bracelets', Watch, 'Bracelets'], ['transactions', List, 'Mes transactions'], ['cloture', Lock, 'Clôture de caisse']],
   controle_entree: [['entree', ScanLine, 'Scanner des billets']],
   consultation: [['transactions', List, 'Transactions'], ['reservations-admin', Bookmark, 'Réservations'], ['analytics', BarChart3, 'Analyses'], ['comptabilite', Wallet, 'Comptabilité']],
 }

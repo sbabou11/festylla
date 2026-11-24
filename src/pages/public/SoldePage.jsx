@@ -44,6 +44,7 @@ import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../
 import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../utils/dons'
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
+import BraceletSecours from './spectateur/BraceletSecours'
 import sp from './spectateur/SoldePage.module.css'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
 import CheckUpdateButton from '../../components/CheckUpdateButton'
@@ -959,6 +960,7 @@ export default function SoldePage({ demo = null }) {
                   </button>
                 )}
               </section>
+              <BraceletSecours eventId={eventId} demo={!!demo} />
               <section className="nv-glass nv-padx" aria-label="Mon compte">
                 <button type="button" className="nv-row nv-press" onClick={logoutSpec}>
                   <span className="nv-ic neutre"><ArrowLeftRight size={20} aria-hidden="true" /></span>

@@ -27,7 +27,7 @@ const FAVORITES = {
 // Libellés courts : 5 cases sur 375 px
 const SHORT = {
   dashboard: 'Direct', accueil: 'Accueil', transactions: 'Flux', alertes: 'Alertes', benevoles: 'Bénévoles',
-  credit: 'Recharger', 'commande-sur-place': 'Sur place', nouveau: 'Compte', entree: 'Entrée', 'lien-perdu': 'Lien perdu', cloture: 'Clôture', debit: 'Encaisser',
+  credit: 'Recharger', 'commande-sur-place': 'Sur place', nouveau: 'Compte', entree: 'Entrée', 'lien-perdu': 'Lien perdu', bracelets: 'Bracelets', cloture: 'Clôture', debit: 'Encaisser',
   retrait: 'Retrait', 'reservations-admin': 'Réserv.', analytics: 'Analyse',
   planning: 'Planning', 'gestion-artistes': 'Artistes', 'mon-profil': 'Profil', evenements: 'Événements', spectateurs: 'Public',
 }

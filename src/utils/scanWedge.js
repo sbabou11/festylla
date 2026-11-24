@@ -12,6 +12,7 @@
 import { SPEC_CODE } from './specCode'
 import { parseQrTournant } from './qrTournant'
 import { parseQrEspace } from './qrEspace'
+import { lireQrBracelet } from './bracelet'
 
 // Touche physique → caractère sur un clavier QWERTY américain : [sans Maj, avec Maj]
 const US = {
@@ -43,7 +44,7 @@ export function parseSpectatorCode(text) {
  * onEspace({ kind, id, jeton }) : QR tournant d'un espace bénévole ou artiste (23/11/2026), reconnu
  * avant les codes spectateur (un jeton peut contenir par hasard une suite qui ressemble à « FY-… »).
  */
-export function createWedge({ onScan, onUnknown, onTournant, onEspace, maxGapMs = 60, minLength = 6, idleMs = 150, now = () => Date.now() }) {
+export function createWedge({ onScan, onUnknown, onTournant, onEspace, onBracelet, maxGapMs = 60, minLength = 6, idleMs = 150, now = () => Date.now() }) {
   let byKey = '', byCode = '', last = 0, timer = null
 
   const reset = () => { byKey = ''; byCode = ''; clearTimeout(timer); timer = null }
@@ -55,6 +56,10 @@ export function createWedge({ onScan, onUnknown, onTournant, onEspace, maxGapMs 
     if (jeton) { onTournant(jeton); return true }
     const espace = onEspace ? parseQrEspace(codeText, keyText) : null
     if (espace) { onEspace(espace); return true }
+    // Bracelet de secours (24/11/2026) : « FYB-XXXXXXXX » ; la lecture par touches physiques
+    // (codeText) passe d'abord, elle résiste à un lecteur QWERTY sur une tablette AZERTY
+    const bracelet = onBracelet ? (lireQrBracelet(codeText) || lireQrBracelet(keyText)) : null
+    if (bracelet) { onBracelet(bracelet); return true }
     const code = parseSpectatorCode(keyText) || parseSpectatorCode(codeText)
     if (code) onScan?.(code)
     else onUnknown?.(keyText || codeText, codeText, keyText)

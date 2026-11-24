@@ -21,6 +21,9 @@
  *   { action: 'jetons-espace', ev }           espace bénévole ou artiste ouvert sans le lien personnel
  *                                             (23/11/2026) : le téléphone ne connaît pas la clé, le serveur
  *                                             calcule les QR tournants des 5 prochaines minutes (api/_qr/espace)
+ *   { action: 'bracelet-etat' | 'bracelet-relier' | 'bracelet-code' | 'bracelet-bloquer', ev, … }
+ *                                             espace spectateur (24/11/2026) : son bracelet de secours
+ *                                             (voir braceletEspace et api/_qr/bracelet.js)
  * Pour la borne, une identification réussie ouvre une autorisation de 10 minutes sur ce seul compte
  * (events/{ev}/autorisations/{compte}) : les règles de la base ne laissent la borne lire ce compte
  * et débiter son solde que pendant ce temps. Limite d'essais : celle des pages publiques.
@@ -34,6 +37,7 @@ const { lireJeton, jetonValable, lireSecours, nouveauSecours } = require('../_qr
 const { jetonsAVenir, lireJetonEspace, jetonEspaceValable } = require('../_qr/espace')
 const { loadAccount } = require('../_auth/server')
 const { assurerPorteMonnaie } = require('../_auth/porteMonnaie')
+const { lireBracelet, erreurCode, empreinteCode, codeJuste, vueBracelet, numeroAffiche, ESSAIS_MAX } = require('../_qr/bracelet')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/
@@ -42,7 +46,8 @@ const SECOURS_MS = 90 * 1000
 const JETON_MS = 2 * 60 * 1000
 const JETON = /^[0-9a-f]{32}$/
 
-class Refus extends Error { constructor(status, message) { super(message); this.status = status } }
+// extra : champs ajoutés à la réponse (ex. bracelet : { etat, essais }) pour que l'écran sache quoi montrer
+class Refus extends Error { constructor(status, message, extra = null) { super(message); this.status = status; this.extra = extra } }
 
 async function trouver(evRef, id) {
   const col = evRef.collection('spectateurs')
@@ -81,10 +86,194 @@ async function ouvrirLien(req, res, ev, body) {
     const token = await admin.auth().createCustomToken(uid, claims)
     res.status(200).json({ token, compte: { id: snap.data().id, docId, nom: snap.data().nom || '', cle: cle.data().cle } })
   } catch (e) {
-    if (e instanceof Refus) { res.status(e.status).json({ error: e.message }); return }
+    if (e instanceof Refus) { res.status(e.status).json({ error: e.message, ...(e.extra || {}) }); return }
     console.error('qr (ouvrir-lien):', e)
     res.status(500).json({ error: 'Ouverture impossible pour le moment, réessayez.' })
   }
+}
+
+/**
+ * Relie un bracelet à un compte et enregistre l'empreinte du code (espace ou guichet).
+ * Renvoie null si c'est fait, sinon la raison du refus. Un autre bracelet encore actif sur ce compte
+ * est remplacé (il ne permet plus de payer).
+ */
+async function relierBracelet(db, col, { numero, specDoc, specId, code, par, now }) {
+  const FV = admin.firestore.FieldValue
+  const ref = col.doc(numero)
+  const codeHash = empreinteCode(String(code))
+  return db.runTransaction(async (t) => {
+    const [d, miens] = await Promise.all([t.get(ref), t.get(col.where('specDoc', '==', specDoc))])
+    const b = d.exists ? d.data() : null
+    if (b && b.specDoc !== specDoc && b.statut !== 'remplace') return 'Ce bracelet est déjà relié à un autre compte. Prenez-en un autre à l\'entrée ou au guichet.'
+    if (b && b.specDoc === specDoc && b.statut === 'bloque') return 'Ce bracelet est bloqué. Prenez-en un nouveau à l\'entrée ou au guichet.'
+    for (const m of miens.docs) {
+      if (m.id !== numero && m.data().statut === 'actif') t.update(m.ref, { statut: 'remplace', remplaceLe: FV.serverTimestamp(), remplacePar: numero })
+    }
+    t.set(ref, {
+      numero, specDoc, specId, statut: 'actif', codeHash, essais: 0,
+      relieLe: FV.serverTimestamp(), relieMs: now, reliePar: par, codeLe: FV.serverTimestamp(),
+      bloqueLe: null, bloqueMotif: null,
+    })
+    return null
+  })
+}
+
+/**
+ * Billetterie : bracelets au guichet (écran 2, maquette HFg4MmsMG1UknVgMuqfTke, 24/11/2026)
+ *   'bracelet-guichet-voir'    { bracelet } | { docId } : état d'un bracelet scanné et son propriétaire,
+ *                                ou le bracelet d'un spectateur retrouvé par son nom ou son billet
+ *   'bracelet-guichet-relier'  { bracelet, docId, code, identite, staff } : relie un bracelet libre
+ *   'bracelet-guichet-code'    { bracelet, code, identite, staff } : nouveau code (code oublié, ou
+ *                                bloqué après 3 codes faux) ; débloque le bracelet
+ *   'bracelet-guichet-bloquer' { bracelet, identite, staff } : bracelet perdu
+ * La pièce d'identité est toujours vérifiée (identite: true) ; le spectateur tape lui-même son code.
+ */
+async function braceletGuichet(req, res, { db, evRef, ev, caller, body, now }) {
+  const billetterie = caller.type === 'staff' && (['admin', 'super_admin', 'billetterie'].includes(caller.role) || await canManage(db, caller, 'bracelets'))
+  if (!billetterie) throw new Refus(403, 'Réservé à la billetterie.')
+  const FV = admin.firestore.FieldValue
+  const col = evRef.collection('bracelets')
+  const staff = String(body.staff || caller.uid || '').slice(0, 80)
+  const compteDe = async (docId) => {
+    const s = await evRef.collection('spectateurs').doc(String(docId)).get()
+    if (!s.exists) return null
+    const d = s.data()
+    return { docId: s.id, id: d.id, nom: d.nom || '', solde: Number(d.solde) || 0, annule: !!(d.billet && d.billet.annule) }
+  }
+  const vue = (b) => b ? { numero: b.numero, statut: b.statut, motif: b.bloqueMotif || null, relieMs: b.relieMs || null, bloqueMs: b.bloqueMs || null } : null
+  const audit = (action, numero, spec, label) => writeAudit(db, ev, { action, bracelet: numero, specId: spec ? spec.id : '', specNom: spec ? spec.nom : '', staff, userType: 'staff', label })
+  const numeroLu = () => {
+    const n = lireBracelet(body.bracelet)
+    if (!n) throw new Refus(400, "Ce QR n'est pas celui d'un bracelet YllaCash.")
+    return n
+  }
+
+  if (body.action === 'bracelet-guichet-voir') {
+    if (body.docId != null) {
+      if (!ID.test(String(body.docId))) throw new Refus(400, 'Compte manquant.')
+      const compte = await compteDe(body.docId)
+      if (!compte) throw new Refus(404, 'Compte introuvable.')
+      const q = await col.where('specDoc', '==', compte.docId).get()
+      const vus = q.docs.map((d) => d.data()).filter((b) => b.statut === 'actif' || b.statut === 'bloque')
+      vus.sort((a, b) => (b.statut === 'actif') - (a.statut === 'actif') || (b.relieMs || 0) - (a.relieMs || 0))
+      res.status(200).json({ compte, bracelet: vue(vus[0] || null) }); return
+    }
+    const numero = numeroLu()
+    const d = await col.doc(numero).get()
+    const b = d.exists ? d.data() : null
+    if (!b || b.statut === 'remplace') { res.status(200).json({ bracelet: { numero, statut: 'libre' }, compte: null }); return }
+    res.status(200).json({ bracelet: vue(b), compte: await compteDe(b.specDoc) }); return
+  }
+
+  if (body.identite !== true) throw new Refus(400, "Vérifiez d'abord une pièce d'identité au nom du spectateur.")
+  const numero = numeroLu()
+
+  if (body.action === 'bracelet-guichet-relier') {
+    if (!ID.test(String(body.docId || ''))) throw new Refus(400, 'Spectateur manquant.')
+    const err = erreurCode(body.code)
+    if (err) throw new Refus(400, err)
+    const compte = await compteDe(body.docId)
+    if (!compte) throw new Refus(404, 'Compte introuvable.')
+    if (compte.annule) throw new Refus(403, 'Ce billet a été annulé : pas de bracelet possible.')
+    const refus = await relierBracelet(db, col, { numero, specDoc: compte.docId, specId: compte.id, code: body.code, par: staff || 'guichet', now })
+    if (refus) throw new Refus(409, refus)
+    await audit('BRACELET_RELIE', numero, compte, `Bracelet n° ${numeroAffiche(numero)} relié à ${compte.nom || compte.id} au guichet (identité vérifiée), code tapé par le spectateur`)
+    res.status(200).json({ bracelet: { numero, statut: 'actif' }, compte }); return
+  }
+
+  const ref = col.doc(numero)
+  const d = await ref.get()
+  const b = d.exists ? d.data() : null
+  if (!b || b.statut === 'remplace') throw new Refus(404, "Ce bracelet n'est relié à aucun compte.")
+  const compte = await compteDe(b.specDoc)
+
+  if (body.action === 'bracelet-guichet-code') {
+    const err = erreurCode(body.code)
+    if (err) throw new Refus(400, err)
+    const etaitBloque = b.statut === 'bloque'
+    await ref.update({ codeHash: empreinteCode(String(body.code)), essais: 0, statut: 'actif', bloqueLe: null, bloqueMs: null, bloqueMotif: null, codeLe: FV.serverTimestamp() })
+    await audit(etaitBloque ? 'BRACELET_DEBLOQUE' : 'BRACELET_CODE_CHANGE', numero, compte,
+      `Nouveau code pour le bracelet n° ${numeroAffiche(numero)} de ${compte ? (compte.nom || compte.id) : '?'} au guichet (identité vérifiée)${etaitBloque ? ' : bracelet débloqué' : ''}`)
+    res.status(200).json({ bracelet: { numero, statut: 'actif' }, compte }); return
+  }
+
+  if (body.action === 'bracelet-guichet-bloquer') {
+    if (b.statut === 'actif') {
+      await ref.update({ statut: 'bloque', bloqueLe: FV.serverTimestamp(), bloqueMs: now, bloqueMotif: 'perdu' })
+      await audit('BRACELET_BLOQUE', numero, compte, `Bracelet n° ${numeroAffiche(numero)} de ${compte ? (compte.nom || compte.id) : '?'} bloqué au guichet (perdu, identité vérifiée)`)
+    }
+    res.status(200).json({ bracelet: { numero, statut: 'bloque', motif: b.bloqueMotif || 'perdu' }, compte }); return
+  }
+
+  throw new Refus(400, 'Action inconnue.')
+}
+
+/**
+ * Espace spectateur : son bracelet de secours (décidé le 24/11/2026)
+ *   'bracelet-etat'                       : son bracelet actuel (actif ou bloqué), sinon null
+ *   'bracelet-relier'  { bracelet, code } : relie le bracelet scanné et enregistre le code ; un autre
+ *                                           bracelet encore actif sur ce compte est remplacé
+ *   'bracelet-code'    { code }           : nouveau code pour le bracelet actif (essais remis à zéro)
+ *   'bracelet-bloquer'                    : bracelet perdu, il ne permet plus de payer
+ * Le code n'est jamais choisi à la borne : seulement ici (session du spectateur) ou au guichet.
+ */
+async function braceletEspace(req, res, { db, evRef, ev, caller, body, now }) {
+  if (caller.type !== 'spectateur' || !caller.specId || !caller.specDoc) throw new Refus(403, 'Ouvrez votre espace avec votre lien.')
+  const specDoc = String(caller.specDoc)
+  const col = evRef.collection('bracelets')
+  const FV = admin.firestore.FieldValue
+  const actuel = async () => {
+    const q = await col.where('specDoc', '==', specDoc).get()
+    const vus = q.docs.map((d) => d.data()).filter((b) => b.statut === 'actif' || b.statut === 'bloque')
+    vus.sort((a, b) => (b.statut === 'actif') - (a.statut === 'actif') || (b.relieMs || 0) - (a.relieMs || 0))
+    return vus[0] || null
+  }
+  const audit = (action, numero, label) => writeAudit(db, ev, { action, specId: caller.specId, bracelet: numero, userType: 'spectateur', staff: '', label })
+
+  if (body.action === 'bracelet-etat') {
+    res.status(200).json({ bracelet: vueBracelet(await actuel()) }); return
+  }
+
+  if (body.action === 'bracelet-relier') {
+    const numero = lireBracelet(body.bracelet)
+    if (!numero) throw new Refus(400, "Ce QR n'est pas celui d'un bracelet YllaCash.")
+    const err = erreurCode(body.code)
+    if (err) throw new Refus(400, err)
+    const ipRef = db.collection('securite-connexions').doc(counterKey('pub', clientIp(req)))
+    const ipRec = (await ipRef.get()).data()
+    const wait = blockedMinutes(ipRec, now)
+    if (wait) throw new Refus(429, `Trop d'essais. Réessayez dans ${wait} minutes.`)
+    const refus = await relierBracelet(db, col, { numero, specDoc, specId: caller.specId, code: body.code, par: 'spectateur', now })
+    if (refus) {
+      await ipRef.set(afterFailure(ipRec, now, PUBLIC_LIMIT))
+      throw new Refus(409, refus)
+    }
+    await audit('BRACELET_RELIE', numero, `Bracelet n° ${numeroAffiche(numero)} relié par le spectateur dans son espace, code choisi`)
+    res.status(200).json({ bracelet: vueBracelet({ numero, statut: 'actif' }) }); return
+  }
+
+  const b = await actuel()
+  if (!b) throw new Refus(404, "Aucun bracelet relié à ce compte.")
+  const ref = col.doc(b.numero)
+
+  if (body.action === 'bracelet-code') {
+    if (b.statut !== 'actif') throw new Refus(409, 'Ce bracelet est bloqué. Prenez-en un nouveau à l\'entrée ou au guichet.')
+    const err = erreurCode(body.code)
+    if (err) throw new Refus(400, err)
+    await ref.update({ codeHash: empreinteCode(String(body.code)), essais: 0, codeLe: FV.serverTimestamp() })
+    await audit('BRACELET_CODE_CHANGE', b.numero, `Code du bracelet n° ${numeroAffiche(b.numero)} changé par le spectateur`)
+    res.status(200).json({ bracelet: vueBracelet(b) }); return
+  }
+
+  if (body.action === 'bracelet-bloquer') {
+    if (b.statut === 'actif') {
+      await ref.update({ statut: 'bloque', bloqueLe: FV.serverTimestamp(), bloqueMs: now, bloqueMotif: 'perdu' })
+      await audit('BRACELET_BLOQUE', b.numero, `Bracelet n° ${numeroAffiche(b.numero)} bloqué par le spectateur (perdu)`)
+    }
+    res.status(200).json({ bracelet: vueBracelet({ ...b, statut: 'bloque', bloqueMotif: b.bloqueMotif || 'perdu' }) }); return
+  }
+
+  throw new Refus(400, 'Action inconnue.')
 }
 
 module.exports = async (req, res) => {
@@ -217,6 +406,10 @@ module.exports = async (req, res) => {
       res.status(200).json({ jeton, secondes: Math.round(JETON_MS / 1000) }); return
     }
 
+    // ── Espace spectateur : bracelet de secours (24/11/2026, écran 1 du bracelet) ──
+    if (String(body.action || '').startsWith('bracelet-guichet-')) return await braceletGuichet(req, res, { db, evRef, ev, caller, body, now })
+    if (String(body.action || '').startsWith('bracelet-')) return await braceletEspace(req, res, { db, evRef, ev, caller, body, now })
+
     if (body.action !== 'identifier') throw new Refus(400, 'Action inconnue.')
     if (!['borne', 'staff'].includes(caller.type)) throw new Refus(403, 'Réservé à la borne et à l\'équipe.')
 
@@ -263,6 +456,44 @@ module.exports = async (req, res) => {
       if (!c.exists || c.data().origine !== 'en-ligne' || c.data().statut !== 'en_attente') await echec(404, 'Code inconnu ou déjà utilisé.')
       snap = await evRef.collection('spectateurs').doc(String(c.data().specDocId || c.data().specId)).get()
       if (!snap.exists) throw new Refus(404, 'Compte introuvable.')
+    } else if (body.bracelet != null) {
+      // Bracelet de secours (écran 3, 24/11/2026) : sans code, on dit seulement s'il faut le demander ;
+      // avec le code, 3 codes faux d'affilée bloquent le bracelet (déblocage au guichet)
+      if (caller.type !== 'borne') throw new Refus(403, 'Réservé à la borne.')
+      const numero = lireBracelet(body.bracelet)
+      if (!numero) await echec(400, "Ce QR n'est pas celui d'un bracelet YllaCash.")
+      const ref = evRef.collection('bracelets').doc(numero)
+      const d = await ref.get()
+      const b = d.exists ? d.data() : null
+      if (!b || b.statut === 'remplace') throw new Refus(404, "Ce bracelet n'est relié à aucun compte. Reliez-le dans votre espace YllaCash ou à la billetterie.", { etat: 'libre', numero })
+      if (b.statut === 'bloque') throw new Refus(403, b.bloqueMotif === 'perdu' ? 'Ce bracelet a été déclaré perdu : il ne permet plus de payer.' : '3 codes incorrects : le bracelet est bloqué pour protéger votre solde.', { etat: 'bloque', motif: b.bloqueMotif || null, numero })
+      if (body.code == null) { res.status(200).json({ bracelet: { numero, statut: 'actif' } }); return }
+      const juste = /^\d{4}$/.test(String(body.code)) && codeJuste(b, body.code)
+      const resultat = await db.runTransaction(async (t) => {
+        const x = (await t.get(ref)).data() || {}
+        if (x.statut !== 'actif' || x.codeHash !== b.codeHash) return { refus: 'change' }
+        if (juste) { if (x.essais) t.update(ref, { essais: 0 }); return { ok: true } }
+        const essais = (Number(x.essais) || 0) + 1
+        if (essais >= ESSAIS_MAX) {
+          t.update(ref, { essais, statut: 'bloque', bloqueLe: admin.firestore.FieldValue.serverTimestamp(), bloqueMs: now, bloqueMotif: 'essais' })
+          return { bloque: true }
+        }
+        t.update(ref, { essais })
+        return { restants: ESSAIS_MAX - essais }
+      })
+      if (resultat.refus) throw new Refus(409, 'Ce bracelet vient de changer. Présentez-le à nouveau.')
+      if (!resultat.ok) {
+        // Pas de compteur par adresse réseau ici : tous les clients de la borne partagent la sienne ;
+        // la limite de 3 essais du bracelet suffit
+        if (resultat.bloque) {
+          await writeAudit(db, ev, { action: 'BRACELET_BLOQUE', bracelet: numero, specId: b.specId || '', userType: 'borne', staff: '',
+            label: `Bracelet n° ${numeroAffiche(numero)} bloqué à la borne après ${ESSAIS_MAX} codes incorrects` })
+          throw new Refus(403, '3 codes incorrects : le bracelet est bloqué pour protéger votre solde.', { etat: 'bloque', motif: 'essais', numero })
+        }
+        throw new Refus(401, `Code incorrect : ${resultat.restants} essai${resultat.restants > 1 ? 's' : ''} restant${resultat.restants > 1 ? 's' : ''}.`, { etat: 'faux', essais: resultat.restants, numero })
+      }
+      snap = await evRef.collection('spectateurs').doc(String(b.specDoc)).get()
+      if (!snap.exists) throw new Refus(404, 'Compte introuvable.')
     } else {
       throw new Refus(400, 'QR ou code attendu.')
     }
@@ -277,7 +508,7 @@ module.exports = async (req, res) => {
     }
     res.status(200).json({ compte: { id: spec.id, docId: snap.id, nom: spec.nom || '', solde: Number(spec.solde) || 0, ...(spec.porteMonnaieBenevole ? { benevole: true } : {}) } })
   } catch (e) {
-    if (e instanceof Refus) { res.status(e.status).json({ error: e.message }); return }
+    if (e instanceof Refus) { res.status(e.status).json({ error: e.message, ...(e.extra || {}) }); return }
     console.error('qr:', e)
     res.status(500).json({ error: 'Vérification impossible pour le moment, réessayez.' })
   }

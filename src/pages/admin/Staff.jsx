@@ -29,6 +29,7 @@ const ALL_PAGES = [
   { id:'commande-sur-place', label:'Commande sur place',    group:'Billetterie' },
   { id:'nouveau',            label:'Compte pour un billet', group:'Billetterie' },
   { id:'lien-perdu',         label:'Lien perdu',            group:'Billetterie' },
+  { id:'bracelets',          label:'Bracelets',             group:'Billetterie' },
   { id:'debit',              label:'Encaisser',             group:'Stand' },
   { id:'reservations-admin', label:'Réservations',          group:'Commun' },
   { id:'transactions',       label:'Transactions',          group:'Commun' },

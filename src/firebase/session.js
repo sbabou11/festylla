@@ -22,7 +22,8 @@ export async function apiFetch(url, { method = 'POST', body, headers = {}, raw =
     return resp
   }
   const data = await resp.json().catch(() => ({}))
-  if (!resp.ok) throw Object.assign(new Error(data.error || `Erreur ${resp.status}`), { status: resp.status })
+  // data : la réponse entière (ex. bracelet : { etat, essais }), pour les écrans qui en ont besoin
+  if (!resp.ok) throw Object.assign(new Error(data.error || `Erreur ${resp.status}`), { status: resp.status, data })
   return data
 }
 

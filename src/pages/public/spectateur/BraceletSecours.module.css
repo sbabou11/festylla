@@ -1,0 +1,12 @@
+/* Carte « Mon bracelet de secours » (24/11/2026) */
+.carte { display: grid; gap: 10px; padding: 16px; border-radius: 20px; grid-template-columns: minmax(0, 1fr); }
+.carte > * { margin: 0; min-width: 0; }
+.bracelet { display: flex; gap: 10px; align-items: center; padding: 12px; border-radius: 14px; background: var(--nv-glass2); }
+.ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--nv-glass); flex: none; }
+.txt { display: grid; min-width: 0; }
+.ok, .err { display: flex; gap: 6px; align-items: flex-start; border-radius: 14px; padding: 10px 12px; font-size: 13px; line-height: 1.45; }
+.ok { background: rgba(20, 181, 140, .16); color: #0A6B54; }
+.err { background: rgba(216, 48, 48, .14); color: #8E211C; }
+:global(.dark) .ok { color: #5FD4B0; }
+:global(.dark) .err { color: #FF9C95; }
+.code { justify-content: center; }

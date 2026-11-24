@@ -74,6 +74,7 @@ const PAGES = {
   nouveau:              lazy(() => import('./pages/billetterie/Nouveau')),
   remboursement:        lazy(() => import('./pages/billetterie/Remboursement')),
   'lien-perdu':         lazy(() => import('./pages/billetterie/LienPerdu')),
+  bracelets:            lazy(() => import('./pages/billetterie/Bracelets')),
   debit:                lazy(() => import('./pages/stand/Debit')),
   'mon-profil':         lazy(() => import('./pages/shared/MonProfil')),
 }
@@ -92,7 +93,7 @@ const PAGE_TITLES = {
   'editeur-template': 'Éditeur template facture',
   menu: 'Carte & menu', staff: 'Équipe', settings: 'Paramètres', credit: 'Créditer',
   nouveau: 'Compte pour un billet', debit: 'Encaisser',
-  remboursement: 'Remboursement', 'lien-perdu': 'Lien perdu',
+  remboursement: 'Remboursement', 'lien-perdu': 'Lien perdu', bracelets: 'Bracelets',
   'commande-sur-place': 'Commande sur place',
   'mon-profil': 'Mon profil',
 }
