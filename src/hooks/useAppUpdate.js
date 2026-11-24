@@ -119,14 +119,83 @@ function getUpdateSWPromise() {
 }
 
 /**
+ * Reload « complet » qui contourne tous les caches : vide les caches Workbox, désinscrit le
+ * Service Worker, puis recharge avec un paramètre unique (voir applyUpdate).
+ */
+async function rechargementComplet() {
+  log('🔄 Reload complet de la page')
+
+  // 1. Vider tous les caches Workbox (gardera juste l'essentiel SW)
+  try {
+    if ('caches' in window) {
+      const names = await caches.keys()
+      await Promise.all(names.map(name => {
+        log('  → vidage cache:', name)
+        return caches.delete(name)
+      }))
+    }
+  } catch (e) {
+    log('  Erreur vidage caches:', e?.message)
+  }
+
+  // 2. Désinscrire le Service Worker actif pour cette session.
+  //    Le nouveau SW sera ré-enregistré au prochain chargement.
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map(r => {
+        log('  → désinscription SW:', r.scope)
+        return r.unregister()
+      }))
+    }
+  } catch (e) {
+    log('  Erreur désinscription SW:', e?.message)
+  }
+
+  // 3. Reload avec paramètre query unique pour contourner le cache HTTP.
+  //    `location.reload()` seul peut rester sur la version cachée si le
+  //    SW intercepte encore. En remplaçant href avec un timestamp unique,
+  //    on garantit une nouvelle URL → nouvelle requête → nouvelle version.
+  try {
+    const url = new URL(window.location.href)
+    url.searchParams.set('_v', String(Date.now()))
+    window.location.replace(url.toString())
+  } catch {
+    try {
+      window.location.reload()
+    } catch {
+      window.location.href = window.location.pathname + '?_v=' + Date.now()
+    }
+  }
+}
+
+/**
+ * Tirer pour actualiser (24/11/2026) : installe tout de suite la nouvelle version trouvée,
+ * sans bandeau. Même chemin que « Mettre à jour » : skipWaiting, puis rechargement complet.
+ */
+export async function installerMaintenant() {
+  log('Installation immédiate (geste « tirer pour actualiser »)')
+  try { localStorage.setItem(LS_LAST_APPLIED, String(Date.now())) } catch {}
+  let fait = false
+  const go = () => { if (!fait) { fait = true; rechargementComplet() } }
+  if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('controllerchange', () => setTimeout(go, 100), { once: true })
+  try {
+    const fn = await getUpdateSWPromise()
+    if (fn) await fn(true)
+  } catch (e) { log('Erreur installation immédiate:', e?.message) }
+  setTimeout(go, 2000)   // pas de controllerchange : rechargement de secours
+}
+
+/**
  * Permet à l'UI de déclencher manuellement une vérification de mise à jour.
  * Renvoie un objet { found, error } selon le résultat.
  */
-export async function checkForUpdate() {
+export async function checkForUpdate({ forcer = false } = {}) {
   log('Vérification manuelle déclenchée')
   // Pendant la grace period, on signale qu'il n'y a rien à mettre à jour
   // pour éviter les faux positifs juste après un reload
-  if (isInGracePeriod()) {
+  // forcer (tirer pour actualiser, 24/11/2026) : on vérifie quand même
+  if (!forcer && isInGracePeriod()) {
     log('⏭️ Vérification skip (grace period)')
     return { found: false, gracePeriod: true }
   }
@@ -216,52 +285,7 @@ export default function useAppUpdate() {
      * HTML depuis son cache, qui pointe vers d'anciens JS. Il faut faire table
      * rase pour que la prochaine requête remonte fraîche depuis Vercel.
      */
-    const hardReload = async () => {
-      log('🔄 Reload complet de la page')
-
-      // 1. Vider tous les caches Workbox (gardera juste l'essentiel SW)
-      try {
-        if ('caches' in window) {
-          const names = await caches.keys()
-          await Promise.all(names.map(name => {
-            log('  → vidage cache:', name)
-            return caches.delete(name)
-          }))
-        }
-      } catch (e) {
-        log('  Erreur vidage caches:', e?.message)
-      }
-
-      // 2. Désinscrire le Service Worker actif pour cette session.
-      //    Le nouveau SW sera ré-enregistré au prochain chargement.
-      try {
-        if ('serviceWorker' in navigator) {
-          const regs = await navigator.serviceWorker.getRegistrations()
-          await Promise.all(regs.map(r => {
-            log('  → désinscription SW:', r.scope)
-            return r.unregister()
-          }))
-        }
-      } catch (e) {
-        log('  Erreur désinscription SW:', e?.message)
-      }
-
-      // 3. Reload avec paramètre query unique pour contourner le cache HTTP.
-      //    `location.reload()` seul peut rester sur la version cachée si le
-      //    SW intercepte encore. En remplaçant href avec un timestamp unique,
-      //    on garantit une nouvelle URL → nouvelle requête → nouvelle version.
-      try {
-        const url = new URL(window.location.href)
-        url.searchParams.set('_v', String(Date.now()))
-        window.location.replace(url.toString())
-      } catch {
-        try {
-          window.location.reload()
-        } catch {
-          window.location.href = window.location.pathname + '?_v=' + Date.now()
-        }
-      }
-    }
+    const hardReload = rechargementComplet
 
     const safetyTimer = setTimeout(() => {
       log('⚠ Timeout 15s — reload forcé')

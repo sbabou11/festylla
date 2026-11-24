@@ -23,6 +23,7 @@ import BottomNav from './components/BottomNav'
 import Studio   from './components/Studio'
 import Avatar   from './components/Avatar'
 import UpdateBanner from './components/UpdateBanner'
+import TirerActualiser from './components/TirerActualiser'
 import { hasYllaSession } from './firebase/session'
 import LinkGate from './components/LinkGate'
 import { oublierEspace } from './utils/dernierEspace'
@@ -247,6 +248,7 @@ export default function App() {
     {/* Un seul conteneur de toasts pour toutes les pages, publiques comme staff */}
     <ToastViewport />
     <UpdateBanner />
+    <TirerActualiser />
     </>
   )
 }
