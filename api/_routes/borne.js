@@ -32,7 +32,7 @@ const { readBody } = require('../_billets/admin')
 const { festDay } = require('../_em/retour')
 const { restants, standBenevoles, repartirCommande } = require('../_borne/benevole')
 const euros = (c) => ((Number(c) || 0) / 100).toFixed(2).replace('.', ',') + ' €'
-const { avantagesDe, dejaPris, restantsArtiste, preparerCommandeArtiste } = require('../_borne/artiste')
+const { avantagesDe, dejaPris, restantsArtiste, repartirCommandeArtiste } = require('../_borne/artiste')
 const { lireJetonEspace, jetonEspaceValable, nouveauPassage, passageValable } = require('../_qr/espace')
 
 const ID = /^[\w-]{1,128}$/
@@ -150,19 +150,32 @@ module.exports = async (req, res) => {
       extra.filter(m => m.exists).forEach(m => etat.menuById.set(m.id, m.data()))
       const stands = (carteSnap.exists && carteSnap.data().stands) || []
       const standById = new Map(stands.map(st => [st.id, st]))
+      // Solde des artistes (25/11/2026) : toute la carte ; avantages d'abord, le reste sur son solde
       let prep
-      try { prep = preparerCommandeArtiste({ lignes, menuById: etat.menuById, typeDe: etat.typeDe, restants: etat.reste, standById }) }
+      try { prep = repartirCommandeArtiste({ lignes, menuById: etat.menuById, typeDe: etat.typeDe, restants: etat.reste, standById }) }
       catch (e) { throw new Refus(409, e.message) }
+
+      // Porte-monnaie de l'artiste (lu avant toute écriture) : il doit couvrir la part payée
+      let pmRef = null, pm = null
+      if (prep.totalPaye > 0) {
+        const q = await t.get(evRef.collection('spectateurs').where('artisteId', '==', cr).limit(1))
+        if (q.empty) throw new Refus(409, `Solde insuffisant : il manque ${euros(prep.totalPaye)}. Rechargez votre solde dans votre espace ou à la billetterie.`)
+        pmRef = q.docs[0].ref
+        pm = q.docs[0].data()
+        const solde = Number(pm.solde) || 0
+        if (solde < prep.totalPaye) throw new Refus(409, `Solde insuffisant : il manque ${euros(prep.totalPaye - solde)}. Rechargez votre solde dans votre espace ou à la billetterie.`)
+      }
 
       const ts = admin.firestore.FieldValue.serverTimestamp()
       const inc = admin.firestore.FieldValue.increment
       const date = parisDate.format(new Date(now)), heure = parisTime.format(new Date(now)), iso = new Date(now).toISOString()
       const resaCode = code || `ART-${numero}`
-      const resume = prep.items.map(i => i.nom + (i.qty > 1 ? ` ×${i.qty}` : '')).join(', ')
+      const resumeDe = (l) => l.map(i => i.nom + (i.qty > 1 ? ` ×${i.qty}` : '')).join(', ')
       const cmdRef = evRef.collection('commandes').doc()
 
-      prep.items.forEach(i => {
-        t.update(evRef.collection('menu').doc(i.id), { stock: inc(-i.qty) })
+      prep.items.forEach(i => t.update(evRef.collection('menu').doc(i.id), { stock: inc(-i.qty) }))
+      // Consommations offertes seulement (les achats sur le solde ont leur propre vente, ci-dessous)
+      prep.offerts.forEach(i => {
         for (let k = 0; k < i.qty; k++) {
           t.set(evRef.collection('artist-consumptions').doc(), {
             creneauId: cr, artisteNom: etat.nom, articleId: i.id, articleNom: i.nom, type: i.type,
@@ -172,29 +185,41 @@ module.exports = async (req, res) => {
       })
       t.set(cmdRef, {
         numero, numeroDay: parisDay.format(new Date(now)), specId: null, specNom: etat.nom, creneauId: cr,
-        items: prep.items.map(({ id, nom, qty, prixUnit, standId, standNumero, type }) => ({ id, nom, qty, prixUnit, total: 0, typeArtiste: type, standId, standNumero })),
-        total: 0, status: 'collected', paid: true, paidAt: ts, paidBy: 'Avantages artiste',
+        items: prep.items.map(({ id, nom, qty, prixUnit, total, offert, standId, standNumero, type }) => ({ id, nom, qty, prixUnit, total, offert, typeArtiste: type || null, standId, standNumero })),
+        total: prep.totalPaye, status: 'collected', paid: true, paidAt: ts,
+        paidBy: prep.totalPaye ? (prep.offerts.length ? 'Avantages artiste + solde' : 'Solde artiste') : 'Avantages artiste',
         createdAt: ts, createdBy: 'Borne (artiste)', collectedAt: ts, collectedBy: 'Ticket imprimé',
         readyAt: null, readyBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null, refunded: false,
         date, timestamp: iso, heure, source: 'artiste', code: resaCode,
       })
-      t.set(evRef.collection('transactions').doc(), {
-        type: 'artist-gift', label: `Avantage artiste — ${etat.nom} (borne #${numero}) : ${resume}`,
-        items: prep.items.map(({ nom, qty, type }) => ({ nom, qty, type })),
+      if (prep.offerts.length) t.set(evRef.collection('transactions').doc(), {
+        type: 'artist-gift', label: `Avantage artiste — ${etat.nom} (borne #${numero}) : ${resumeDe(prep.offerts)}`,
+        items: prep.offerts.map(({ nom, qty, type }) => ({ nom, qty, type })),
         artisteNom: etat.nom, creneauId: cr, benevoleId: null, specId: null, benevoleNom: null, specNom: null,
         montant: 0, staff: 'Borne', commandeNumero: numero, resaCode, date, timestamp: iso, heure, createdAt: ts,
       })
+      if (pmRef) {
+        const avant = Number(pm.solde) || 0
+        t.update(pmRef, { solde: avant - prep.totalPaye })
+        t.set(evRef.collection('transactions').doc(), {
+          specId: pm.id, specNom: pm.nom || etat.nom, artisteId: cr, artisteNom: etat.nom, achatArtiste: true, type: 'debit',
+          label: `Commande #${numero}${code ? ` (code ${code})` : ''} — ${resumeDe(prep.payes)}`,
+          items: prep.payes.map(({ nom, qty, prixUnit, total }) => ({ nom, qty, prixUnit, total })),
+          montant: prep.totalPaye, staff: 'Borne', soldeBefore: avant, soldeAfter: avant - prep.totalPaye,
+          ...(code ? { code } : {}), commandeNumero: numero, date, timestamp: iso, heure, createdAt: ts,
+        })
+      }
       if (codeRef) t.update(codeRef, { statut: 'utilise', utiliseLe: ts, commandeId: cmdRef.id, commandeNumero: numero })
-      return { items: prep.items, nom: etat.nom }
+      return { items: prep.items, nom: etat.nom, totalPaye: prep.totalPaye }
     })
     await evRef.collection('audit').add({
-      action: 'AVANTAGE_ARTISTE_BORNE', creneauId: cr, montant: 0, staff: 'Borne',
-      label: `Commande artiste #${numero} à la borne${code ? ` (code ${code})` : ''} — ${r.nom}`,
+      action: 'AVANTAGE_ARTISTE_BORNE', creneauId: cr, montant: r.totalPaye || 0, staff: 'Borne',
+      label: `Commande artiste #${numero} à la borne${code ? ` (code ${code})` : ''} — ${r.nom}${r.totalPaye ? ` · ${euros(r.totalPaye)} sur son solde` : ''}`,
       timestamp: new Date(now).toISOString(), createdAt: admin.firestore.FieldValue.serverTimestamp(),
     }).catch(() => {})
     return {
-      numero, artiste: r.nom,
-      items: r.items.map(({ nom, qty, prixUnit, standId, standNumero, type }) => ({ nom, qty, prix: prixUnit, standId, standNumero, type })),
+      numero, artiste: r.nom, totalPaye: r.totalPaye || 0,
+      items: r.items.map(({ nom, qty, prixUnit, standId, standNumero, type, offert }) => ({ nom, qty, prix: prixUnit, standId, standNumero, type, offert })),
     }
   }
 

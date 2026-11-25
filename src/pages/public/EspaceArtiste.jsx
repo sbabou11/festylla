@@ -25,7 +25,9 @@ import { useNotifications } from '../../hooks/useNotifications'
 import { friendlyError } from '../../utils/errors'
 import { Button, Dialog, Sheet, Empty, Field, Skeleton, toast, focusFirstInvalid } from '../../ui'
 import { TYPES, fmtHour, fmtDate } from './artiste/artisteUtils'
-import { DroitsTab, ConsosTab, ResasTab, ProgrammeTab } from './artiste/ArtisteSections'
+import { DroitsTab, ConsosTab, ResasTab, ProgrammeTab, SoldeArtiste, MouvementsSolde } from './artiste/ArtisteSections'
+import { usePorteMonnaie, RechargerSheet, useRetourStripe } from './benevole/PorteMonnaie'
+import RemboursementSolde, { LienRemboursement, useDemandesRemboursement } from '../../components/RemboursementSolde'
 import s from './artiste/EspaceArtiste.module.css'
 import { watchProgramme } from '../../programme/watchProgramme'
 import { adaptArtisteEm, duJour } from '../../em/artiste'
@@ -67,6 +69,15 @@ export default function EspaceArtiste() {
   const [categories,   setCategories]   = useState([])
   const [showQrFull,   setShowQrFull]   = useState(false)
   const [cancelAsk,   setCancelAsk]   = useState(null)  // id de la réservation à annuler
+  const [rechargeOuverte, setRechargeOuverte] = useState(false)
+
+  // Solde des artistes (25/11/2026) : porte-monnaie de cet artiste inscrit, ouvert par le serveur
+  // (api/session, mode « porte-monnaie ») ; recharge en ligne par carte, retour de Stripe
+  const porteMonnaie = usePorteMonnaie({ eventId, actif: !!eventId && !!creneauId })
+  useRetourStripe()
+  // Remboursement du solde depuis l'espace (25/11/2026) : même parcours que les spectateurs
+  const demandesRemb = useDemandesRemboursement(eventId, porteMonnaie.compte?.id)
+  const [rembOuvert, setRembOuvert] = useState(false)
 
 
   // Notifications artiste (filtrées par creneauId)
@@ -284,9 +295,11 @@ export default function EspaceArtiste() {
   ;(av.drinkIds || []).forEach(id => typeDe.set(id, 'drink'))
   ;(av.eauIds || []).forEach(id => typeDe.set(id, 'eau'))
   const standIds = new Set((carte.stands || []).map(st => st.id))
+  // Solde des artistes (25/11/2026) : toute la carte ; les articles de ses avantages gardent leur type
+  // (« Inclus avantage »), les autres se paient sur le solde
   const menuArtiste = menu
-    .filter(m => typeDe.has(m.id) && m.actif !== false && standIds.has(m.standId))
-    .map(m => ({ ...m, typeConsommation: VERS_CONSO[typeDe.get(m.id)] }))
+    .filter(m => m.actif !== false && standIds.has(m.standId))
+    .map(m => ({ ...m, typeConsommation: typeDe.has(m.id) ? VERS_CONSO[typeDe.get(m.id)] : '' }))
   const remain = { meal: remainMeals, drink: remainDrinks, eau: remainEaux }
   const totalAv = { meal: av.meals || 0, drink: av.drinks || 0, eau: av.eaux || 0 }
   const cartItems = Object.entries(qtys).filter(([, q]) => q > 0)
@@ -305,13 +318,10 @@ export default function EspaceArtiste() {
     if (!cartItems.length) return
     setResaLoading(true); setResaErr('')
     try {
-      for (const t of ['meal', 'drink', 'eau']) {
-        const n = cartItems.filter(i => DE_CONSO[i.typeConsommation] === t).reduce((a, i) => a + i.qty, 0)
-        if (n > remain[t]) throw new Error(`Avantages insuffisants (il en reste ${remain[t]}).`)
-      }
+      // Avantages d'abord, le reste sur le solde : la borne refait le calcul et débite (api/borne)
       const r = await creerCodeArtiste({
         creneauId, artisteNom: creneau.artiste || '',
-        items: cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, type: DE_CONSO[i.typeConsommation] })),
+        items: cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, type: DE_CONSO[i.typeConsommation] || '' })),
       }, eventId)
       setResaDone(r); setQtys({})
     } catch (e) { setResaErr(friendlyError(e, "La commande n'a pas été enregistrée.")) }
@@ -445,12 +455,18 @@ export default function EspaceArtiste() {
 
         {/* Contenu : animation entre les onglets */}
         <PageTransition pageKey={tab}>
-        {tab === 'droits' && (
+        {tab === 'droits' && (<>
+          <SoldeArtiste pm={porteMonnaie} onRecharger={() => setRechargeOuverte(true)} onCommander={() => setTab('commander')}>
+            <LienRemboursement compte={porteMonnaie.compte} demandes={demandesRemb} onOpen={() => setRembOuvert(true)}/>
+          </SoldeArtiste>
           <DroitsTab av={av}
             used={{ drink: consDrinks, meal: consMeals, eau: consEaux }}
             pending={{ drink: pendingDrinks, meal: pendingMeals, eau: pendingEaux }}/>
-        )}
-        {tab === 'consos' && <ConsosTab consumptions={consumptions}/>}
+        </>)}
+        {tab === 'consos' && (<>
+          <ConsosTab consumptions={consumptions}/>
+          <MouvementsSolde pm={porteMonnaie}/>
+        </>)}
         {tab === 'commander' && (
           <BenevoleCommander menu={menuArtiste} categories={categories} carte={carte}
             cartItems={cartItems} qtys={qtys} setQtys={setQtys}
@@ -462,7 +478,8 @@ export default function EspaceArtiste() {
               decompte: 'Vos avantages ne sont décomptés qu\'à la borne. Annulable sans frais avant, depuis « Mes codes ».',
               ongletCodes: 'codes',
               epuise: 'Avantages atteints',
-            }}/>
+            }}
+            solde={porteMonnaie.compte ? porteMonnaie.compte.solde || 0 : null} onRecharger={() => setRechargeOuverte(true)}/>
         )}
         {tab === 'codes' && (
           <>
@@ -505,6 +522,12 @@ export default function EspaceArtiste() {
           )
         })}
       </nav>
+
+      {/* Recharge en ligne par carte (Stripe), comme les spectateurs et les bénévoles */}
+      <RechargerSheet open={rechargeOuverte} onClose={() => setRechargeOuverte(false)} pm={porteMonnaie} eventId={eventId}
+        texteBas="Même recharge que les spectateurs : de 5 € à 200 €."/>
+      <RemboursementSolde open={rembOuvert} onClose={() => setRembOuvert(false)} eventId={eventId}
+        compte={porteMonnaie.compte} txs={porteMonnaie.mouvements} demandes={demandesRemb} evenement={eventMeta}/>
 
       {/* Confirmation d'annulation */}
       <Dialog open={!!cancelAsk} onClose={() => setCancelAsk(null)} title="Annuler cette réservation ?"

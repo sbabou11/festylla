@@ -8,7 +8,7 @@
  * (api/session, mode « porte-monnaie ») : la session du bénévole le désigne ensuite (specId).
  */
 import React, { useEffect, useState } from 'react'
-import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore'
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore'
 import { CreditCard, ShoppingCart, Lock } from 'lucide-react'
 import { db, auth } from '../../../firebase/config'
 import { apiFetch, openFirebaseSession } from '../../../firebase/session'
@@ -45,7 +45,7 @@ export function usePorteMonnaie({ eventId, actif, demo = false }) {
     if (!ref || !eventId) return
     const off1 = onSnapshot(doc(db, 'events', eventId, 'spectateurs', ref.docId),
       snap => setCompte(snap.exists() ? { ...snap.data(), docId: snap.id } : null), () => {})
-    const off2 = onSnapshot(query(collection(db, 'events', eventId, 'transactions'), where('specId', '==', ref.id), limit(30)),
+    const off2 = onSnapshot(query(collection(db, 'events', eventId, 'transactions'), where('specId', '==', ref.id)),   // tous : le remboursement répartit selon chaque recharge
       snap => setMouvements(snap.docs.map(d => d.data()).sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')))),
       () => {})
     return () => { off1(); off2() }
@@ -60,7 +60,7 @@ const libelle = (t) => t.type === 'credit'
   : (t.label || 'Achat').replace(/^Commande #\d+ (\(code \d+\) )?— /, '')
 
 /** Carte « Mon solde » de l'accueil */
-export function CarteSolde({ pm, onRecharger, onCommander }) {
+export function CarteSolde({ pm, onRecharger, onCommander, children }) {
   if (pm.erreur) return <section className={`nv-glass ${s.carte}`}><p className={s.mu}>{pm.erreur}</p></section>
   if (!pm.compte) return null
   const derniers = pm.mouvements.filter(t => t.type === 'credit' || t.type === 'debit').slice(0, 3)
@@ -74,6 +74,7 @@ export function CarteSolde({ pm, onRecharger, onCommander }) {
         <button type="button" className="nv-btn-sec nv-press" onClick={onCommander}><ShoppingCart size={18} aria-hidden="true" /> Commander</button>
       </div>
       <p className={`${s.mu} ${s.centre}`}>Ou à la billetterie : montrez votre QR (en haut à droite).</p>
+      {children}
       {derniers.length > 0 && (
         <div className={s.liste}>
           {derniers.map((t, i) => (
@@ -87,7 +88,7 @@ export function CarteSolde({ pm, onRecharger, onCommander }) {
 }
 
 /** Recharge en ligne (Stripe), mêmes bornes que les spectateurs : 5 € à 200 €, sans frais */
-export function RechargerSheet({ open, onClose, pm, eventId, demo }) {
+export function RechargerSheet({ open, onClose, pm, eventId, demo, texteBas }) {
   const [montant, setMontant] = useState(2000)
   const [autre, setAutre] = useState('')
   const [busy, setBusy] = useState(false)
@@ -126,7 +127,7 @@ export function RechargerSheet({ open, onClose, pm, eventId, demo }) {
         <button type="button" className={`nv-btn nv-press ${s.payer}`} onClick={payer} disabled={busy || !ok}>
           <CreditCard size={18} aria-hidden="true" /> {busy ? 'Ouverture du paiement…' : `Payer ${ok ? fmt(choisi) : ''} par carte`}
         </button>
-        <p className={`${s.mu} ${s.centre}`}>Même recharge que les spectateurs. Stripe vous envoie le reçu par e-mail.</p>
+        <p className={`${s.mu} ${s.centre}`}>{texteBas || 'Même recharge que les spectateurs. Stripe vous envoie le reçu par e-mail.'}</p>
       </div>
     </Sheet>
   )

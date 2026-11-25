@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { avantagesDe, dejaPris, restantsArtiste, preparerCommandeArtiste } from './artiste'
+import { avantagesDe, dejaPris, restantsArtiste, preparerCommandeArtiste, repartirCommandeArtiste } from './artiste'
 
 const menuById = new Map([
   ['burger', { nom: 'Burger', prix: 900, stock: 10, standId: 's1', typeConsommation: 'repas' }],
@@ -38,5 +38,25 @@ describe('avantages d\'un artiste à la borne', () => {
     expect(() => preparerCommandeArtiste({ ...base, lignes: [{ id: 'burger', qty: 2 }] })).toThrow(/il en reste 1/)
     expect(() => preparerCommandeArtiste({ ...base, lignes: [{ id: 'sansStand', qty: 1 }] })).toThrow(/stand de retrait/)
     expect(() => preparerCommandeArtiste({ ...base, lignes: [{ id: 'coca', qty: 2 }] })).toThrow(/Plus assez/)
+  })
+})
+
+describe('solde des artistes (25/11/2026) : toute la carte, avantages d\'abord', () => {
+  const typeDe = new Map([['burger', 'meal'], ['coca', 'drink'], ['biere', 'drink']])
+  const base = { menuById, typeDe, standById }
+  it('les avantages couvrent les plus chers, le reste est payé', () => {
+    const r = repartirCommandeArtiste({ ...base, restants: { meal: 0, drink: 1, eau: 0 }, lignes: [{ id: 'biere', qty: 2 }, { id: 'coca', qty: 1 }, { id: 'burger', qty: 1 }] })
+    expect(r.offerts).toEqual([expect.objectContaining({ id: 'biere', qty: 1, offert: true, total: 0, type: 'drink' })])
+    expect(r.totalPaye).toBe(900 + 500 + 300)
+    expect(r.valeurOfferte).toBe(500)
+    expect(r.parType).toEqual({ drink: 1 })
+    expect(r.items.every(i => i.standId)).toBe(true)
+  })
+  it('un article hors avantages se paie, sans stand il est refusé', () => {
+    const r = repartirCommandeArtiste({ ...base, typeDe: new Map(), restants: { meal: 2, drink: 2, eau: 0 }, lignes: [{ id: 'burger', qty: 1 }] })
+    expect(r.offerts).toEqual([])
+    expect(r.totalPaye).toBe(900)
+    expect(() => repartirCommandeArtiste({ ...base, restants: {}, lignes: [{ id: 'sansStand', qty: 1 }] })).toThrow(/stand de retrait/)
+    expect(() => repartirCommandeArtiste({ ...base, restants: {}, lignes: [{ id: 'coca', qty: 2 }] })).toThrow(/Plus assez/)
   })
 })

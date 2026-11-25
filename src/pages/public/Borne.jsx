@@ -345,9 +345,13 @@ export default function Borne() {
   }, [])
 
   // Ticket d'un artiste : un par stand, sans prix (avantages)
+  // Solde des artistes (25/11/2026) : une partie peut être payée sur le solde ; les avantages restent à 0 €
   const ticketArtiste = (r) => ({
-    artiste: r.artiste || 'Artiste', numero: r.numero, total: 0,
-    items: (r.items || []).map(i => ({ nom: i.nom, qty: i.qty, prix: 0, standId: i.standId })),
+    artiste: r.artiste || 'Artiste', numero: r.numero, total: r.totalPaye || 0,
+    items: (r.items || []).map(i => ({
+      nom: r.totalPaye > 0 && i.offert ? `${i.nom} (avantage)` : i.nom,
+      qty: i.qty, prix: i.offert === false ? (i.prix || 0) : 0, standId: i.standId,
+    })),
   })
 
   // body : { lignes } (commande à la borne) ou { code } (code de l'espace bénévole)

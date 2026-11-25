@@ -23,7 +23,7 @@ const {
   checkPassword, ROLES_EQUIPE_BENEVOLE,
 } = require('../_auth/core')
 const { creneauxDuRole, creneauxEmDuRole, fenetreRole, claimsRole, avecException, exceptionActive } = require('../_auth/role')
-const { assurerPorteMonnaie, nomFiche } = require('../_auth/porteMonnaie')
+const { assurerPorteMonnaie, assurerPorteMonnaieArtiste, nomFiche } = require('../_auth/porteMonnaie')
 const { admin, getDb, clientIp, verifyCaller, loadAccount, writeAudit, ADMIN_ROLES } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { cleDuCompte } = require('../_auth/cles')
@@ -161,6 +161,18 @@ module.exports = async (req, res) => {
   if (body.mode === 'porte-monnaie') {
     try {
       const t = await verifyCaller(req, { brut: true })
+      // Solde des artistes (25/11/2026) : un porte-monnaie par artiste inscrit (fiche ou créneau du lien)
+      if (t && t.type === 'artiste') {
+        const cr = String(t.creneauId || '')
+        if (!(t.eventIds || []).includes(ev) || !ID.test(cr)) { res.status(401).json({ error: 'Session expirée : rouvrez votre espace artiste.' }); return }
+        let pm
+        try { pm = await assurerPorteMonnaieArtiste(db, admin, ev, cr) }
+        catch (e) { res.status(404).json({ error: e.message || 'Artiste introuvable.' }); return }
+        if (pm.cree) await writeAudit(db, ev, { action: 'PORTE_MONNAIE_ARTISTE', creneauId: cr, specId: pm.id, staff: t.uid, userType: 'artiste', label: `Porte-monnaie ${pm.id} ouvert pour ${pm.nom}` })
+        const base = deviceSession('artiste', ev, cr)
+        res.status(200).json({ token: await admin.auth().createCustomToken(base.uid, { ...base.claims, specId: pm.id, specDoc: pm.docId }), compte: { id: pm.id, docId: pm.docId, solde: pm.solde } })
+        return
+      }
       if (!t || t.type !== 'benevole' || !(t.eventIds || []).includes(ev)) { res.status(401).json({ error: 'Session expirée : rouvrez votre espace bénévole.' }); return }
       const account = await loadAccount(db, t.fiche)
       if (!account || account.kind !== 'benevole' || account.eventId !== ev) { res.status(404).json({ error: 'Fiche bénévole introuvable.' }); return }

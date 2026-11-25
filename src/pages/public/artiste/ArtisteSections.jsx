@@ -5,7 +5,7 @@
  */
 import React, { useState } from 'react'
 import clsx from 'clsx'
-import { Gift, History, ShoppingCart, Bookmark, CalendarDays, Plus, Minus, AlertCircle, X, ChevronRight } from 'lucide-react'
+import { Gift, History, ShoppingCart, Bookmark, CalendarDays, Plus, Minus, AlertCircle, X, ChevronRight, CreditCard } from 'lucide-react'
 import { Badge, Button, Empty } from '../../../ui'
 import DetailSheet from '../../../components/DetailSheet'
 import { TYPES, consoOf, fmtHour, fmtDate, fmtDateShort } from './artisteUtils'
@@ -320,6 +320,61 @@ export function ProgrammeTab({ planning, creneauId, artisteNom = null }) {
           ['Type', oType?.label],
           ['Scène', o.scene],
         ] }] : []} />
+    </Section>
+  )
+}
+
+/* ── Mon solde (25/11/2026, solde des artistes) ─────────── */
+const fmtEur = (c) => ((Number(c) || 0) / 100).toFixed(2).replace('.', ',') + ' €'
+const libelleMvt = (t) => t.type === 'credit'
+  ? (t.moyen === 'en-ligne' ? 'Recharge en ligne · carte' : `Recharge billetterie · ${t.moyen === 'cb' ? 'carte' : 'espèces'}`)
+  : (t.label || 'Achat').replace(/^Commande #\d+ (\(code \d+\) )?— /, '')
+const signeMvt = (t) => (t.type === 'credit' ? '+ ' : '− ')
+
+/** Carte « Mon solde » de l'onglet Droits : solde, recharge en ligne, commande de toute la carte */
+export function SoldeArtiste({ pm, onRecharger, onCommander, children }) {
+  if (pm.erreur) return <section className={s.card}><h2 className={s.overline}>Mon solde</h2><p className={s.muted}>{pm.erreur}</p></section>
+  if (!pm.compte) return null
+  const derniers = pm.mouvements.filter(t => t.type === 'credit' || t.type === 'debit').slice(0, 3)
+  return (
+    <section className={s.card} aria-label="Mon solde">
+      <h2 className={s.overline}>Mon solde</h2>
+      <b style={{ font: '800 36px var(--font-display)', lineHeight: 1.1 }}>{fmtEur(pm.compte.solde)}</b>
+      <p className={s.muted}>À dépenser sur toute la carte, en plus de vos avantages. Remboursable 2 mois, ou à donner à l'ONG Ylla.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <Button icon={CreditCard} onClick={onRecharger}>Recharger</Button>
+        <Button variant="secondary" icon={ShoppingCart} onClick={onCommander}>Commander</Button>
+      </div>
+      <p className={s.muted} style={{ textAlign: 'center' }}>Ou à la billetterie, en espèces ou par carte : montrez votre QR ci-dessus.</p>
+      {children}
+      {derniers.length > 0 && (
+        <div>
+          {derniers.map((t, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border)' : 0, fontSize: 'var(--fs-14)' }}>
+              <span>{libelleMvt(t)}</span><b>{signeMvt(t)}{fmtEur(t.montant)}</b>
+            </div>
+          ))}
+        </div>
+      )}
+      <span className={s.muted} style={{ textAlign: 'center', fontSize: 'var(--fs-12)' }}>N° de porte-monnaie : {pm.compte.id}</span>
+    </section>
+  )
+}
+
+/** Onglet Consos : mouvements du solde (recharges, achats), à part des consommations offertes */
+export function MouvementsSolde({ pm }) {
+  const liste = (pm.mouvements || []).filter(t => t.type === 'credit' || t.type === 'debit')
+  if (!pm.compte || liste.length === 0) return null
+  return (
+    <Section title="Mon solde" hint="Offert et payé sont comptés à part, ici et dans les rapports de l'organisation.">
+      <div>
+        {liste.map((t, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '7px 0', borderTop: i ? '1px solid var(--border)' : 0, fontSize: 'var(--fs-14)' }}>
+            <span>{libelleMvt(t)}<br/><span className={s.muted} style={{ fontSize: 'var(--fs-12)' }}>{t.date || ''} {t.heure ? t.heure.slice(0, 5) : ''}</span></span>
+            <b>{signeMvt(t)}{fmtEur(t.montant)}</b>
+          </div>
+        ))}
+      </div>
     </Section>
   )
 }

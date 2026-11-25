@@ -29,7 +29,8 @@ function retourValide(retour, host) {
   if (!host || u.host !== host || (u.protocol !== 'https:' && !(local && u.protocol === 'http:'))) return null
   // /benevole : porte-monnaie du bénévole (écran 13, 24/11/2026)
   // « / » : bénévole connecté par mot de passe (son espace s'ouvre à l'accueil de l'appli)
-  if (!['/solde', '/balance', '/spectateur', '/benevole', '/'].includes(u.pathname)) return null
+  // /artiste : porte-monnaie de l'artiste (25/11/2026)
+  if (!['/solde', '/balance', '/spectateur', '/benevole', '/artiste', '/'].includes(u.pathname)) return null
   u.searchParams.delete('recharge')
   u.searchParams.delete('annule')
   return u.toString()

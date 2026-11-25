@@ -28,8 +28,9 @@ const { planRemboursement } = require('../_paiement/remboursement')
 const { montantDon, delaiDepasse, limiteRemboursement, BENEFICIAIRE, DON_MIN } = require('../_paiement/dons')
 
 const ID = /^[\w-]{1,128}$/
-// Qui a un solde : un spectateur, ou un bénévole avec son porte-monnaie (écran 13, 24/11/2026)
-const PORTEURS = ['spectateur', 'benevole']
+// Qui a un solde : un spectateur, ou un bénévole avec son porte-monnaie (écran 13, 24/11/2026),
+// ou un artiste avec le sien (solde des artistes, 25/11/2026)
+const PORTEURS = ['spectateur', 'benevole', 'artiste']
 
 /** Corps exact de la requête, s'il est encore lisible (sinon un Buffer vide au bout d'un court délai) */
 function corpsBrut(req) {

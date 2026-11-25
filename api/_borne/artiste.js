@@ -81,4 +81,57 @@ function preparerCommandeArtiste({ lignes, menuById, typeDe, restants, standById
   return { items, parType }
 }
 
-module.exports = { TYPES, DE_CONSO, avantagesDe, dejaPris, restantsArtiste, preparerCommandeArtiste }
+/**
+ * Solde des artistes (25/11/2026, choix de l'organisateur) : l'artiste commande toute la carte, comme
+ * un bénévole. Ses avantages du jour couvrent d'abord les articles les plus chers de leur type ; tout
+ * le reste se paie sur son solde. Chaque article sort au stand de cet article.
+ * @returns {{ items, offerts, payes, parType, valeurOfferte, totalPaye }}
+ * @throws Error avec un message pour la borne
+ */
+function repartirCommandeArtiste({ lignes, menuById, typeDe, restants, standById }) {
+  if (!Array.isArray(lignes) || lignes.length === 0) throw new Error('Aucun article dans la commande.')
+  const qtyParArticle = new Map()
+  for (const l of lignes) {
+    const qty = Math.round(Number(l.qty) || 0)
+    if (qty < 1 || qty > 20) throw new Error('Quantité invalide.')
+    const id = String(l.id)
+    qtyParArticle.set(id, (qtyParArticle.get(id) || 0) + qty)
+  }
+  const unites = []
+  for (const [id, qty] of qtyParArticle) {
+    const m = menuById.get(id)
+    if (!m || m.actif === false) throw new Error(`Un article n'est plus à la carte.`)
+    if ((Number(m.stock) || 0) < qty) throw new Error(`Plus assez de « ${m.nom} » (${Number(m.stock) || 0} restant${(Number(m.stock) || 0) > 1 ? 's' : ''}).`)
+    if (!(m.standId && standById.get(m.standId))) throw new Error(`« ${m.nom} » n'a pas de stand de retrait. Demandez à l'organisation.`)
+    for (let i = 0; i < qty; i++) unites.push({ id, type: typeDe.get(id) || '', prix: Number(m.prix) || 0 })
+  }
+  // Les plus chers d'abord : l'artiste paie le moins possible
+  unites.sort((a, b) => b.prix - a.prix)
+  const reste = { ...restants }
+  const parType = {}
+  const offertes = new Map(), payees = new Map()
+  for (const u of unites) {
+    const offert = !!u.type && (reste[u.type] || 0) > 0
+    if (offert) { reste[u.type]--; parType[u.type] = (parType[u.type] || 0) + 1 }
+    const cible = offert ? offertes : payees
+    cible.set(u.id, (cible.get(u.id) || 0) + 1)
+  }
+  const ligne = (id, qty, offert) => {
+    const m = menuById.get(id)
+    const prix = Number(m.prix) || 0
+    const stand = standById.get(m.standId)
+    return {
+      id, nom: String(m.nom || ''), qty, prix, prixUnit: prix, total: offert ? 0 : qty * prix, offert,
+      type: offert ? typeDe.get(id) : '', standId: stand.id, standNumero: Number(stand.numero) || 0,
+    }
+  }
+  const offerts = [...offertes].map(([id, q]) => ligne(id, q, true))
+  const payes = [...payees].map(([id, q]) => ligne(id, q, false))
+  return {
+    items: [...offerts, ...payes], offerts, payes, parType,
+    valeurOfferte: offerts.reduce((s, i) => s + i.qty * i.prix, 0),
+    totalPaye: payes.reduce((s, i) => s + i.total, 0),
+  }
+}
+
+module.exports = { TYPES, DE_CONSO, avantagesDe, dejaPris, restantsArtiste, preparerCommandeArtiste, repartirCommandeArtiste }

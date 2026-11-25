@@ -57,6 +57,7 @@ import { Badge, Button, Dialog, Sheet, Jar, TimeRibbon, SuccessCheck, SessionBan
 import s from './benevole/BenevoleApp.module.css'
 import OngletRole, { useOngletRole, ROLE_ONGLET } from './benevole/OngletRole'
 import { usePorteMonnaie, CarteSolde, RechargerSheet, useRetourStripe } from './benevole/PorteMonnaie'
+import RemboursementSolde, { LienRemboursement, useDemandesRemboursement } from '../../components/RemboursementSolde'
 
 const BRAND    = 'var(--brand)'
 const AMBER    = 'var(--gold-dark)'
@@ -282,6 +283,8 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
   const porteMonnaie = usePorteMonnaie({ eventId, actif: !demo && !!benev, demo: !!demo })
   const [rechargeOuverte, setRechargeOuverte] = useState(false)
   useRetourStripe()
+  const demandesRemb = useDemandesRemboursement(demo ? null : eventId, porteMonnaie.compte?.id)
+  const [rembOuvert, setRembOuvert] = useState(false)
 
   const changePwd = async () => {
     setPwdMsg(null)
@@ -638,7 +641,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
           benev ? (
             <div className={`nv-st ${s.stack}`}>
               {/* Écran 13 (24/11/2026) : mon solde, comme un spectateur ; les avantages s'y ajoutent */}
-              <CarteSolde pm={porteMonnaie} onRecharger={() => setRechargeOuverte(true)} onCommander={() => setTab('commander')}/>
+              <CarteSolde pm={porteMonnaie} onRecharger={() => setRechargeOuverte(true)} onCommander={() => setTab('commander')}>
+                {!demo && <LienRemboursement compte={porteMonnaie.compte} demandes={demandesRemb} onOpen={() => setRembOuvert(true)}/>}
+              </CarteSolde>
               {/* Quoi de neuf (24/11/2026) : une fois par mise en ligne et par téléphone */}
               <QuoiDeNeuf espace="benevole" />
               {!em && (
@@ -986,6 +991,9 @@ export default function BenevoleApp({ docIdProp, eventIdProp, onSwitchToStaff = 
         actions={<button type="button" className="nv-btn nv-press" onClick={() => setCarteOuverte(null)}>J'ai compris</button>} />
 
       <RechargerSheet open={rechargeOuverte} onClose={() => setRechargeOuverte(false)} pm={porteMonnaie} eventId={eventId} demo={!!demo}/>
+      {/* Remboursement du solde depuis l'espace (25/11/2026) : même parcours que les spectateurs */}
+      <RemboursementSolde open={rembOuvert} onClose={() => setRembOuvert(false)} eventId={eventId}
+        compte={porteMonnaie.compte} txs={porteMonnaie.mouvements} demandes={demandesRemb} evenement={eventMeta}/>
 
       <CommandeDetail commande={cmdPrete} benevole onClose={() => setCmdPrete(null)}
         statut={cmdPrete ? (RESA_STATUTS[cmdPrete.status] || RESA_STATUTS.pending) : null}/>

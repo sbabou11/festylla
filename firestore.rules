@@ -155,6 +155,9 @@ service cloud.firestore {
                     // le contrôle des billets passe au rôle équipe « Contrôle entrée ».)
                     // Écran 13 (24/11/2026) : le bénévole lit son seul porte-monnaie
                     || (sess('benevole', ev) && resource.data.get('benevoleId', '') == benevoleId()
+                        && resource.data.id == request.auth.token.get('specId', ''))
+                    // Solde des artistes (25/11/2026) : l'artiste lit son seul porte-monnaie
+                    || (sess('artiste', ev) && resource.data.get('artisteId', '') == request.auth.token.creneauId
                         && resource.data.id == request.auth.token.get('specId', ''));
         // Borne : seulement le compte autorisé par le serveur (QR tournant), lu un par un
         allow get: if sess('borne', ev) && autorise(ev, doc);
@@ -170,6 +173,9 @@ service cloud.firestore {
                     || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId)
                     // Écran 13 : les mouvements du porte-monnaie du bénévole
                     || (sess('benevole', ev) && request.auth.token.get('specId', '') != ''
+                        && resource.data.specId == request.auth.token.get('specId', ''))
+                    // Solde des artistes (25/11/2026) : les mouvements de son porte-monnaie
+                    || (sess('artiste', ev) && request.auth.token.get('specId', '') != ''
                         && resource.data.specId == request.auth.token.get('specId', ''));
         allow create: if staffIn(ev) || legacy(ev) || sess('borne', ev)
                       // Sécurité (20/11/2026) : trace d'annulation d'une ancienne réservation, à 0 € seulement
@@ -250,7 +256,10 @@ service cloud.firestore {
       // le spectateur lit les siennes ; la billetterie traite les parts SumUp et espèces.
       match /demandes-remboursement/{id} {
         allow read: if staffIn(ev) || legacy(ev)
-                    || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId);
+                    || (sess('spectateur', ev) && resource.data.specId == request.auth.token.specId)
+                    // 25/11/2026 : le bénévole et l'artiste suivent les demandes de leur porte-monnaie
+                    || ((sess('benevole', ev) || sess('artiste', ev)) && request.auth.token.get('specId', '') != ''
+                        && resource.data.specId == request.auth.token.get('specId', ''));
         allow update: if staffIn(ev) || legacy(ev);
       }
       match /_counters/{id} {
