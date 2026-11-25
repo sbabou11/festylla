@@ -10,11 +10,16 @@
  * GET /api/manifest?p=artiste&ev=…&cr=…       espace artiste
  * GET /api/manifest?p=borne&ev=…              borne
  *
- * La fiche ne contient JAMAIS la clé du lien personnel (elle peut être lue par le service de
+ * Android : la fiche ne contient JAMAIS la clé du lien personnel (elle est lue par le service de
  * Google qui fabrique l'appli) : l'appli démarre sur l'espace sans clé et retrouve celle que le
- * téléphone a gardée à la première ouverture. Aucune lecture de la base : rien n'est révélé.
+ * téléphone a gardée à la première ouverture.
+ * iPhone et iPad (&k=…, demandé seulement par ces appareils) : l'appli de l'écran d'accueil n'a pas
+ * accès à la mémoire de Safari ; l'adresse de départ garde donc la clé. La fiche n'est lue que par
+ * le téléphone et ce serveur (jamais par Apple), et n'est pas gardée en cache.
+ * Aucune lecture de la base : rien n'est révélé.
  */
 const ID = /^[\w-]{1,128}$/
+const CLE = /^[0-9a-f]{20,64}$/
 
 const ESPACES = {
   solde:      { nom: 'Mon solde',       params: ['ev', 'id'] },
@@ -37,12 +42,14 @@ function ficheEspace(query = {}) {
     q.set(k, v)
   }
   const debut = `/${e.chemin || p}?${q.toString()}`
+  const k = String(query.k || '').toLowerCase()
+  const avecCle = CLE.test(k) ? `${debut}&k=${k}` : debut
   return {
-    id: debut,                 // une identité par espace : s'installe à côté de l'appli de l'équipe
+    id: debut,                 // une identité par espace (sans la clé) : s'installe à côté de l'appli de l'équipe
     name: e.nom,
     short_name: e.nom,
     lang: 'fr',
-    start_url: debut,
+    start_url: avecCle,
     scope: '/',
     display: 'standalone',
     orientation: 'any',
@@ -60,7 +67,9 @@ function handler(req, res) {
   const fiche = ficheEspace(req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams))
   if (!fiche) { res.status(400).json({ error: 'Espace inconnu.' }); return }
   res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
-  res.setHeader('Cache-Control', 'public, max-age=3600')
+  // Fiche avec la clé (iPhone) : jamais gardée en cache, ni par le téléphone ni par le réseau
+  const q = req.query || {}
+  res.setHeader('Cache-Control', q.k ? 'private, no-store' : 'public, max-age=3600')
   res.status(200).send(JSON.stringify(fiche))
 }
 

@@ -125,6 +125,9 @@ export default function SoldePage({ demo = null }) {
   const [loading, setLoading]         = useState(false)
   const [err, setErr]                 = useState('')
   // 25/11/2026 : lien d'un billet ouvert dans un navigateur où l'espace équipe est connecté
+  // Ouverture trop longue (25/11/2026, maquette PtJNqbkn95uwZSqfouwci1) : au bout de 20 s, message et « Réessayer »
+  const [lent, setLent]               = useState(false)
+  const [essai, setEssai]             = useState(0)      // relance le délai de 20 s à chaque « Réessayer »
   const [choixEquipe, setChoixEquipe] = useState(null)   // { id } : on demande lequel ouvrir
   // Session expirée (20/11/2026) : la base a refusé de répondre à une écoute du compte
   const [sessionExpiree, setSessionExpiree] = useState(false)
@@ -310,6 +313,11 @@ export default function SoldePage({ demo = null }) {
   }
 
   useEffect(() => { if (urlId) findSpec(urlId) }, [urlId, eventId])
+  useEffect(() => {
+    if (!loading) { setLent(false); return }
+    const t = setTimeout(() => setLent(true), 20000)
+    return () => clearTimeout(t)
+  }, [loading, essai])
 
   // « Ouvrir l'espace de ce compte » : la session de l'équipe se ferme dans ce navigateur, puis le
   // compte s'ouvre avec la clé du lien (25/11/2026)
@@ -828,6 +836,13 @@ export default function SoldePage({ demo = null }) {
                 <p className="nv-mu">Vous ouvrez le lien du compte {choixEquipe.id}. Pour l'afficher, la session équipe de ce navigateur se ferme : vous vous reconnecterez ensuite avec votre identifiant.</p>
                 <button type="button" className="nv-btn nv-press" onClick={ouvrirCommeSpectateur}>Ouvrir l'espace du compte {choixEquipe.id}</button>
                 <button type="button" className="nv-btn-sec nv-press" onClick={() => { window.location.href = '/' }}>Rester dans l'espace équipe</button>
+              </div>
+            ) : loading && lent ? (
+              <div className={clsx('nv-card nv-pad', sp.stack)} role="alert">
+                <b>L'ouverture prend trop de temps</b>
+                <p className="nv-mu">La connexion du téléphone est peut-être lente ou coupée. Vérifiez le réseau (ou le Wi-Fi), puis réessayez. Votre argent n'est pas concerné : rien n'a été débité.</p>
+                <button type="button" className="nv-btn nv-press" onClick={() => { setLent(false); setEssai(n => n + 1); findSpec(urlId || inputId.trim().toUpperCase()) }}>Réessayer</button>
+                <button type="button" className="nv-btn-sec nv-press" onClick={() => window.location.reload()}>Recharger la page</button>
               </div>
             ) : loading
               ? <p className="nv-mu">Ouverture de votre espace…</p>

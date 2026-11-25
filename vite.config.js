@@ -37,12 +37,11 @@ export default defineConfig({
         background_color: '#FFF8F2',
         display: 'standalone',
         orientation: 'any',
-        // Icônes de l'écran d'accueil (25/11/2026, choix de l'organisateur) : pas d'adresse de départ
-        // imposée. Le téléphone garde celle de la page d'où l'on ajoute l'icône : l'équipe depuis la
-        // connexion, un spectateur depuis le lien de son billet, un bénévole ou un artiste depuis son
-        // espace. Plusieurs icônes YllaCash peuvent ainsi cohabiter sur le même téléphone.
-        // (undefined : sinon le module PWA remet « / » par défaut)
-        start_url: undefined,
+        // Appli de l'équipe : Chrome exige une adresse de départ pour fabriquer une vraie appli
+        // (sans elle, simple raccourci : constaté le 25/11/2026). Les espaces personnels (spectateur,
+        // bénévole, artiste, borne) ont leur propre fiche, servie par /api/manifest (InstallPerso).
+        id: '/',
+        start_url: '/',
         scope: '/',
         icons: [
           { src: '/logo-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },

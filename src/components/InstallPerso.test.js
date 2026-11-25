@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { adresseFiche, estAppareilApple } from './InstallPerso'
+import { adresseFiche, estAppareilApple, cleDe } from './InstallPerso'
 import { ficheEspace } from '../../api/_routes/manifest'
 
 describe('installation d\'un espace personnel (solution B, 25/11/2026)', () => {
@@ -25,5 +25,20 @@ describe('installation d\'un espace personnel (solution B, 25/11/2026)', () => {
     expect(estAppareilApple({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)' })).toBe(true)
     expect(estAppareilApple({ userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 5 })).toBe(true)
     expect(estAppareilApple({ userAgent: 'Mozilla/5.0 (Linux; Android 14)' })).toBe(false)
+  })
+  it('iPhone : la clé va dans la fiche (adresse ou mémoire du téléphone), jamais pour Android', () => {
+    const cle = 'a'.repeat(32)
+    expect(adresseFiche('https://x.fr/solde?ev=e1&id=FY-AB12', cle)).toBe(`/api/manifest?p=solde&ev=e1&id=FY-AB12&k=${cle}`)
+    expect(adresseFiche('https://x.fr/solde?ev=e1&id=FY-AB12', 'pas-une-cle')).toBe('/api/manifest?p=solde&ev=e1&id=FY-AB12')
+    expect(cleDe('https://x.fr/solde?ev=e1&id=FY-AB12&k=ABCDEF0123456789ABCD')).toBe('abcdef0123456789abcd')
+    const memo = { 'yllacash-cle-e1-FY-AB12': cle, 'yllacash-lien-artiste-e1-c9': cle, 'yllacash-lien-borne-e1-': cle }
+    const lire = (k) => memo[k] || ''
+    expect(cleDe('https://x.fr/solde?ev=e1&id=FY-AB12', lire)).toBe(cle)
+    expect(cleDe('https://x.fr/artiste?ev=e1&cr=c9', lire)).toBe(cle)
+    expect(cleDe('https://x.fr/borne?ev=e1', lire)).toBe(cle)
+    const f = ficheEspace({ p: 'solde', ev: 'e1', id: 'FY-AB12', k: cle })
+    expect(f.start_url).toBe(`/solde?ev=e1&id=FY-AB12&k=${cle}`)
+    expect(f.id).toBe('/solde?ev=e1&id=FY-AB12')
+    expect(ficheEspace({ p: 'solde', ev: 'e1', id: 'FY-AB12', k: '<x>' }).start_url).toBe('/solde?ev=e1&id=FY-AB12')
   })
 })

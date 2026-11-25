@@ -21,6 +21,7 @@ import {
   getFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  memoryLocalCache,
 } from 'firebase/firestore'
 import { getAuth }         from 'firebase/auth'
 import { getStorage }      from 'firebase/storage'
@@ -40,13 +41,26 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-const app = initializeApp(firebaseConfig)
+// ── Espaces personnels : connexion séparée de celle de l'équipe (25/11/2026) ──
+// Choix de l'organisateur : sur un même téléphone, l'appli de l'équipe et celle d'un espace
+// (spectateur, bénévole, artiste) doivent marcher côte à côte sans conflit. Sur Android, elles
+// partagent la mémoire de Chrome : avec une seule connexion Firebase, ouvrir l'une fermait l'autre.
+// Ces espaces utilisent donc une instance Firebase à part (« espace ») : sa connexion est rangée
+// séparément de celle de l'équipe. Ils ne gardent pas non plus de copie de la base sur le téléphone
+// (une copie ancienne bloquait l'ouverture : « chargement infini » du 25/11) ; ils lisent toujours
+// les données à jour. La borne et l'appli de l'équipe gardent l'instance et la copie habituelles.
+const ESPACE_PERSO = /^\/(solde|balance|spectateur|benevole|artiste)(\/|$)/
+export const espacePerso = typeof window !== 'undefined' && ESPACE_PERSO.test(window.location.pathname)
 
-// ── Firestore avec persistance IndexedDB ────────────────────────────
+const app = espacePerso ? initializeApp(firebaseConfig, 'espace') : initializeApp(firebaseConfig)
+
+// ── Firestore avec persistance IndexedDB (équipe, borne) ─────────────
 // Si IndexedDB indisponible (navigation privée…), on retombe sur le mode
 // sans cache — plus lent au reload mais fonctionnel.
 let db
-try {
+if (espacePerso) {
+  db = initializeFirestore(app, { localCache: memoryLocalCache() })
+} else try {
   db = initializeFirestore(app, {
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager(),
