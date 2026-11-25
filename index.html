@@ -9,6 +9,46 @@
   <meta name="apple-mobile-web-app-title" content="YllaCash" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="description" content="Toute la gestion financière de votre événement en un seul endroit." />
+  <!--
+    Fiche d'installation (25/11/2026) : choisie ICI, avant tout le reste. L'iPhone (Safari et Chrome)
+    ne lit la fiche qu'au premier chargement ; posée plus tard, elle était ignorée et l'icône d'un
+    espace ouvrait la connexion de l'équipe.
+      - espaces (spectateur, bénévole, artiste, borne) : fiche de l'espace servie par /api/manifest ;
+        la clé du lien n'y est ajoutée que sur iPhone et iPad (même règle que components/InstallPerso.jsx) ;
+      - toutes les autres pages : fiche de l'appli de l'équipe (/manifest.webmanifest).
+  -->
+  <script>
+    (function () {
+      var href = '/manifest.webmanifest', nom = ''
+      try {
+        var L = window.location, P = new URLSearchParams(L.search)
+        var ESP = { '/solde': ['ev', 'id'], '/balance': ['ev', 'id'], '/spectateur': ['ev', 'id'], '/benevole': ['ev', 'id'], '/artiste': ['ev', 'cr'], '/borne': ['ev'] }
+        var NOMS = { '/solde': 'Mon solde', '/balance': 'Mon solde', '/spectateur': 'Mon solde', '/benevole': 'Espace bénévole', '/artiste': 'Espace artiste', '/borne': 'Borne YllaCash' }
+        var params = ESP[L.pathname]
+        if (params) {
+          var q = new URLSearchParams({ p: L.pathname.slice(1) }), ok = true
+          for (var i = 0; i < params.length; i++) { var v = P.get(params[i]); if (!v) { ok = false; break } q.set(params[i], v) }
+          var ua = navigator.userAgent || ''
+          var apple = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+          if (ok && apple) {
+            var ev = P.get('ev') || '', cle = (P.get('k') || '').toLowerCase()
+            var lire = function (k) { try { return localStorage.getItem(k) || '' } catch (e) { return '' } }
+            if (!cle) {
+              if (NOMS[L.pathname] === 'Mon solde') cle = lire('yllacash-cle-' + ev + '-' + (P.get('id') || '').toUpperCase())
+              else if (L.pathname === '/benevole') cle = lire('yllacash-lien-benevole-' + ev + '-' + (P.get('id') || ''))
+              else if (L.pathname === '/artiste') cle = lire('yllacash-lien-artiste-' + ev + '-' + (P.get('cr') || ''))
+              else if (L.pathname === '/borne') cle = lire('yllacash-lien-borne-' + ev + '-')
+              cle = cle.toLowerCase()
+            }
+            if (/^[0-9a-f]{20,64}$/.test(cle)) q.set('k', cle)
+          }
+          if (ok) { href = '/api/manifest?' + q.toString(); nom = NOMS[L.pathname] }
+        }
+      } catch (e) { /* fiche de l'équipe */ }
+      document.write('<link rel="manifest" href="' + href.replace(/"/g, '') + '" />')
+      if (nom) { var t = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if (t) t.setAttribute('content', nom) }
+    })()
+  </script>
   <link rel="apple-touch-icon" href="/logo-192.png" />
   <link rel="icon" type="image/png" href="/logo.png" />
   <title>YllaCash — Toute la gestion financière de votre événement en un seul endroit.</title>

@@ -29,25 +29,10 @@ export default defineConfig({
       // (sinon double registration et conflits avec notre logique)
       injectRegister: false,
       includeAssets: ['logo.png', 'logo-192.png', 'logo-512.png'],
-      manifest: {
-        name: 'YllaCash',
-        short_name: 'YllaCash',
-        description: 'Toute la gestion financière de votre événement en un seul endroit.',
-        theme_color: '#003048',
-        background_color: '#FFF8F2',
-        display: 'standalone',
-        orientation: 'any',
-        // Appli de l'équipe : Chrome exige une adresse de départ pour fabriquer une vraie appli
-        // (sans elle, simple raccourci : constaté le 25/11/2026). Les espaces personnels (spectateur,
-        // bénévole, artiste, borne) ont leur propre fiche, servie par /api/manifest (InstallPerso).
-        id: '/',
-        start_url: '/',
-        scope: '/',
-        icons: [
-          { src: '/logo-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: '/logo-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-        ]
-      },
+      // Fiche d'installation de l'équipe : fichier fixe public/manifest.webmanifest (25/11/2026).
+      // Le lien vers la bonne fiche est posé par index.html dès le premier chargement (l'iPhone ne
+      // relit pas la fiche ensuite) : le module PWA ne doit donc pas ajouter le sien.
+      manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,png,svg,ico,webmanifest}'],
         // Exclure le SW FCM du cache Workbox

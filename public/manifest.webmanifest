@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "YllaCash",
+  "short_name": "YllaCash",
+  "description": "Toute la gestion financière de votre événement en un seul endroit.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#003048",
+  "background_color": "#FFF8F2",
+  "icons": [
+    { "src": "/logo-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/logo-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
