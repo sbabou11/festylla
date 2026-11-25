@@ -14,13 +14,10 @@ import App      from './App.jsx'
 import './index.css'
 import './styles/nouveau.css'   // nouveau style des écrans téléphone (23/11/2026)
 import { installApiAuth } from './firebase/session'
-import { espaceARouvrir } from './utils/dernierEspace'
 
-// Essai A7 (23/11/2026) : lancée depuis l'icône de l'écran d'accueil, l'appli démarre sur « / ».
-// Si un espace personnel (solde, bénévole, artiste, borne) a été le dernier ouvert sur ce
-// téléphone, on l'affiche directement au lieu de la connexion de l'équipe.
-const aRouvrir = espaceARouvrir()
-if (aRouvrir) window.history.replaceState(null, '', aRouvrir)
+// Icônes de l'écran d'accueil (25/11/2026) : la fiche d'installation n'impose plus d'adresse de
+// départ (vite.config.js) ; chaque icône rouvre la page d'où on l'a ajoutée. L'ancien relais
+// « dernier espace ouvert » (essai A7, 23/11) est retiré.
 
 // Sécurité, lot 1 : les appels aux fonctions serveur portent la session de la personne connectée
 installApiAuth()
