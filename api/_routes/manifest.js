@@ -1,0 +1,68 @@
+/**
+ * api/manifest.js — fiche d'installation d'un espace personnel (25/11/2026, solution B)
+ *
+ * Choix de l'organisateur : sur Android, Chrome ne fabrique une vraie appli que si sa fiche
+ * d'installation (manifeste) se lit à une adresse du site ; la fiche fabriquée sur le téléphone
+ * donnait un simple raccourci du navigateur. Cette route sert donc la fiche de l'espace :
+ *
+ * GET /api/manifest?p=solde&ev=…&id=FY-…     compte spectateur (« Mon solde »)
+ * GET /api/manifest?p=benevole&ev=…&id=…      espace bénévole
+ * GET /api/manifest?p=artiste&ev=…&cr=…       espace artiste
+ * GET /api/manifest?p=borne&ev=…              borne
+ *
+ * La fiche ne contient JAMAIS la clé du lien personnel (elle peut être lue par le service de
+ * Google qui fabrique l'appli) : l'appli démarre sur l'espace sans clé et retrouve celle que le
+ * téléphone a gardée à la première ouverture. Aucune lecture de la base : rien n'est révélé.
+ */
+const ID = /^[\w-]{1,128}$/
+
+const ESPACES = {
+  solde:      { nom: 'Mon solde',       params: ['ev', 'id'] },
+  balance:    { nom: 'Mon solde',       params: ['ev', 'id'], chemin: 'solde' },
+  spectateur: { nom: 'Mon solde',       params: ['ev', 'id'], chemin: 'solde' },
+  benevole:   { nom: 'Espace bénévole', params: ['ev', 'id'] },
+  artiste:    { nom: 'Espace artiste',  params: ['ev', 'cr'] },
+  borne:      { nom: 'Borne YllaCash',  params: ['ev'] },
+}
+
+/** Fiche de l'espace demandé, ou null si la demande n'est pas valable */
+function ficheEspace(query = {}) {
+  const p = String(query.p || '')
+  const e = Object.prototype.hasOwnProperty.call(ESPACES, p) ? ESPACES[p] : null
+  if (!e) return null
+  const q = new URLSearchParams()
+  for (const k of e.params) {
+    const v = String(query[k] || '')
+    if (!ID.test(v)) return null
+    q.set(k, v)
+  }
+  const debut = `/${e.chemin || p}?${q.toString()}`
+  return {
+    id: debut,                 // une identité par espace : s'installe à côté de l'appli de l'équipe
+    name: e.nom,
+    short_name: e.nom,
+    lang: 'fr',
+    start_url: debut,
+    scope: '/',
+    display: 'standalone',
+    orientation: 'any',
+    theme_color: '#003048',
+    background_color: '#FFF8F2',
+    icons: [
+      { src: '/logo-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+      { src: '/logo-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+    ],
+  }
+}
+
+function handler(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') { res.status(405).json({ error: 'GET attendu.' }); return }
+  const fiche = ficheEspace(req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams))
+  if (!fiche) { res.status(400).json({ error: 'Espace inconnu.' }); return }
+  res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
+  res.setHeader('Cache-Control', 'public, max-age=3600')
+  res.status(200).send(JSON.stringify(fiche))
+}
+
+module.exports = handler
+module.exports.ficheEspace = ficheEspace

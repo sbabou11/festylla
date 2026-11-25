@@ -1,67 +1,61 @@
 /**
- * components/InstallPerso.jsx — « Ajouter à l'écran d'accueil » depuis un espace personnel (20/11/2026)
+ * components/InstallPerso.jsx — « Ajouter à l'écran d'accueil » depuis un espace personnel
  *
- * Un espace spectateur, bénévole, artiste ou une borne ne s'ouvre qu'avec son lien complet
- * (événement, numéro, clé). Depuis le 25/11/2026, la fiche d'installation de l'appli n'impose plus
- * d'adresse de départ : le téléphone garde celle de la page. Sur ces pages, on pose en plus une
- * fiche personnelle, fabriquée sur l'appareil (rien n'est envoyé au serveur), avec le nom de l'espace
- * et ce même lien. On rétablit la fiche de l'appli en quittant la page.
+ * Un espace spectateur, bénévole, artiste ou une borne ne s'ouvre qu'avec son lien (événement,
+ * numéro, clé). Solution B (25/11/2026, choix de l'organisateur) :
+ *   - Android et ordinateurs : la page désigne la fiche d'installation servie par le site pour cet
+ *     espace (/api/manifest), SANS la clé. Chrome peut alors fabriquer une vraie appli (une fiche
+ *     fabriquée sur le téléphone ne donnait qu'un raccourci du navigateur), à côté de l'appli de
+ *     l'équipe. Au démarrage, l'espace retrouve la clé gardée par le téléphone.
+ *   - iPhone et iPad : on garde la fiche normale de l'appli, sans adresse de départ : l'icône retient
+ *     le lien complet de la page, sur le téléphone seulement (l'appli de l'écran d'accueil d'un
+ *     iPhone n'a pas accès à la mémoire de Safari, elle a besoin de la clé dans son lien).
+ * On rétablit la fiche de l'appli en quittant la page.
  */
 import { useEffect } from 'react'
 
-// Mentions de passage à ne pas garder dans le lien de démarrage (retour de paiement Stripe…)
-const PASSAGERES = ['recharge', 'annule', 'session_id']
-
-export function lienDemarrage(href) {
-  const u = new URL(href)
-  PASSAGERES.forEach(p => u.searchParams.delete(p))
-  u.hash = ''
-  return u.toString()
+const ESPACES = {
+  '/solde': ['ev', 'id'], '/balance': ['ev', 'id'], '/spectateur': ['ev', 'id'],
+  '/benevole': ['ev', 'id'], '/artiste': ['ev', 'cr'], '/borne': ['ev'],
 }
 
-export function fichePerso(href, nom) {
-  const debut = lienDemarrage(href)
-  const u = new URL(debut)
-  const abs = (p) => new URL(p, u.origin).toString()
-  // Identifiant propre à l'espace (sans la clé), pour ne pas se confondre avec l'appli de l'équipe
-  const id = new URL(u.pathname, u.origin)
-  ;['ev', 'id', 'cr', 'stand'].forEach(p => { if (u.searchParams.get(p)) id.searchParams.set(p, u.searchParams.get(p)) })
-  return {
-    id: id.toString(),
-    name: nom,
-    short_name: nom,
-    start_url: debut,
-    scope: abs('/'),
-    display: 'standalone',
-    theme_color: '#003048',
-    background_color: '#FFF8F2',
-    icons: [
-      { src: abs('/logo-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-      { src: abs('/logo-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
-    ],
+/** Adresse de la fiche servie par le site pour cet espace (jamais la clé), ou null */
+export function adresseFiche(href) {
+  const u = new URL(href)
+  const params = ESPACES[u.pathname]
+  if (!params) return null
+  const q = new URLSearchParams({ p: u.pathname.slice(1) })
+  for (const k of params) {
+    const v = u.searchParams.get(k)
+    if (!v) return null
+    q.set(k, v)
   }
+  return `/api/manifest?${q.toString()}`
+}
+
+/** iPhone, iPad (y compris iPad qui se présente comme un Mac) */
+export function estAppareilApple(nav = typeof navigator !== 'undefined' ? navigator : {}) {
+  const ua = String(nav.userAgent || '')
+  return /iPad|iPhone|iPod/.test(ua) || (nav.platform === 'MacIntel' && Number(nav.maxTouchPoints) > 1)
 }
 
 export default function InstallPerso({ nom, children }) {
   useEffect(() => {
-    let lien = document.querySelector('link[rel="manifest"]')
-    const cree = !lien
-    if (cree) { lien = document.createElement('link'); lien.rel = 'manifest'; document.head.appendChild(lien) }
-    const avant = lien.getAttribute('href')
     const titre = document.querySelector('meta[name="apple-mobile-web-app-title"]')
     const titreAvant = titre && titre.getAttribute('content')
-    let url = null
-    try {
-      const fiche = fichePerso(window.location.href, nom)
-      url = URL.createObjectURL(new Blob([JSON.stringify(fiche)], { type: 'application/manifest+json' }))
-      lien.setAttribute('href', url)
-      if (titre) titre.setAttribute('content', nom)   // nom sous l'icône sur iPhone
-    } catch { /* fiche de l'appli conservée */ }
+    if (titre) titre.setAttribute('content', nom)   // nom proposé sous l'icône sur iPhone
+    let lien = null, avant = null, cree = false
+    const fiche = estAppareilApple() ? null : adresseFiche(window.location.href)
+    if (fiche) {
+      lien = document.querySelector('link[rel="manifest"]')
+      cree = !lien
+      if (cree) { lien = document.createElement('link'); lien.rel = 'manifest'; document.head.appendChild(lien) }
+      avant = lien.getAttribute('href')
+      lien.setAttribute('href', fiche)
+    }
     return () => {
-      if (cree) lien.remove()
-      else if (avant) lien.setAttribute('href', avant)
       if (titre && titreAvant) titre.setAttribute('content', titreAvant)
-      if (url) URL.revokeObjectURL(url)
+      if (lien) { if (cree) lien.remove(); else if (avant) lien.setAttribute('href', avant) }
     }
   }, [nom])
   return children

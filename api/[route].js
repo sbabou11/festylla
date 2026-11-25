@@ -21,6 +21,7 @@ const ROUTES = {
   'generate-image':    () => require('./_routes/generate-image'),
   inscription:         () => require('./_routes/inscription'),
   liaisons:            () => require('./_routes/liaisons'),
+  manifest:            () => require('./_routes/manifest'),
   'mot-de-passe':      () => require('./_routes/mot-de-passe'),
   paiement:            () => require('./_routes/paiement'),
   'process-entrees':   () => require('./_routes/process-entrees'),
