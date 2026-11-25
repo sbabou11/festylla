@@ -7,7 +7,7 @@ import { Download, FileSpreadsheet, Wand2, Save, AlertTriangle, ShieldAlert, Eye
 import clsx from 'clsx'
 import DiagnosticTransactions from '../../components/DiagnosticTransactions'
 import FacturationSettings from './settings/FacturationSettings'
-import { isEmLinked } from '../../em/pages'
+
 import RapportCloture from './settings/RapportCloture'
 import SecoursSettings from './settings/SecoursSettings'
 import { APP_VERSION_LONG } from '../../utils/buildInfo'
@@ -163,8 +163,8 @@ export default function Settings({ onNavigate }) {
   const { theme } = useAppStore()
   const { user, verifyOwnPassword } = useAuthStore()
   const { currentEventId, events } = useEventStore()
-  // Lot D : exposants et facturation passés dans Event Manager
-  const emLinked = isEmLinked(events.find(e => e.id === currentEventId))
+  // Exposants et facturation passés dans Event Manager : masqués sur tous les événements (25/11/2026)
+  const emLinked = true
   const { exportTransactionsCsv, exportRapportExcel, exportAuditCsv } = useExport()
   const [migratingV2,   setMigratingV2]   = useState(false)
   const [migrV2Log,     setMigrV2Log]     = useState([])

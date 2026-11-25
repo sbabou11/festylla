@@ -11,7 +11,7 @@ import {
   BarChart3, AlertTriangle, PanelLeftClose, PanelLeftOpen, X, LogOut,
   Sun, Moon, Palette, ClipboardList, Calculator,
   Music2, ChevronDown, ArrowLeftRight, Banknote, Briefcase, Building2, KeyRound,
-  Watch,
+  Watch, Mic,
 } from 'lucide-react'
 import clsx from 'clsx'
 import useAppStore   from '../store/useAppStore'
@@ -21,7 +21,7 @@ import { APP_FULL_LABEL } from '../utils/buildInfo'
 import { useBreakpoint }   from '../hooks/useBreakpoint'
 import { useOfflineQueue } from '../hooks/useOfflineQueue'
 import s from './Sidebar.module.css'
-import { isEmLinked, PAGES_RETIREES_EM } from '../em/pages'
+import { PAGES_RETIREES } from '../em/pages'
 import useRetourFerme from '../hooks/useRetourFerme'
 
 export const ALL_PAGES = {
@@ -40,16 +40,17 @@ export const ALL_PAGES = {
   // "Gérer le cachet" dans le formulaire d'édition d'un créneau planning.
   planning:             { icon: CalendarDays,     label: 'Planning Festival' },
   'qr-entree':          { icon: QrCode,          label: 'QR code entrée' },
-  entree:               { icon: Ticket,          label: 'Entrée (billets)' },
-  'spectateurs-hub':    { icon: Users,           label: 'Spectateurs & Accès' },
+  entree:               { icon: Ticket,          label: 'Contrôle des billets' },
+  'spectateurs-hub':    { icon: Users,           label: 'Spectateurs' },
   'equipe-hub':         { icon: Users,           label: 'Équipe & Bénévoles' },
   operations:           { icon: ArrowLeftRight,   label: 'Opérations' },
   benevoles:            { icon: Users,           label: 'Bénévoles' },
   'reservations-admin': { icon: Bookmark,        label: 'Réservations',          badge: true },
-  spectateurs:          { icon: Users,           label: 'Spectateurs' },
+  spectateurs:          { icon: Users,           label: 'Liste des spectateurs' },
+  artistes:             { icon: Mic,             label: 'Artistes' },
   transactions:         { icon: List,            label: 'Transactions' },
   menu:                 { icon: UtensilsCrossed, label: 'Carte & menu' },
-  staff:                { icon: BadgeCheck,      label: 'Équipe' },
+  staff:                { icon: BadgeCheck,      label: 'Comptes YllaCash' },
   settings:             { icon: Settings,        label: 'Paramètres' },
   credit:               { icon: PlusCircle,      label: 'Créditer' },
   'commande-sur-place': { icon: ShoppingBag,     label: 'Commande sur place' },
@@ -75,10 +76,12 @@ const LS_OPEN = 'yllacash-sidebar-rubriques' // rubriques dépliées
 const HUB_CHILDREN = {
   operations:         ['debit', 'credit', 'commande-sur-place', 'nouveau', 'remboursement', 'lien-perdu', 'bracelets', 'transactions', 'reservations-admin', 'alertes'],
   'equipe-hub':       ['staff', 'benevoles'],
-  'spectateurs-hub':  ['entree', 'spectateurs', 'qr-entree'],
+  'spectateurs-hub':  ['entree', 'spectateurs'],
   finances:           ['exposants', 'cachets'],
   'gestion-artistes': ['planning', 'cachets'],
 }
+// Titre de catégorie affiché avant une sous-page (25/11/2026, maquette Bzk3JS4r2XWrsEn6JuUiMj)
+const CATEGORIES_SOUS_MENU = { 'spectateurs-hub': { entree: 'Entrée', spectateurs: 'Spectateurs' } }
 // « cachets » n'a pas d'entrée propre dans le menu : libellé pour les sous-pages
 const CHILD_PAGES = { cachets: { icon: Banknote, label: 'Cachets' } }
 
@@ -117,9 +120,8 @@ export default function Sidebar({
 
   const currentEvent = events.find(e => e.id === currentEventId && !e.deleted)
   const customRole   = (roles || []).find(r => r.id === view)
-  const emLinked     = isEmLinked(currentEvent)
-  // Lot D : pages passées dans Event Manager, masquées pour un événement qui y est relié
-  const allowed      = (pagesDuRole(view) || customRole?.pages || ['mon-profil']).filter(id => !(emLinked && PAGES_RETIREES_EM.includes(id)))
+  // Pages passées dans Event Manager et « QR code entrée » : masquées sur tous les événements (25/11/2026)
+  const allowed      = (pagesDuRole(view) || customRole?.pages || ['mon-profil']).filter(id => !PAGES_RETIREES.includes(id))
   // Pour les rôles qui ont accès aux hubs, on masque ces entrées du menu pour ne garder que les hubs.
   // (Elles restent accessibles via les pancartes des hubs.)
   const HUB_HIDDEN_FROM_SIDEBAR = [
@@ -154,7 +156,7 @@ export default function Sidebar({
   }
   // Le tableau de bord est fusionné dans l'Accueil : une seule entrée
   if (allowed.includes('accueil')) visibleIds = visibleIds.filter(id => id !== 'dashboard')
-  const pages        = visibleIds.map(id => ({ id, ...ALL_PAGES[id], ...(emLinked && id === 'gestion-artistes' ? { label: 'Artistes' } : {}) })).filter(p => p.label)
+  const pages        = visibleIds.map(id => ({ id, ...ALL_PAGES[id] })).filter(p => p.label)
   const childrenOf   = (hub) => (HUB_CHILDREN[hub] || [])
     .filter(id => allowed.includes(id) && !visibleIds.includes(id))
     .map(id => ({ id, ...(ALL_PAGES[id]?.label ? ALL_PAGES[id] : CHILD_PAGES[id]) }))
@@ -266,13 +268,18 @@ export default function Sidebar({
                   <div className={s.subInner}>
                     {kids.map(k => {
                       const kc = k.badge === 'alertes' ? alertCount : k.badge ? pendingCount : 0
+                      // Catégories de la rubrique Spectateurs (25/11/2026) : « Entrée » et « Spectateurs »
+                      const cat = CATEGORIES_SOUS_MENU[p.id]?.[k.id]
                       return (
-                        <button key={k.id} type="button" tabIndex={open ? 0 : -1} onClick={() => go(k.id)}
+                        <React.Fragment key={k.id}>
+                        {cat && <span className={s.subCat}>{cat}</span>}
+                        <button type="button" tabIndex={open ? 0 : -1} onClick={() => go(k.id)}
                           className={clsx(s.subItem, currentPage === k.id && s.subActive)} aria-current={currentPage === k.id ? 'page' : undefined}>
                           <k.icon size={15} aria-hidden="true" />
                           <span className={s.label}>{k.label}</span>
                           {kc > 0 && <span className={clsx(s.count, k.badge === 'alertes' && s.countAlert)}>{kc}</span>}
                         </button>
+                        </React.Fragment>
                       )
                     })}
                   </div>

@@ -18,7 +18,7 @@ import {
   QrCode, MoreHorizontal, Euro, X, Check, Delete, ArrowLeftRight, Moon,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { db } from '../../firebase/config'
+import { db, auth } from '../../firebase/config'
 import { watchProgramme } from '../../programme/watchProgramme'
 import { getSettings, creerCodeEnLigne, annulerCodeEnLigne } from '../../firebase/service'
 import { watchCarte } from '../../menu/carte'
@@ -38,7 +38,7 @@ import NotifBell from '../../components/NotifBell'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../hooks/useTheme'
 import { friendlyError } from '../../utils/errors'
-import { Button, Badge, Empty, Dialog, AnimatedNumber, HoldButton, SessionBanner } from '../../ui'
+import { Button, Badge, Empty, Dialog, AnimatedNumber, HoldButton, SessionBanner, toast } from '../../ui'
 import { planRemboursement } from '../../utils/remboursementPlan'
 import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../../utils/historiqueSpec'
 import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../utils/dons'
@@ -124,6 +124,8 @@ export default function SoldePage({ demo = null }) {
   const [menu, setMenu]               = useState(demo?.menu || [])
   const [loading, setLoading]         = useState(false)
   const [err, setErr]                 = useState('')
+  // 25/11/2026 : lien d'un billet ouvert dans un navigateur où l'espace équipe est connecté
+  const [choixEquipe, setChoixEquipe] = useState(null)   // { id } : on demande lequel ouvrir
   // Session expirée (20/11/2026) : la base a refusé de répondre à une écoute du compte
   const [sessionExpiree, setSessionExpiree] = useState(false)
   const [codeTried, setCodeTried]     = useState(false)
@@ -266,6 +268,9 @@ export default function SoldePage({ demo = null }) {
       if (!demo && eventId) {
         const s = await ensureSpectatorSession({ ev: eventId, id, cle: id === urlId ? urlKey : '' })
         if (!s.ok) { setErr(s.error); setLoading(false); return }
+        // Session de l'équipe dans ce navigateur + lien complet d'un billet : on demande lequel ouvrir,
+        // au lieu de lire le compte avec les droits de l'équipe (refusé : « Erreur de connexion »)
+        if (s.staff && id === urlId && urlKey) { setChoixEquipe({ id }); setLoading(false); return }
       }
       const snap = await getDocs(query(specCol(db), where('id','==',id)))
       if (snap.empty) { setErr('Aucun compte trouvé pour : ' + id); setLoading(false); return }
@@ -305,6 +310,16 @@ export default function SoldePage({ demo = null }) {
   }
 
   useEffect(() => { if (urlId) findSpec(urlId) }, [urlId, eventId])
+
+  // « Ouvrir l'espace de ce compte » : la session de l'équipe se ferme dans ce navigateur, puis le
+  // compte s'ouvre avec la clé du lien (25/11/2026)
+  const ouvrirCommeSpectateur = async () => {
+    const id = choixEquipe?.id
+    setChoixEquipe(null)
+    try { await auth.signOut() } catch { /* déjà fermée */ }
+    toast.info("Session équipe fermée dans ce navigateur : reconnectez-vous pour y revenir.")
+    if (id) findSpec(id)
+  }
   // Sans numéro dans l'adresse (identifiant tapé à la main, retour de Stripe…) : on rouvre le compte
   // déjà ouvert sur ce téléphone plutôt que de redemander l'identifiant (20/11/2026)
   useEffect(() => {
@@ -807,7 +822,14 @@ export default function SoldePage({ demo = null }) {
           </header>
           <section className={clsx(sp.login, 'nv-in')}>
             <h1 className="nv-title">Mon portefeuille festival</h1>
-            {loading
+            {choixEquipe ? (
+              <div className={clsx('nv-card nv-pad', sp.stack)} role="group" aria-labelledby="sp-choix-titre">
+                <b id="sp-choix-titre">Ce navigateur est connecté à l'espace équipe</b>
+                <p className="nv-mu">Vous ouvrez le lien du compte {choixEquipe.id}. Pour l'afficher, la session équipe de ce navigateur se ferme : vous vous reconnecterez ensuite avec votre identifiant.</p>
+                <button type="button" className="nv-btn nv-press" onClick={ouvrirCommeSpectateur}>Ouvrir l'espace du compte {choixEquipe.id}</button>
+                <button type="button" className="nv-btn-sec nv-press" onClick={() => { window.location.href = '/' }}>Rester dans l'espace équipe</button>
+              </div>
+            ) : loading
               ? <p className="nv-mu">Ouverture de votre espace…</p>
               : <p className="nv-mu">Ouvrez votre espace avec le lien reçu par e-mail avec votre billet. Plus besoin de code : votre QR s'affiche ici et change tout seul.</p>}
             {err && <p className={sp.error} role="alert">{err}</p>}

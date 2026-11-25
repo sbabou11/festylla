@@ -130,12 +130,14 @@ const counterKey = (kind, value) => `${kind}-${crypto.createHash('sha256').updat
  * fiches de l'équipe qui l'ont encore (ou n'ont pas de rôle, ce qui valait « stand ») sont
  * désactivées, pas supprimées : l'historique des ventes reste. Renvoie le message à afficher, ou ''.
  */
-const ROLES_RETIRES = ['stand']
+// 25/11/2026 : « Directeur artistique » retiré à son tour (planning et artistes passés dans Event Manager)
+const ROLES_RETIRES = ['stand', 'directeur_artistique']
+const NOMS_RETIRES = { stand: 'Stand', directeur_artistique: 'Directeur artistique' }
 function compteDesactive(account) {
   if (!account || account.kind !== 'staff') return ''
   const role = (account.data && account.data.role) || 'stand'
   return ROLES_RETIRES.includes(role)
-    ? 'Ce compte est désactivé : le rôle « Stand » n\'existe plus. Demandez un autre rôle à l\'organisation.'
+    ? `Ce compte est désactivé : le rôle « ${NOMS_RETIRES[role]} » n'existe plus. Demandez un autre rôle à l'organisation.`
     : ''
 }
 

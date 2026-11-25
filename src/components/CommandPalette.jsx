@@ -29,6 +29,7 @@ const ACTIONS = [
   ['nouveau', 'Compte pour un billet (billet sans compte, ou liaison du site en panne)'],
   ['remboursement', 'Rembourser un spectateur'],
   ['lien-perdu', 'Donner un nouveau lien à un spectateur'],
+  ['artistes', 'Artistes : liens personnels et articles offerts'],
   ['bracelets', 'Bracelet de secours : relier, nouveau code, bloquer'],
   ['cloture', 'Clôturer une caisse'],
   ['exposants', 'Ajouter un exposant'],

@@ -1,128 +1,85 @@
 /**
- * pages/admin/SpectateursHub.jsx — v1.1.0
+ * pages/admin/SpectateursHub.jsx — rubrique « Spectateurs » (25/11/2026, maquette Bzk3JS4r2XWrsEn6JuUiMj)
  *
- * Hub centralisé : combine Spectateurs et QR code entrée
- * Pancartes style GestionArtistes
+ * Deux catégories : « Entrée » (contrôle des billets) et « Spectateurs » (liste des comptes).
+ * Le « QR code entrée » est retiré : les spectateurs ouvrent leur espace depuis l'e-mail du billet.
+ * Pancartes style GestionArtistes.
  */
 
 import React, { useMemo } from 'react'
-import { Users, QrCode, ChevronRight } from 'lucide-react'
+import { Users, Ticket, ChevronRight } from 'lucide-react'
 import useAppStore  from '../../store/useAppStore'
 import useEventStore from '../../store/useEventStore'
+import useAuthStore from '../../store/useAuthStore'
 import { useBreakpoint } from '../../hooks/useBreakpoint'
+
+const categorie = { fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)', margin: '18px 2px 8px' }
 
 export default function SpectateursHub({ onNavigate }) {
   const { spectateurs } = useAppStore()
   const { currentEventId, events } = useEventStore()
+  const canAccessPage = useAuthStore(st => st.canAccessPage)
   const currentEvent = events.find(e => e.id === currentEventId && !e.deleted)
   const { isMobile } = useBreakpoint()
+  const peut = (p) => (canAccessPage ? canAccessPage(p) : true)
 
-  // ─── Stats spectateurs ──────────────────────────────────────────────
   const specStats = useMemo(() => {
     const list = spectateurs || []
     const total = list.length
     const totalSolde = list.reduce((s, sp) => s + (Number(sp.solde) || 0), 0) / 100
     const actifs = list.filter(sp => (sp.solde || 0) > 0).length
-    const sansSolde = list.filter(sp => (sp.solde || 0) === 0).length
-    return { total, totalSolde, actifs, sansSolde }
+    const billets = list.filter(sp => sp.billet).length
+    return { total, totalSolde, actifs, billets }
   }, [spectateurs])
-
-  // ─── Lien public d'inscription (lié à l'événement) ──────────────────
-  const inscriptionUrl = currentEventId
-    ? `${window.location.origin}/?ev=${currentEventId}`
-    : window.location.origin + '/'
 
   return (
     <div style={{ padding: '8px 4px', maxWidth: 1200, margin: '0 auto' }}>
-
-      {/* Header */}
-      <div style={{ marginBottom: 18 }}>
-        <h1 style={{
-          fontSize: isMobile ? 22 : 26, fontWeight: 800, color: 'var(--marine)',
-          margin: 0, display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <Users size={isMobile ? 24 : 28}/> Spectateurs & Accès
+      <div style={{ marginBottom: 4 }}>
+        <h1 style={{ fontSize: isMobile ? 22 : 26, fontWeight: 800, color: 'var(--marine)', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Users size={isMobile ? 24 : 28}/> Spectateurs
         </h1>
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
-          {currentEvent?.nom || 'Aucun événement actif'}
+          {currentEvent?.nom || 'Aucun événement actif'} · {specStats.total} comptes, {specStats.actifs} avec un solde
         </div>
       </div>
 
-      {/* Grille 2 pancartes */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-        gap: 16, marginBottom: 24,
-      }}>
-        {/* Pancarte Spectateurs */}
-        <PancartePrincipale
-          onClick={() => onNavigate && onNavigate('spectateurs', 'spectateurs-hub')}
-          isMobile={isMobile}
-          gradient="linear-gradient(135deg, #14B5B5 0%, #009090 100%)"
-          icon={<Users size={isMobile ? 36 : 44} strokeWidth={2}/>}
-          titre="Spectateurs"
-          description="Liste, soldes, recherche, impression accès papier"
-          stats={[
-            { label: 'Total', value: specStats.total },
-            { label: 'Actifs', value: specStats.actifs },
-            { label: 'Solde total', value: `${specStats.totalSolde.toFixed(0)}€` },
-          ]}
-        />
-
-        {/* Pancarte QR code entrée */}
-        <PancartePrincipale
-          onClick={() => onNavigate && onNavigate('qr-entree', 'spectateurs-hub')}
-          isMobile={isMobile}
-          gradient="linear-gradient(135deg, #D89030 0%, #A87020 100%)"
-          icon={<QrCode size={isMobile ? 36 : 44} strokeWidth={2}/>}
-          titre="QR code d'inscription"
-          description="QR à afficher à l'entrée pour que les spectateurs s'inscrivent"
-          stats={[
-            { label: 'Lien public', value: '✓' },
-            { label: 'Imprimable', value: '✓' },
-            { label: 'Modifiable', value: '✓' },
-          ]}
-        />
-      </div>
-
-      {/* Mini-aperçu du lien public */}
-      <div style={{
-        background: 'var(--bg2)',
-        border: '0.5px solid var(--border)',
-        borderRadius: 10,
-        padding: '12px 14px',
-        display: 'flex', alignItems: 'center', gap: 10,
-        flexWrap: 'wrap',
-      }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Lien public d'inscription
-          </div>
-          <div style={{
-            fontSize: 12, color: 'var(--text)', fontFamily: 'monospace',
-            marginTop: 2, wordBreak: 'break-all',
-          }}>
-            {inscriptionUrl}
-          </div>
+      {peut('entree') && (<>
+        <p style={categorie}>Entrée</p>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
+          <PancartePrincipale
+            onClick={() => onNavigate && onNavigate('entree', 'spectateurs-hub')}
+            isMobile={isMobile}
+            gradient="linear-gradient(135deg, #5B6CF0 0%, #3B4BC8 100%)"
+            icon={<Ticket size={isMobile ? 36 : 44} strokeWidth={2}/>}
+            titre="Contrôle des billets"
+            description="Scanner les billets à l'entrée, entrées du jour"
+            stats={[
+              { label: 'Billets', value: specStats.billets },
+              { label: 'Caméra', value: '✓' },
+              { label: 'Lecteur', value: '✓' },
+            ]}
+          />
         </div>
-        <button
-          onClick={() => {
-            navigator.clipboard?.writeText(inscriptionUrl)
-              .then(() => alert('Lien copié dans le presse-papier'))
-              .catch(() => {})
-          }}
-          style={{
-            padding: '8px 14px',
-            background: 'var(--brand)', color: 'var(--on-brand, #fff)',
-            border: 'none', borderRadius: 8,
-            fontSize: 12, fontWeight: 700,
-            cursor: 'pointer', fontFamily: 'inherit',
-            WebkitTapHighlightColor: 'transparent',
-            flexShrink: 0,
-          }}>
-          📋 Copier
-        </button>
-      </div>
+      </>)}
+
+      {peut('spectateurs') && (<>
+        <p style={categorie}>Spectateurs</p>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
+          <PancartePrincipale
+            onClick={() => onNavigate && onNavigate('spectateurs', 'spectateurs-hub')}
+            isMobile={isMobile}
+            gradient="linear-gradient(135deg, #14B5B5 0%, #009090 100%)"
+            icon={<Users size={isMobile ? 36 : 44} strokeWidth={2}/>}
+            titre="Liste des spectateurs"
+            description="Recherche, soldes, fiche de chaque compte"
+            stats={[
+              { label: 'Total', value: specStats.total },
+              { label: 'Actifs', value: specStats.actifs },
+              { label: 'Solde total', value: `${specStats.totalSolde.toFixed(0)}€` },
+            ]}
+          />
+        </div>
+      </>)}
     </div>
   )
 }

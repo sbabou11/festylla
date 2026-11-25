@@ -74,14 +74,14 @@ const MEMBER_COLORS = [
 const DEFAULT_ROLES = {
   super_admin:  { nom:'Super Admin',  couleur:'#DC2626' },
   admin:        { nom:'Admin',        couleur:'#534AB7' },
-  directeur_artistique: { nom:'Directeur artistique', couleur:'#0891b2' },
   billetterie:  { nom:'Billetterie',  couleur:'#0F6E56' },
   // 23/11/2026 (refonte des rôles validée) : nouveau rôle, écran « Entrée » seulement
   controle_entree: { nom:'Contrôle entrée', couleur:'#5B6CF0' },
   consultation: { nom:'Consultation', couleur:'#6b6b6b' },
 }
 // Rôles retirés : plus proposés ; les fiches qui les portent sont désactivées (connexion refusée)
-const ROLES_RETIRES = { stand: 'Stand' }
+// 25/11/2026 : « Directeur artistique » retiré comme « Stand » (planning et artistes dans Event Manager)
+const ROLES_RETIRES = { stand: 'Stand', directeur_artistique: 'Directeur artistique' }
 const estDesactive = (m) => !m.role || !!ROLES_RETIRES[m.role]
 
 const initials = (nom) => (nom || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()

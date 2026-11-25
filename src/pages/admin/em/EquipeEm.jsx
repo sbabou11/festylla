@@ -52,8 +52,21 @@ export function useEquipeEm() {
   return !!event?.emEquipe
 }
 
+/** Événement relié à Event Manager (équipe ou programme) */
+const estRelie = (event) => !!(event?.emEquipe || event?.emProgramme)
+
 function EnTete({ titre, ev, event, quoi }) {
   const [busy, setBusy] = useState(false)
+  // 25/11/2026 : version Event Manager sur tous les événements ; non relié = liste en lecture
+  if (!estRelie(event)) return (
+    <>
+      <h1 style={{ margin: 0, fontSize: 22 }}>{titre}</h1>
+      <div style={{ ...box, display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--gold-light)', color: 'var(--gold-dark)', border: 'none' }}>
+        <Info size={16} style={{ flex: 'none', marginTop: 2 }} aria-hidden="true"/>
+        <span style={{ fontSize: 13 }}>Événement non relié à Event Manager : liste en lecture, sans création ni créneaux. Pour un nouvel événement, reliez-le à Event Manager (Événements › Liaisons).</span>
+      </div>
+    </>
+  )
   const maj = event?.emEquipe?.majMs
   const actualiser = async () => {
     setBusy(true)
@@ -156,7 +169,7 @@ function Ligne({ nom, badge, detail, onQr, docLabel, onDoc, onRenew, onRole }) {
 function useListe(ev, name) {
   const [list, setList] = useState(null)
   useEffect(() => {
-    if (!ev) return
+    if (!ev || !name) return   // sans nom : rien à écouter
     return onSnapshot(collection(db, 'events', ev, name), snap => setList(snap.docs.map(d => ({ ...d.data(), id: d.id }))), () => setList([]))
   }, [ev, name])
   return list
@@ -192,9 +205,11 @@ export function BenevolesEm() {
   const roleAdmin = ['admin', 'super_admin'].includes(useAuthStore(st => st.user?.role))
   const staff = useAppStore(st => st.staff) || []
   const jour = festDay()
+  // Non relié (25/11/2026) : les fiches existantes, en lecture
+  const relie = estRelie(event)
   const liste = useMemo(() => (all || [])
-    .filter(b => b.source === 'event-manager' && b.actif !== false)
-    .sort((a, b) => `${a.prenom} ${a.nom}`.localeCompare(`${b.prenom} ${b.nom}`, 'fr')), [all])
+    .filter(b => (relie ? b.source === 'event-manager' : true) && b.actif !== false)
+    .sort((a, b) => `${a.prenom || ''} ${a.nom || ''}`.localeCompare(`${b.prenom || ''} ${b.nom || ''}`, 'fr')), [all, relie])
   const shown = liste.filter(b => match(q, b.prenom, b.nom))
 
   return (
@@ -207,7 +222,7 @@ export function BenevolesEm() {
       <Recherche value={q} onChange={setQ}/>
       {all === null ? <p style={{ color: 'var(--text-muted)' }}>Chargement…</p> : shown.length === 0 ? (
         <Empty title={liste.length ? 'Aucun résultat' : 'Aucun bénévole'}>
-          {liste.length ? 'Essayez un autre nom.' : "Event Manager n'a encore envoyé aucun bénévole avec des droits ou un contrôle des billets."}
+          {liste.length ? 'Essayez un autre nom.' : relie ? "Event Manager n'a encore envoyé aucun bénévole avec des droits ou un contrôle des billets." : 'Aucun bénévole pour cet événement.'}
         </Empty>
       ) : (
         <div style={{ display: 'grid', gap: 8 }}>
@@ -236,7 +251,11 @@ export function BenevolesEm() {
 /* ── Page Artistes ──────────────────────────────────────────── */
 export function ArtistesEm() {
   const { ev, event } = useEmEvent()
-  const all = useListe(ev, 'artistes')
+  const relie = estRelie(event)
+  const artistesEm = useListe(ev, 'artistes')
+  // Non relié (25/11/2026) : les artistes du planning d'origine, en lecture (lien = créneau)
+  const planning = useListe(ev, relie ? null : 'planning')
+  const all = relie ? artistesEm : (planning === null ? null : planning.filter(p => p.artiste).map(p => ({ ...p, nom: p.artiste, depuisPlanning: true })))
   const menu = useListe(ev, 'menu')
   const consos = useListe(ev, 'artist-consumptions')
   const [offerts, setOfferts] = useState([])
@@ -292,7 +311,7 @@ export function ArtistesEm() {
       <Recherche value={q} onChange={setQ}/>
       {all === null ? <p style={{ color: 'var(--text-muted)' }}>Chargement…</p> : shown.length === 0 ? (
         <Empty title={liste.length ? 'Aucun résultat' : 'Aucun artiste'}>
-          {liste.length ? 'Essayez un autre nom.' : "Event Manager n'a encore envoyé aucun artiste avec des avantages."}
+          {liste.length ? 'Essayez un autre nom.' : relie ? "Event Manager n'a encore envoyé aucun artiste avec des avantages." : 'Aucun artiste dans le planning de cet événement.'}
         </Empty>
       ) : (
         <div style={{ display: 'grid', gap: 8 }}>
@@ -301,7 +320,7 @@ export function ArtistesEm() {
               detail={resume(a.avantagesJours?.[jour], servi(a.id))}
               onQr={() => ouvrirLien(ev, 'artiste', a.id, a.nom, setLien)}
               docLabel="Fiche imprimable"
-              onDoc={() => printArtisteSheet(adaptArtisteEm(a, { jour, offerts, menu: menu || [] }), a.id, ev)}
+              onDoc={() => printArtisteSheet(a.depuisPlanning ? a : adaptArtisteEm(a, { jour, offerts, menu: menu || [] }), a.id, ev)}
               onRenew={() => renouveler(ev, 'artiste', a.id)}/>
           ))}
         </div>

@@ -24,6 +24,7 @@ import Staff from '../admin/Staff'
 import Menu from '../admin/Menu'
 import Settings from '../admin/Settings'
 import Transactions from '../admin/Transactions'
+import Artistes from '../admin/Artistes'
 import Alertes from '../admin/Alertes'
 import QrEntree from '../admin/QrEntree'
 import Benevoles from '../admin/Benevoles'
@@ -58,13 +59,13 @@ const PAGES  = { analytics: Analytics, cloture: Cloture, planning: Planning, sta
   nouveau: Nouveau, credit: Credit, debit: Debit,
   accueil: Accueil, comptabilite: Comptabilite, operations: Operations, 'equipe-hub': EquipeHub, 'spectateurs-hub': SpectateursHub,
   cachets: Cachets, 'gestion-artistes': GestionArtistes, exposants: Exposants, finances: Finances, remboursement: Remboursement,
-  evenements: Evenements, entree: Entree }
+  evenements: Evenements, entree: Entree, artistes: Artistes }
 const TITLES = { analytics: 'Analytics', cloture: 'Clôture de caisse', planning: 'Planning Festival', staff: 'Équipe', menu: 'Carte & menu', settings: 'Paramètres', transactions: 'Transactions', alertes: 'Alertes financières',
   'qr-entree': 'QR code entrée', benevoles: 'Bénévoles', 'reservations-admin': 'Réservations', spectateurs: 'Spectateurs', 'mon-profil': 'Mon profil',
   nouveau: 'Nouveau QR', credit: 'Créditer', debit: 'Encaisser',
   accueil: 'Accueil', comptabilite: 'Comptabilité', operations: 'Opérations', 'equipe-hub': 'Équipe & Bénévoles', 'spectateurs-hub': 'Spectateurs & Accès',
   cachets: 'Cachets artistes', 'gestion-artistes': 'Gestion des artistes', exposants: 'Exposants', finances: 'Finances', remboursement: 'Remboursement',
-  evenements: 'Événements', entree: 'Entrée' }
+  evenements: 'Événements', entree: 'Entrée', artistes: 'Artistes' }
 
 function sampleData(now) {
   const spectateurs = NAMES.map((nom, i) => ({ id: `YT-${(4100 + i * 37).toString(16).toUpperCase()}`, nom, solde: i === 6 ? -150 : 500 + i * 650 }))

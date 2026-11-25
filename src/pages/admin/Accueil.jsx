@@ -509,9 +509,10 @@ export default function Accueil({ onNavigate, view }) {
     const ALL = {
       operations:          { icon: Receipt,         tone: 'brand',   title: 'Opérations',          desc: 'Caisse, transactions, alertes',
         stats: [{ label: 'recettes du jour', value: fmt(day.revenue) }, { label: 'résas en attente', value: kpis.resaPending, warn: kpis.resaPending > 0 }, { label: 'alertes', value: alerts.length, alert: alerts.some(a => a.tone === 'danger') }] },
-      'equipe-hub':        { icon: Briefcase,       tone: 'purple',  title: 'Équipe & Bénévoles',  desc: 'Comptes staff et bénévoles', stats: [{ label: 'staff', value: (staff || []).length }] },
-      'spectateurs-hub':   { icon: QrCode,          tone: 'success', title: 'Spectateurs & Accès', desc: 'Comptes et QR codes', stats: specStats },
+      'equipe-hub':        { icon: Briefcase,       tone: 'purple',  title: 'Équipe & Bénévoles',  desc: 'Comptes YllaCash et bénévoles', stats: [{ label: 'staff', value: (staff || []).length }] },
+      'spectateurs-hub':   { icon: QrCode,          tone: 'success', title: 'Spectateurs', desc: 'Entrée et liste des spectateurs', stats: specStats },
       'gestion-artistes':  { icon: Music2,          tone: 'gold',    title: 'Gestion artistes',    desc: 'Planning et cachets' },
+      artistes:            { icon: Music2,          tone: 'gold',    title: 'Artistes',            desc: 'Liens personnels et articles offerts' },
       'reservations-admin':{ icon: Bookmark,        tone: 'purple',  title: 'Réservations',        desc: globalView ? "Vue d'ensemble" : 'Voir et préparer', stats: resaStats },
       transactions:        { icon: List,            tone: 'brand',   title: 'Transactions',        desc: globalView ? 'Historique complet' : 'Vos opérations', stats: txStats },
       spectateurs:         { icon: Users,           tone: 'success', title: 'Liste des spectateurs', desc: 'Consulter les comptes', stats: specStats },
@@ -524,7 +525,7 @@ export default function Accueil({ onNavigate, view }) {
       settings:            { icon: SettingsIcon,    tone: 'brand',   title: 'Paramètres',          desc: "Réglages de l'événement" },
     }
     const ids = isAdmin
-      ? ['operations', 'equipe-hub', 'spectateurs-hub', 'gestion-artistes', 'analytics', 'comptabilite', 'menu', 'settings']
+      ? ['operations', 'spectateurs-hub', 'equipe-hub', 'artistes', 'analytics', 'comptabilite', 'menu', 'settings']
       : ['reservations-admin', 'transactions', 'spectateurs', 'analytics', 'comptabilite', 'gestion-artistes', 'planning', 'cachets']
     return ids.filter(can).map(id => ({ id, ...ALL[id] }))
   }, [isAdmin, globalView, can, allTx.length, myLogs.length, mine, spectateurs.length, wallets, kpis, reservations.length, staff, day.revenue, alerts])

@@ -79,6 +79,8 @@ describe('rôles retirés (23/11/2026)', () => {
     expect(compteDesactive({ kind: 'staff', data: { role: 'stand' } })).toMatch(/désactivé/)
     expect(compteDesactive({ kind: 'staff', data: {} })).toMatch(/désactivé/)
     expect(compteDesactive({ kind: 'staff', data: { role: 'billetterie' } })).toBe('')
+    // 25/11/2026 : directeur artistique retiré comme stand
+    expect(compteDesactive({ kind: 'staff', data: { role: 'directeur_artistique' } })).toMatch(/« Directeur artistique » n'existe plus/)
     expect(compteDesactive({ kind: 'benevole', data: {} })).toBe('')
   })
 })

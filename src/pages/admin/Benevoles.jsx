@@ -340,7 +340,11 @@ function BenevolesYllaCash() {
   )
 }
 
-// Événement relié à Event Manager (lot C) : page en lecture, avec les liens personnels
-export default function Benevoles(props) {
-  return useEquipeEm() ? <BenevolesEm/> : <BenevolesYllaCash {...props}/>
+// 25/11/2026 (décision de l'organisateur, maquette CrgrsB4vN2ZtQ8cJZih1uN) : version Event Manager sur
+// tous les événements ; un événement non relié montre ses fiches en lecture. L'ancienne gestion
+// complète (BenevolesYllaCash) n'est plus affichée ; elle reste dans le code, au cas où.
+export default function Benevoles() {
+  return <BenevolesEm/>
 }
+// eslint-disable-next-line no-unused-vars
+const _ancienneGestion = { BenevolesYllaCash, useEquipeEm }

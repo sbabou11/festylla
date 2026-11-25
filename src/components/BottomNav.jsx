@@ -29,7 +29,7 @@ const SHORT = {
   dashboard: 'Direct', accueil: 'Accueil', transactions: 'Flux', alertes: 'Alertes', benevoles: 'Bénévoles',
   credit: 'Recharger', 'commande-sur-place': 'Sur place', nouveau: 'Compte', entree: 'Entrée', 'lien-perdu': 'Lien perdu', bracelets: 'Bracelets', cloture: 'Clôture', debit: 'Encaisser',
   retrait: 'Retrait', 'reservations-admin': 'Réserv.', analytics: 'Analyse',
-  planning: 'Planning', 'gestion-artistes': 'Artistes', 'mon-profil': 'Profil', evenements: 'Événements', spectateurs: 'Public',
+  planning: 'Planning', 'gestion-artistes': 'Artistes', artistes: 'Artistes', 'mon-profil': 'Profil', evenements: 'Événements', spectateurs: 'Public',
 }
 
 export default function BottomNav({ role, customPages, currentPage, onNavigate, onMore, canAccess, badges = {} }) {

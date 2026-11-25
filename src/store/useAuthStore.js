@@ -125,8 +125,8 @@ export async function setPasswordFor(cible, nouveau) {
 }
 
 export const ROLE_PAGES = {
-  super_admin:  ['evenements','accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','debit','remboursement','lien-perdu','bracelets','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
-  admin:        ['accueil','dashboard','analytics','cloture','comptabilite','operations','equipe-hub','spectateurs-hub','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','debit','remboursement','lien-perdu','bracelets','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
+  super_admin:  ['evenements','accueil','dashboard','analytics','cloture','comptabilite','operations','spectateurs-hub','equipe-hub','artistes','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','debit','remboursement','lien-perdu','bracelets','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
+  admin:        ['accueil','dashboard','analytics','cloture','comptabilite','operations','spectateurs-hub','equipe-hub','artistes','gestion-artistes','exposants','finances','editeur-template','cachets','menu','settings','mon-profil','planning','credit','commande-sur-place','debit','remboursement','lien-perdu','bracelets','transactions','reservations-admin','nouveau','alertes','benevoles','staff','spectateurs','qr-entree','entree'],
   // 23/11/2026 (refonte des rôles) : plus de Spectateurs & Accès, liste des spectateurs, QR code entrée
   // ni contrôle des billets (rôle « Contrôle entrée »)
   billetterie:  ['accueil','operations','credit','commande-sur-place','nouveau','cloture','remboursement','lien-perdu','bracelets','transactions','mon-profil'],
