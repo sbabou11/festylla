@@ -379,3 +379,5 @@
 .pourCard { display: grid; gap: 8px; box-shadow: var(--nv-tab-shadow); }
 .pourLab { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
 .pourSelect { height: 46px; border-radius: 12px; border: 1.5px solid var(--border2); background: var(--surface, var(--bg)); color: var(--text); padding: 0 12px; font: inherit; font-size: 16px; }
+/* Filtre par bracelet de l'historique (28/11/2026) */
+.filtreBr { display: grid; gap: 6px; }

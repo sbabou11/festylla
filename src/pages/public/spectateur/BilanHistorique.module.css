@@ -1,0 +1,9 @@
+/* Onglet « Bilan » de l'historique (28/11/2026) */
+.pile { display: grid; gap: 12px; }
+.titre { margin: 0 0 10px; font-size: 15px; font-weight: 800; }
+.liste { display: grid; gap: 8px; }
+.ligne { display: grid; grid-template-columns: minmax(64px, 30%) 1fr auto; gap: 8px; align-items: center; font-size: 13px; }
+.nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.piste { height: 12px; border-radius: 6px; background: var(--bg3, rgba(0, 48, 72, .08)); overflow: hidden; }
+.piste i { display: block; height: 100%; border-radius: 6px; }
+.montant { white-space: nowrap; font-variant-numeric: tabular-nums; }

@@ -43,7 +43,8 @@ import { planRemboursement } from '../../utils/remboursementPlan'
 import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../../utils/historiqueSpec'
 import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../utils/dons'
 import PlanningSpec from './spectateur/PlanningSpec'
-import SoldeChart from './spectateur/SoldeChart'
+import BilanHistorique from './spectateur/BilanHistorique'
+import { bilanSpec, depenseDe, filtrerBracelet } from '../../utils/bilanSpec'
 import MesBracelets, { useBracelets, CarteBraceletsAccueil, nomBracelet } from './spectateur/MesBracelets'
 import QuoiDeNeuf from '../../components/QuoiDeNeuf'
 import sp from './spectateur/SoldePage.module.css'
@@ -145,7 +146,8 @@ export default function SoldePage({ demo = null }) {
   const [qrOpen, setQrOpen]           = useState(false)
   // Retour du téléphone (24/11/2026) : ferme cette fenêtre au lieu de quitter l'écran
   useRetourFerme(qrOpen, () => setQrOpen(false))
-  const [chartMode, setChartMode]     = useState(false)   // false=liste true=graphe
+  const [chartMode, setChartMode]     = useState(false)   // false=liste true=bilan (28/11/2026 : remplace le graphe)
+  const [filtreBr, setFiltreBr]       = useState('')      // historique : bracelet choisi ('' = tous)
   const [planningData, setPlanningData] = useState(() => {
     try {
       const cached = localStorage.getItem('yllacash-planning-' + eventId)
@@ -156,8 +158,6 @@ export default function SoldePage({ demo = null }) {
     } catch {}
     return []
   })
-  const [chartZoom, setChartZoom]     = useState(false)   // graphe plein écran
-  const [hoverIdx, setHoverIdx]       = useState(null)    // index point survolé
   const [txPage, setTxPage]           = useState(1)       // pagination historique
   const [resaPage, setResaPage]       = useState(1)       // pagination mes résa
   const [eventMeta, setEventMeta]     = useState(demo?.eventMeta || null)
@@ -590,34 +590,22 @@ export default function SoldePage({ demo = null }) {
   })
   const resasTriees    = [...resas].sort((a,b)=>(b.date||'').localeCompare(a.date||''))
 
+  // Historique filtré par bracelet (28/11/2026) : la liste, les totaux et le bilan suivent le filtre
+  const txVues   = filtrerBracelet(txTriees, filtreBr)
   // Pagination historique transactions
-  const txTotal  = txTriees.length
+  const txTotal  = txVues.length
   const txPages  = Math.max(1, Math.ceil(txTotal / PAGE_SIZE))
-  const txSlice  = txTriees.slice((txPage-1)*PAGE_SIZE, txPage*PAGE_SIZE)
+  const txSlice  = txVues.slice((txPage-1)*PAGE_SIZE, txPage*PAGE_SIZE)
+  const bilanVu  = bilanSpec(txVues, { menu, stands: carte.stands || [], jourDe, bracelets: braceletsEtat.bracelets || [] })
+  // Filtre par bracelet : dès deux bracelets ; liste déroulante au-delà de 3 choix (règle du 28/11/2026)
+  const choixBr  = (braceletsEtat.bracelets || []).length >= 2 ? [{ numero: '', nom: 'Tous les bracelets' }, ...(braceletsEtat.bracelets || []).map(b => ({ numero: b.numero, nom: nomBracelet(b) }))] : []
+  const choisirBr = (n) => { setFiltreBr(n); setTxPage(1) }
 
   // Pagination mes résa
   const resaTotal = resasTriees.length
   const resaPages = Math.max(1, Math.ceil(resaTotal / PAGE_SIZE))
   const resaSlice = resasTriees.slice((resaPage-1)*PAGE_SIZE, resaPage*PAGE_SIZE)
 
-  // Timeline pour graphe — reconstitution à partir du solde actuel (centimes)
-  const timeline = (() => {
-    if (!txTriees.length) return []
-    // Partir du solde actuel et remonter à rebours pour trouver le solde après chaque tx
-    const currentSolde = spec?.solde || 0  // solde actuel en centimes
-    let bal = currentSolde
-    // Calculer soldeAprès en remontant du plus récent au plus ancien
-    const withBalance = txTriees.map(t => {
-      const soldeApres = bal
-      // Annuler la transaction pour trouver le solde avant
-      bal -= effetSolde(t)   // remboursements, tickets remboursés et corrections compris
-      return { ...t, balanceAfter: soldeApres }
-    })
-    // Remettre dans l'ordre chronologique (plus ancien en premier)
-    return withBalance.reverse()
-  })()
-  const maxBal = Math.max(...timeline.map(t=>t.balanceAfter), 0, 1)
-  const minBal = Math.min(...timeline.map(t=>t.balanceAfter), 0)
 
   // ── Affichage (v5) ────────────────────────────────────────────
   const [cancelId, setCancelId]   = useState(null)
@@ -741,7 +729,7 @@ export default function SoldePage({ demo = null }) {
     const dest = destinationRemboursement(t)
     const heure = heureDe(t)
     const quand = avecJour ? [jourDe(t).label, heure].filter(Boolean).join(', ') : heure
-    const sous = [quand, reste.join(' · '), dest].filter(Boolean).join(' · ')
+    const sous = [quand, t.braceletPrenom || '', reste.join(' · '), dest].filter(Boolean).join(' · ')
     return (
       <button key={i} type="button" className={clsx('nv-row nv-press', sp.opRow)} onClick={() => setDetail(t)}>
         <span className={clsx('nv-ic', sp.opBg, sp[opClasse(t.type)])}><Icon size={20} aria-hidden="true" /></span>
@@ -761,7 +749,8 @@ export default function SoldePage({ demo = null }) {
     }
     return out
   })()
-  const totalJour = (key) => txTriees.filter(t => jourDe(t).key === key).reduce((a, t) => a + effetSolde(t), 0)
+  // Total du jour (28/11/2026) : ce qui a été dépensé, sans mélanger les recharges
+  const depenseJour = (key) => txVues.filter(t => jourDe(t).key === key).reduce((a, t) => a + depenseDe(t), 0)
 
   const NAV = [
     { id: 'accueil',      label: 'Solde',     icon: Wallet,          match: ['accueil', 'historique', 'recharger', 'rembourser'] },
@@ -1063,17 +1052,31 @@ export default function SoldePage({ demo = null }) {
               <div className={clsx('nv-big', sp.histBig)}><AnimatedNumber value={spec.solde || 0} format={montantGros} /></div>
               <div className="nv-mu">Solde actuel</div>
             </div>
+            {choixBr.length > 0 && (choixBr.length > 3 ? (
+              <label className={sp.filtreBr}>
+                <span className={sp.pourLab}>Bracelet</span>
+                <select className={sp.pourSelect} value={filtreBr} onChange={e => choisirBr(e.target.value)}>
+                  {choixBr.map(c => <option key={c.numero || 'tous'} value={c.numero}>{c.nom}</option>)}
+                </select>
+              </label>
+            ) : (
+              <div className="nv-pills" role="group" aria-label="Bracelet">
+                {choixBr.map(c => <button key={c.numero || 'tous'} type="button" className="nv-pill nv-press" aria-pressed={filtreBr === c.numero} onClick={() => choisirBr(c.numero)}>{c.numero ? c.nom : 'Tous'}</button>)}
+              </div>
+            ))}
             {/* Totaux : toucher ouvre le détail du solde (23/11/2026) */}
             <button type="button" className={clsx('nv-card nv-pad nv-press', sp.cardBtn, sp.totals)} onClick={() => setCarteOuverte('solde')}
               aria-label="Totaux depuis l'ouverture. Voir le détail du solde" aria-haspopup="dialog">
-              <span>Rechargé<b className="nv-pos">{fmt(totalRecharge)}</b></span>
-              <span>Dépensé<b>{fmt(totalDepense)}</b></span>
-              {totalRembourse > 0 && <span>Remboursé<b>{fmt(totalRembourse)}</b></span>}
-              {totalDonne > 0 && <span>Donné<b>{fmt(totalDonne)}</b></span>}
+              {filtreBr
+                ? <span>Dépensé par {nomBracelet((braceletsEtat.bracelets || []).find(b => b.numero === filtreBr) || { numero: filtreBr })}<b>{fmt(bilanVu.depense)}</b></span>
+                : <><span>Rechargé<b className="nv-pos">{fmt(totalRecharge)}</b></span>
+                  <span>Dépensé<b>{fmt(totalDepense)}</b></span></>}
+              {!filtreBr && totalRembourse > 0 && <span>Remboursé<b>{fmt(totalRembourse)}</b></span>}
+              {!filtreBr && totalDonne > 0 && <span>Donné<b>{fmt(totalDonne)}</b></span>}
             </button>
             <div className={clsx('nv-pills', sp.pillsTop)} role="group" aria-label="Affichage">
               <button type="button" className="nv-pill nv-press" aria-pressed={!chartMode} onClick={() => setChartMode(false)}>Liste</button>
-              <button type="button" className="nv-pill nv-press" aria-pressed={chartMode} onClick={() => setChartMode(true)}>Graphe</button>
+              <button type="button" className="nv-pill nv-press" aria-pressed={chartMode} onClick={() => setChartMode(true)}>Bilan</button>
             </div>
             {txTotal === 0 ? (
               <div className="nv-card nv-pad">
@@ -1082,15 +1085,12 @@ export default function SoldePage({ demo = null }) {
                   : <Empty icon={Clock} title="Aucune opération pour l'instant">Vos recharges et achats apparaîtront ici.</Empty>}
               </div>
             ) : chartMode ? (
-              <div className="nv-card nv-pad">
-                <SoldeChart timeline={timeline} maxBal={maxBal} hoverIdx={hoverIdx} setHoverIdx={setHoverIdx}
-                  zoom={chartZoom} setZoom={setChartZoom} fmt={fmt} />
-              </div>
+              <BilanHistorique bilan={bilanVu} fmt={fmt} tous={!filtreBr} bracelets={braceletsEtat.bracelets || []} />
             ) : (
               <div className="nv-st">
                 {joursHisto.map(j => (
                   <section key={j.key} aria-label={j.label}>
-                    <div className="nv-sec"><h2>{j.label}</h2><span>{montantJour(totalJour(j.key))}</span></div>
+                    <div className="nv-sec"><h2>{j.label}</h2><span>{depenseJour(j.key) > 0 ? `Dépensé ${fmt(depenseJour(j.key))}` : ''}</span></div>
                     <div className="nv-card nv-padx">{j.txs.map((t, i) => ligneOp(t, i, false))}</div>
                   </section>
                 ))}
@@ -1692,7 +1692,6 @@ function montantSigne(t) {
   const sansEffet = effetSolde(t) === 0 && t.type !== 'reservation'
   return sansEffet ? '—' : `${signeDe(t) || txLook(t.type).sign}${fmt(t.montant || 0)}`
 }
-const montantJour = (e) => e > 0 ? `+${fmt(e)}` : e < 0 ? `−${fmt(-e)}` : fmt(0)
 
 // Pastille de couleur selon le type d'opération (table de couleurs du module CSS)
 const OP_CLASSE = {
