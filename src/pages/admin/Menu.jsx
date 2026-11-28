@@ -272,7 +272,7 @@ export default function Menu() {
   // ── CRUD Articles ─────────────────────────────────────────────────
   const startNewItem = () => {
     setItemForm({
-      nom:'', prix:0, stock:100, cat: categories[0]?.nom || '', typeConsommation:'',
+      nom:'', prix:0, stock:100, cat: categories[0]?.nom || '', typeConsommation:'', alcool: false,
       description: '', allergenes: [], allergenesCustom: [], standId: stands.length === 1 ? stands[0].id : '',
     })
     setItemTried(false)
@@ -283,7 +283,7 @@ export default function Menu() {
     // Affiche en euros (avec 2 décimales possibles). Pas de Math.round qui perdrait les centimes.
     setItemForm({
       nom:m.nom, prix:((m.prix||0)/100), stock:m.stock||0, cat:m.cat,
-      seuilAlerte:m.seuilAlerte??10, typeConsommation:m.typeConsommation||'',
+      seuilAlerte:m.seuilAlerte??10, typeConsommation:m.typeConsommation||'', alcool: m.alcool === true,
       description: m.description || '',
       allergenes: Array.isArray(m.allergenes) ? m.allergenes : [],
       allergenesCustom: Array.isArray(m.allergenesCustom) ? m.allergenesCustom : [],
@@ -306,6 +306,8 @@ export default function Menu() {
         cat: itemForm.cat,
         seuilAlerte: itemForm.seuilAlerte ?? 10,
         typeConsommation: itemForm.typeConsommation || '',
+        // 28/11/2026 : refusé aux bracelets « mineur » (borne, commande en ligne pour un mineur)
+        alcool: itemForm.alcool === true,
         description: (itemForm.description || '').trim(),
         allergenes: Array.isArray(itemForm.allergenes) ? itemForm.allergenes : [],
         allergenesCustom: Array.isArray(itemForm.allergenesCustom)
@@ -698,6 +700,11 @@ export default function Menu() {
                     </select>
                   </label>
                 </div>
+                <label className={s.checkAlcool}>
+                  <input type="checkbox" checked={itemForm.alcool === true} onChange={e => setItemForm(f => ({ ...f, alcool: e.target.checked }))}/>
+                  <span><b>Contient de l'alcool</b><br/>
+                    <small>Refusé aux bracelets « mineur » à la borne et à la commande en ligne pour un mineur. Le contrôle de l'âge au stand reste obligatoire.</small></span>
+                </label>
                 </div>
 
                 {/* Description / composition */}

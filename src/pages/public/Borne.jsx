@@ -265,8 +265,18 @@ export default function Borne() {
   const ouvrirBracelet = useCallback(async (numero) => {
     setError(''); setStep(STEP.BRACELET); setBracelet({ numero, etat: 'verif' }); setLoading(true)
     try {
-      await apiFetch('/api/qr', { body: { action: 'identifier', ev: new URLSearchParams(window.location.search).get('ev'), bracelet: numero } })
-      setBracelet({ numero, etat: 'code' })
+      const ev = new URLSearchParams(window.location.search).get('ev')
+      const r = await apiFetch('/api/qr', { body: { action: 'identifier', ev, bracelet: numero } })
+      if (r.compte) {
+        // Bracelet de mineur sans code (28/11/2026) : ouvert tout de suite, limité par son plafond
+        const snap = await getDoc(doc(db, 'events', ev, 'spectateurs', r.compte.docId))
+        if (!snap.exists()) { setBracelet({ numero, etat: 'code', err: 'Compte introuvable. Demandez à la billetterie.' }); return }
+        setSpec({ ...snap.data(), _docId: snap.id, _bracelet: r.bracelet || null })
+        setBracelet(null)
+        setStep(STEP.MENU)
+        return
+      }
+      setBracelet({ numero, etat: 'code', prenom: r.bracelet?.prenom || '' })
     } catch (e) {
       const d = e.data || {}
       if (d.etat === 'libre' || d.etat === 'bloque') setBracelet({ numero, etat: d.etat, motif: d.motif || null, err: e.message })
@@ -282,13 +292,14 @@ export default function Borne() {
       const r = await apiFetch('/api/qr', { body: { action: 'identifier', ev, bracelet: numero, code } })
       const snap = await getDoc(doc(db, 'events', ev, 'spectateurs', r.compte.docId))
       if (!snap.exists()) { setBracelet({ numero, etat: 'code', err: 'Compte introuvable. Demandez à la billetterie.' }); return }
-      setSpec({ ...snap.data(), _docId: snap.id })
+      // Bracelet limité (mineur ou plafonné) : ses limites suivent le compte jusqu'au paiement
+      setSpec({ ...snap.data(), _docId: snap.id, _bracelet: r.bracelet && r.bracelet.achatMax !== undefined ? r.bracelet : null })
       setBracelet(null)
       setStep(STEP.MENU)
     } catch (e) {
       const d = e.data || {}
       if (d.etat === 'bloque' || d.etat === 'libre') setBracelet({ numero, etat: d.etat, motif: d.motif || null, err: e.message })
-      else setBracelet({ numero, etat: 'code', err: e.status ? e.message : 'Erreur de connexion. Réessayez dans un instant.' })
+      else setBracelet(b => ({ numero, etat: 'code', prenom: b?.prenom || '', err: e.status ? e.message : 'Erreur de connexion. Réessayez dans un instant.' }))
     } finally { setLoading(false) }
   }, [bracelet?.numero])
 
@@ -881,6 +892,20 @@ function Identification({ onValidated, onCancel, loading, error, secours = false
 }
 
 // ════════════════════════════════════════════════════════════════════
+// Limites d'un bracelet de mineur ou plafonné (28/11/2026), sous le solde dans l'en-tête du menu
+function LimitesBracelet({ b }) {
+  const parts = []
+  if (b.resteJour != null) parts.push(`Reste ${(b.resteJour / 100).toFixed(2)} € aujourd'hui`)
+  if (b.achatMax != null) parts.push(`${(b.achatMax / 100).toFixed(0)} € au plus par achat`)
+  if (b.mineur) parts.push("pas d'alcool")
+  if (!parts.length) return null
+  return (
+    <div style={{ marginTop: 4, fontSize: 12, fontWeight: 700, color: '#006666', background: '#D9F1F0', borderRadius: 10, padding: '3px 8px', display: 'inline-block' }}>
+      {parts.join(' · ')}
+    </div>
+  )
+}
+
 // Bracelet de secours : code à 4 chiffres (écran 3, 24/11/2026)
 // ════════════════════════════════════════════════════════════════════
 // Cases masquées, même clavier que « J'ai un code » ; 30 s sans toucher l'écran : retour à l'accueil.
@@ -951,7 +976,7 @@ function BraceletCode({ lu, loading, onCode, onCancel }) {
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <div style={{ fontSize: 'clamp(20px, 3.4vh, 26px)', fontWeight: 700, color: COLORS.marine, marginBottom: 4, textAlign: 'center' }}>
-            Votre code de bracelet
+            {lu.prenom ? `Bracelet de ${lu.prenom}` : 'Votre code de bracelet'}
           </div>
           <div style={{ fontSize: 14, color: COLORS.muted, marginBottom: 18, textAlign: 'center', maxWidth: 560 }}>
             Bracelet n° {numero}. Tapez votre code à 4 chiffres, celui choisi dans votre espace ou au guichet.
@@ -1414,6 +1439,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
   // ─── Helpers panier ─────────────────────────────────────────────────
   const updateQty = (itemId, delta) => {
     if (benev && delta > 0 && libres(menuVu.find(m => m.id === itemId)?.typeConsommation) <= 0) return
+    if (delta > 0 && spec?._bracelet?.mineur && menuVu.find(m => m.id === itemId)?.alcool === true) return
     setCart(prev => {
       const next = { ...prev }
       const current = next[itemId] || 0
@@ -1454,7 +1480,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
             Bonjour
           </div>
           <div style={{ fontSize: 16, fontWeight: 600, color: COLORS.marine }}>
-            {benev ? benev.nom : (spec?.nom || '—')}
+            {benev ? benev.nom : (spec?._bracelet?.prenom || spec?.nom || '—')}
             {benev && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, background: '#FDE4D4', color: '#B8470F', borderRadius: 10, padding: '2px 8px' }}>{benev.kind === 'artiste' ? 'Artiste' : 'Bénévole'}</span>}
           </div>
         </div>
@@ -1474,6 +1500,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
           <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.green }}>
             {((spec?.solde || 0) / 100).toFixed(2)} €
           </div>
+          {spec?._bracelet && <LimitesBracelet b={spec._bracelet}/>}
         </div>
         )}
         {/* Compteur d'inactivité */}
@@ -1587,6 +1614,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
                   <MenuCard key={item.id}
                     item={item}
                     benevole={!!benev}
+                    interdit={!!spec?._bracelet?.mineur && item.alcool === true}
                     qty={cart[item.id] || 0}
                     onAdd={() => updateQty(item.id, +1)}
                     onRemove={() => updateQty(item.id, -1)}
@@ -1652,8 +1680,9 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
 }
 
 // ─── Petits composants Menu ─────────────────────────────────────────────
-function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false }) {
-  const outOfStock = typeof item.stock === 'number' && item.stock <= 0
+function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false, interdit = false }) {
+  // interdit (28/11/2026) : article alcoolisé présenté à un bracelet « mineur », grisé comme une rupture
+  const outOfStock = interdit || (typeof item.stock === 'number' && item.stock <= 0)
   const inCart = qty > 0
   // Compatibilité : photoUrl (nouveau champ Lot Image 1) ou image (legacy)
   const photoSrc = item.photoUrl || item.image
@@ -1722,7 +1751,7 @@ function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false }) 
           padding: '3px 8px', borderRadius: 8,
           fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
           letterSpacing: '0.05em',
-        }}>Rupture</span>
+        }}>{interdit ? 'Pas avec ce bracelet' : 'Rupture'}</span>
       )}
 
       {/* Image générée : mention discrète en haut à droite (la rupture prend la place) */}
@@ -1770,7 +1799,7 @@ function MenuCard({ item, qty, onAdd, onRemove, onShowInfo, benevole = false }) 
               : `${((item.prix || 0) / 100).toFixed(2)} €`}
           </span>
           {outOfStock ? (
-            <span style={{ fontSize: 11, opacity: 0.8 }}>Indispo.</span>
+            <span style={{ fontSize: 11, opacity: 0.8 }}>{interdit ? 'Interdit' : 'Indispo.'}</span>
           ) : qty === 0 ? (
             <button onClick={stop(onAdd)}
               style={{
@@ -1935,6 +1964,16 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
   const solde = spec?.solde || 0
   const soldeAfter = solde - total
   const isInsufficient = soldeAfter < 0
+  // Bracelet limité (28/11/2026) : mêmes vérifications que le serveur, pour répondre tout de suite
+  const brl = spec?._bracelet || null
+  const limiteMsg = !brl ? '' : brl.mineur && cartItems.some(i => i.alcool === true)
+    ? "Un article contient de l'alcool : pas avec ce bracelet. Retirez-le."
+    : brl.achatMax != null && total > brl.achatMax
+      ? `Ce panier fait ${(total / 100).toFixed(2)} €. Avec ce bracelet sans code : ${(brl.achatMax / 100).toFixed(2)} € au plus par achat. Retirez un article.`
+      : brl.resteJour != null && total > brl.resteJour
+        ? `Ce panier fait ${(total / 100).toFixed(2)} €, il reste ${(brl.resteJour / 100).toFixed(2)} € aujourd'hui sur ce bracelet. Retirez un article.`
+        : ''
+  const bloquePanier = isInsufficient || !!limiteMsg
 
   // ─── Helpers panier (mêmes que sur Menu, refactor possible) ──────────
   const updateQty = (itemId, delta) => {
@@ -1974,9 +2013,18 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
       setError('Solde insuffisant. Retirez un article, ou rechargez sur votre téléphone ou à la billetterie.')
       return
     }
+    if (limiteMsg) { setError(limiteMsg); return }
     setSubmitting(true)
     setError('')
     try {
+      // Bracelet limité : le serveur vérifie et débite (la borne n'en a plus le droit)
+      if (brl) {
+        const ev = new URLSearchParams(window.location.search).get('ev')
+        const r = await apiFetch('/api/borne', { body: { action: 'commander-bracelet', ev, compte: spec._docId, lignes: cartItems.map(i => ({ id: i.id, qty: i.qty })) } })
+        setCart({})
+        onConfirmed({ id: null, numero: r.numero, code: `BRC-${r.numero}`, items: r.items, total: r.total })
+        return
+      }
       // createCommande attend des items avec { id, nom, prixUnit, qty }
       // (prixUnit au lieu de prix — c'est le format des commandes staff)
       const items = cartItems.map(i => ({
@@ -2260,6 +2308,13 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
               téléphone (« Recharger mon solde » dans votre espace) ou à la billetterie.
             </div>
           )}
+          {limiteMsg && (
+            <div role="alert" style={{
+              marginTop: 10, padding: '8px 10px',
+              background: '#FDE5D7', color: '#8A3410',
+              borderRadius: 10, fontSize: 12, fontWeight: 600,
+            }}>{limiteMsg}</div>
+          )}
           {isInsufficient && onRefreshSolde && (
             <button onClick={refreshSolde} disabled={refreshing}
               style={{
@@ -2307,13 +2362,13 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
           Continuer mes choix
         </button>
         <button onClick={handleConfirm}
-          disabled={submitting || isInsufficient || cartItems.length === 0}
+          disabled={submitting || bloquePanier || cartItems.length === 0}
           style={{
-            background: (submitting || isInsufficient) ? COLORS.border : COLORS.teal,
+            background: (submitting || bloquePanier) ? COLORS.border : COLORS.teal,
             color: '#fff', border: 'none',
             borderRadius: 14, padding: '16px',
             fontSize: 16, fontWeight: 700,
-            cursor: (submitting || isInsufficient || cartItems.length === 0) ? 'not-allowed' : 'pointer',
+            cursor: (submitting || bloquePanier || cartItems.length === 0) ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           }}>

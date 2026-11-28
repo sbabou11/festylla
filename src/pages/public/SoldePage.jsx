@@ -15,7 +15,7 @@ import QRCode from 'qrcode'
 import {
   Wallet, Clock, Bookmark, CalendarDays, UtensilsCrossed,
   Plus, Minus, Undo2, ShoppingBag, ChevronRight, ChevronLeft, Mic, KeyRound, CreditCard, Lock, CheckCircle2, ArrowLeft, Globe, Banknote, Heart, UserRound,
-  QrCode, MoreHorizontal, Euro, X, Check, Delete, ArrowLeftRight, Moon,
+  QrCode, MoreHorizontal, Euro, X, Check, Delete, ArrowLeftRight, Moon, Watch,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { db, auth } from '../../firebase/config'
@@ -44,7 +44,7 @@ import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../
 import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../utils/dons'
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
-import BraceletSecours from './spectateur/BraceletSecours'
+import MesBracelets, { useBracelets, CarteBraceletsAccueil } from './spectateur/MesBracelets'
 import QuoiDeNeuf from '../../components/QuoiDeNeuf'
 import sp from './spectateur/SoldePage.module.css'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
@@ -623,6 +623,8 @@ export default function SoldePage({ demo = null }) {
   }, [qrOpen])
 
   // 24/11/2026 : l'onglet où l'on est déjà ramène en haut ; en revenant sur un écran, on retrouve sa place
+  // Plusieurs bracelets par compte (28/11/2026) : partagés entre la carte de l'accueil et « Mes bracelets »
+  const braceletsEtat = useBracelets(eventId, !!demo, spec?.id || '')
   const go = (t) => {
     if (t === tab) { remonter(); return }
     garderPlace('sp-' + tab); setTab(t); setDonFait(null)
@@ -763,7 +765,7 @@ export default function SoldePage({ demo = null }) {
   const navIdx = Math.max(0, NAV.findIndex(n => n.match.includes(tab)))
 
   // Fond de l'écran : dégradé pour l'accueil et le compte, fond de liste ailleurs (maquette)
-  const fondGrad = !spec || tab === 'accueil' || tab === 'compte'
+  const fondGrad = !spec || tab === 'accueil' || tab === 'compte' || tab === 'bracelets'
   const ecranPousse = ['historique', 'recharger', 'rembourser'].includes(tab)
   const prenom = String(spec?.nom || '').split(' ')[0]
   const initialesSpec = initials(spec?.nom || '') || '?'
@@ -908,6 +910,8 @@ export default function SoldePage({ demo = null }) {
             </div>
 
             <div className={clsx(sp.stack, 'nv-st')}>
+              {/* Accès rapide aux bracelets (28/11/2026) : juste sous les actions, dès qu'un bracelet est relié */}
+              <CarteBraceletsAccueil bracelets={braceletsEtat.bracelets} onOpen={() => go('bracelets')} />
               {/* QR de paiement tournant (20/11/2026) dans une carte de verre */}
               <section className={clsx('nv-glass nv-pad', sp.qrCard)} aria-label="Mon QR de paiement">
                 {billetAnnule ? (
@@ -1011,7 +1015,16 @@ export default function SoldePage({ demo = null }) {
                   </button>
                 )}
               </section>
-              <BraceletSecours eventId={eventId} demo={!!demo} />
+              <section className="nv-glass nv-padx" aria-label="Mes bracelets">
+                <button type="button" className="nv-row nv-press" onClick={() => go('bracelets')}>
+                  <span className="nv-ic neutre"><Watch size={20} aria-hidden="true" /></span>
+                  <span className="nv-rt"><b>Mes bracelets</b><span>{(() => {
+                    const n = (braceletsEtat.bracelets || []).filter(b => b.statut === 'actif').length
+                    return n ? `${n} relié${n > 1 ? 's' : ''} à ce compte` : 'Payer sans téléphone, pour vous ou vos enfants'
+                  })()}</span></span>
+                  <ChevronRight size={20} className={sp.chev} aria-hidden="true" />
+                </button>
+              </section>
               <section className="nv-glass nv-padx" aria-label="Mon compte">
                 <button type="button" className="nv-row nv-press" onClick={logoutSpec}>
                   <span className="nv-ic neutre"><ArrowLeftRight size={20} aria-hidden="true" /></span>
@@ -1024,6 +1037,14 @@ export default function SoldePage({ demo = null }) {
                   <ThemeToggle style={rond} />
                 </div>
               </section>
+            </div>
+          </>)}
+
+          {/* ── MES BRACELETS (28/11/2026) ── */}
+          {tab === 'bracelets' && (<>
+            {barrePoussee('Mes bracelets', null, () => go('accueil'))}
+            <div className={clsx(sp.stack, 'nv-st')}>
+              <MesBracelets solde={fmt(spec.solde || 0)} etat={braceletsEtat} />
             </div>
           </>)}
 

@@ -21,8 +21,8 @@
  *   { action: 'jetons-espace', ev }           espace bénévole ou artiste ouvert sans le lien personnel
  *                                             (23/11/2026) : le téléphone ne connaît pas la clé, le serveur
  *                                             calcule les QR tournants des 5 prochaines minutes (api/_qr/espace)
- *   { action: 'bracelet-etat' | 'bracelet-relier' | 'bracelet-code' | 'bracelet-bloquer', ev, … }
- *                                             espace spectateur (24/11/2026) : son bracelet de secours
+ *   { action: 'bracelet-etat' | 'bracelet-relier' | 'bracelet-modifier' | 'bracelet-code' | 'bracelet-bloquer', ev, … }
+ *                                             espace spectateur (24/11/2026) : ses bracelets (plusieurs depuis le 28/11/2026)
  *                                             (voir braceletEspace et api/_qr/bracelet.js)
  * Pour la borne, une identification réussie ouvre une autorisation de 10 minutes sur ce seul compte
  * (events/{ev}/autorisations/{compte}) : les règles de la base ne laissent la borne lire ce compte
@@ -37,7 +37,9 @@ const { lireJeton, jetonValable, lireSecours, nouveauSecours } = require('../_qr
 const { jetonsAVenir, lireJetonEspace, jetonEspaceValable } = require('../_qr/espace')
 const { loadAccount } = require('../_auth/server')
 const { assurerPorteMonnaie } = require('../_auth/porteMonnaie')
-const { lireBracelet, erreurCode, empreinteCode, codeJuste, vueBracelet, numeroAffiche, ESSAIS_MAX } = require('../_qr/bracelet')
+const { lireBracelet, erreurCode, empreinteCode, codeJuste, vueBracelet, numeroAffiche, reglagesBracelet, ESSAIS_MAX, MAX_BRACELETS } = require('../_qr/bracelet')
+const { limitesBracelet, depenseDuJour, resteDuJour } = require('../_borne/bracelet')
+const { festDay } = require('../_em/retour')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/
@@ -93,26 +95,28 @@ async function ouvrirLien(req, res, ev, body) {
 }
 
 /**
- * Relie un bracelet à un compte et enregistre l'empreinte du code (espace ou guichet).
- * Renvoie null si c'est fait, sinon la raison du refus. Un autre bracelet encore actif sur ce compte
- * est remplacé (il ne permet plus de payer).
+ * Relie un bracelet à un compte (espace ou guichet). Renvoie null si c'est fait, sinon la raison du refus.
+ * Plusieurs bracelets par compte (28/11/2026) : les autres bracelets du compte restent actifs,
+ * dans la limite de MAX_BRACELETS. code : 4 chiffres, ou null (bracelet de mineur sans code).
+ * reglages : { prenom, mineur, plafondJour } déjà vérifiés (reglagesBracelet).
  */
-async function relierBracelet(db, col, { numero, specDoc, specId, code, par, now }) {
+async function relierBracelet(db, col, { numero, specDoc, specId, code, reglages = {}, par, now }) {
   const FV = admin.firestore.FieldValue
   const ref = col.doc(numero)
-  const codeHash = empreinteCode(String(code))
+  const codeHash = code == null ? null : empreinteCode(String(code))
   return db.runTransaction(async (t) => {
     const [d, miens] = await Promise.all([t.get(ref), t.get(col.where('specDoc', '==', specDoc))])
     const b = d.exists ? d.data() : null
     if (b && b.specDoc !== specDoc && b.statut !== 'remplace') return 'Ce bracelet est déjà relié à un autre compte. Prenez-en un autre à l\'entrée ou au guichet.'
     if (b && b.specDoc === specDoc && b.statut === 'bloque') return 'Ce bracelet est bloqué. Prenez-en un nouveau à l\'entrée ou au guichet.'
-    for (const m of miens.docs) {
-      if (m.id !== numero && m.data().statut === 'actif') t.update(m.ref, { statut: 'remplace', remplaceLe: FV.serverTimestamp(), remplacePar: numero })
-    }
+    if (b && b.specDoc === specDoc && b.statut === 'actif') return 'Ce bracelet est déjà relié à votre compte.'
+    const actifs = miens.docs.filter((m) => m.id !== numero && m.data().statut === 'actif').length
+    if (actifs >= MAX_BRACELETS) return `${MAX_BRACELETS} bracelets au plus par compte. Bloquez-en un pour en relier un autre.`
     t.set(ref, {
       numero, specDoc, specId, statut: 'actif', codeHash, essais: 0,
-      relieLe: FV.serverTimestamp(), relieMs: now, reliePar: par, codeLe: FV.serverTimestamp(),
+      relieLe: FV.serverTimestamp(), relieMs: now, reliePar: par, codeLe: codeHash ? FV.serverTimestamp() : null,
       bloqueLe: null, bloqueMotif: null,
+      prenom: reglages.prenom || '', mineur: !!reglages.mineur, plafondJour: reglages.plafondJour || null,
     })
     return null
   })
@@ -209,12 +213,14 @@ async function braceletGuichet(req, res, { db, evRef, ev, caller, body, now }) {
 }
 
 /**
- * Espace spectateur : son bracelet de secours (décidé le 24/11/2026)
- *   'bracelet-etat'                       : son bracelet actuel (actif ou bloqué), sinon null
- *   'bracelet-relier'  { bracelet, code } : relie le bracelet scanné et enregistre le code ; un autre
- *                                           bracelet encore actif sur ce compte est remplacé
- *   'bracelet-code'    { code }           : nouveau code pour le bracelet actif (essais remis à zéro)
- *   'bracelet-bloquer'                    : bracelet perdu, il ne permet plus de payer
+ * Espace spectateur : ses bracelets (24/11/2026 ; plusieurs bracelets par compte le 28/11/2026)
+ *   'bracelet-etat'                       : { bracelets } actifs et bloqués (et bracelet : le premier, ancien format)
+ *   'bracelet-relier'  { bracelet, code?, prenom?, mineur?, plafondJour? } : relie le bracelet scanné ;
+ *                                           code null = sans code (mineur, plafond obligatoire)
+ *   'bracelet-modifier' { numero, prenom?, mineur?, plafondJour? } : « mineur » ne se décoche qu'au guichet
+ *   'bracelet-code'    { numero?, code }  : nouveau code (essais remis à zéro) ; code null = retirer le code
+ *   'bracelet-bloquer' { numero? }        : bracelet perdu, il ne permet plus de payer
+ * Sans numero (ancien écran) : le bracelet actif le plus récent.
  * Le code n'est jamais choisi à la borne : seulement ici (session du spectateur) ou au guichet.
  */
 async function braceletEspace(req, res, { db, evRef, ev, caller, body, now }) {
@@ -222,55 +228,84 @@ async function braceletEspace(req, res, { db, evRef, ev, caller, body, now }) {
   const specDoc = String(caller.specDoc)
   const col = evRef.collection('bracelets')
   const FV = admin.firestore.FieldValue
-  const actuel = async () => {
+  const miens = async () => {
     const q = await col.where('specDoc', '==', specDoc).get()
     const vus = q.docs.map((d) => d.data()).filter((b) => b.statut === 'actif' || b.statut === 'bloque')
-    vus.sort((a, b) => (b.statut === 'actif') - (a.statut === 'actif') || (b.relieMs || 0) - (a.relieMs || 0))
-    return vus[0] || null
+    vus.sort((a, b) => (b.statut === 'actif') - (a.statut === 'actif') || (a.relieMs || 0) - (b.relieMs || 0))
+    return vus
   }
+  const liste = async () => {
+    const vus = await miens()
+    return { bracelets: vus.map(vueBracelet), bracelet: vueBracelet(vus[0] || null) }
+  }
+  const nom = (b) => `n° ${numeroAffiche(b.numero)}${b.prenom ? ` (${b.prenom})` : ''}`
   const audit = (action, numero, label) => writeAudit(db, ev, { action, specId: caller.specId, bracelet: numero, userType: 'spectateur', staff: '', label })
 
   if (body.action === 'bracelet-etat') {
-    res.status(200).json({ bracelet: vueBracelet(await actuel()) }); return
+    res.status(200).json(await liste()); return
   }
 
   if (body.action === 'bracelet-relier') {
     const numero = lireBracelet(body.bracelet)
     if (!numero) throw new Refus(400, "Ce QR n'est pas celui d'un bracelet YllaCash.")
-    const err = erreurCode(body.code)
-    if (err) throw new Refus(400, err)
+    const avecCode = body.code !== null
+    if (avecCode) { const err = erreurCode(body.code); if (err) throw new Refus(400, err) }
+    const r = reglagesBracelet(body, { avecCode })
+    if (r.erreur) throw new Refus(400, r.erreur)
     const ipRef = db.collection('securite-connexions').doc(counterKey('pub', clientIp(req)))
     const ipRec = (await ipRef.get()).data()
     const wait = blockedMinutes(ipRec, now)
     if (wait) throw new Refus(429, `Trop d'essais. Réessayez dans ${wait} minutes.`)
-    const refus = await relierBracelet(db, col, { numero, specDoc, specId: caller.specId, code: body.code, par: 'spectateur', now })
+    const refus = await relierBracelet(db, col, { numero, specDoc, specId: caller.specId, code: avecCode ? body.code : null, reglages: r.reglages, par: 'spectateur', now })
     if (refus) {
       await ipRef.set(afterFailure(ipRec, now, PUBLIC_LIMIT))
       throw new Refus(409, refus)
     }
-    await audit('BRACELET_RELIE', numero, `Bracelet n° ${numeroAffiche(numero)} relié par le spectateur dans son espace, code choisi`)
-    res.status(200).json({ bracelet: vueBracelet({ numero, statut: 'actif' }) }); return
+    const g = r.reglages
+    await audit('BRACELET_RELIE', numero, `Bracelet ${nom({ numero, prenom: g.prenom })} relié par le spectateur dans son espace, ${avecCode ? 'code choisi' : 'sans code'}${g.mineur ? ', mineur' : ''}${g.plafondJour ? `, plafond ${g.plafondJour} €/jour` : ''}`)
+    res.status(200).json(await liste()); return
   }
 
-  const b = await actuel()
-  if (!b) throw new Refus(404, "Aucun bracelet relié à ce compte.")
+  // Les autres actions visent un bracelet du compte : celui demandé, sinon le plus récent actif (ancien écran)
+  const vus = await miens()
+  const demande = body.numero != null ? lireBracelet(body.numero) : null
+  if (body.numero != null && !demande) throw new Refus(400, 'Bracelet inconnu.')
+  const b = demande ? vus.find((x) => x.numero === demande) : ([...vus].reverse().find((x) => x.statut === 'actif') || vus[0])
+  if (!b) throw new Refus(404, 'Aucun bracelet relié à ce compte.')
   const ref = col.doc(b.numero)
+
+  if (body.action === 'bracelet-modifier') {
+    if (b.statut !== 'actif') throw new Refus(409, 'Ce bracelet est bloqué : il ne se modifie plus.')
+    const r = reglagesBracelet(body, { avant: b, avecCode: !!b.codeHash })
+    if (r.erreur) throw new Refus(400, r.erreur)
+    await ref.update(r.reglages)
+    await audit('BRACELET_MODIFIE', b.numero, `Bracelet ${nom({ ...b, ...r.reglages })} modifié par le spectateur${r.reglages.mineur ? ', mineur' : ''}${r.reglages.plafondJour ? `, plafond ${r.reglages.plafondJour} €/jour` : ', sans plafond'}`)
+    res.status(200).json(await liste()); return
+  }
 
   if (body.action === 'bracelet-code') {
     if (b.statut !== 'actif') throw new Refus(409, 'Ce bracelet est bloqué. Prenez-en un nouveau à l\'entrée ou au guichet.')
+    if (body.code === null) {
+      // Retirer le code : seulement pour un mineur, avec un plafond permis sans code
+      const r = reglagesBracelet({}, { avant: b, avecCode: false })
+      if (r.erreur) throw new Refus(400, r.erreur)
+      await ref.update({ codeHash: null, essais: 0, codeLe: FV.serverTimestamp() })
+      await audit('BRACELET_CODE_RETIRE', b.numero, `Code du bracelet ${nom(b)} retiré par le spectateur (mineur, plafond ${b.plafondJour} €/jour)`)
+      res.status(200).json(await liste()); return
+    }
     const err = erreurCode(body.code)
     if (err) throw new Refus(400, err)
     await ref.update({ codeHash: empreinteCode(String(body.code)), essais: 0, codeLe: FV.serverTimestamp() })
-    await audit('BRACELET_CODE_CHANGE', b.numero, `Code du bracelet n° ${numeroAffiche(b.numero)} changé par le spectateur`)
-    res.status(200).json({ bracelet: vueBracelet(b) }); return
+    await audit(b.codeHash ? 'BRACELET_CODE_CHANGE' : 'BRACELET_CODE_AJOUTE', b.numero, `Code du bracelet ${nom(b)} ${b.codeHash ? 'changé' : 'ajouté'} par le spectateur`)
+    res.status(200).json(await liste()); return
   }
 
   if (body.action === 'bracelet-bloquer') {
     if (b.statut === 'actif') {
       await ref.update({ statut: 'bloque', bloqueLe: FV.serverTimestamp(), bloqueMs: now, bloqueMotif: 'perdu' })
-      await audit('BRACELET_BLOQUE', b.numero, `Bracelet n° ${numeroAffiche(b.numero)} bloqué par le spectateur (perdu)`)
+      await audit('BRACELET_BLOQUE', b.numero, `Bracelet ${nom(b)} bloqué par le spectateur (perdu)`)
     }
-    res.status(200).json({ bracelet: vueBracelet({ ...b, statut: 'bloque', bloqueMotif: b.bloqueMotif || 'perdu' }) }); return
+    res.status(200).json(await liste()); return
   }
 
   throw new Refus(400, 'Action inconnue.')
@@ -420,6 +455,7 @@ module.exports = async (req, res) => {
     const echec = async (status, message) => { await ipRef.set(afterFailure(ipRec, now, PUBLIC_LIMIT)); throw new Refus(status, message) }
 
     let snap = null
+    let braceletLu = null   // bracelet présenté (28/11/2026) : limites éventuelles pour l'autorisation
     // Écran 13 (24/11/2026) : QR de l'espace d'un bénévole → son porte-monnaie (créé s'il n'existe pas)
     const luB = body.qr != null && !lireJeton(body.qr) ? lireJetonEspace(String(body.qr).slice(0, 400)) : null
     if (luB && luB.kind === 'benevole') {
@@ -467,7 +503,10 @@ module.exports = async (req, res) => {
       const b = d.exists ? d.data() : null
       if (!b || b.statut === 'remplace') throw new Refus(404, "Ce bracelet n'est relié à aucun compte. Reliez-le dans votre espace YllaCash ou à la billetterie.", { etat: 'libre', numero })
       if (b.statut === 'bloque') throw new Refus(403, b.bloqueMotif === 'perdu' ? 'Ce bracelet a été déclaré perdu : il ne permet plus de payer.' : '3 codes incorrects : le bracelet est bloqué pour protéger votre solde.', { etat: 'bloque', motif: b.bloqueMotif || null, numero })
-      if (body.code == null) { res.status(200).json({ bracelet: { numero, statut: 'actif' } }); return }
+      // Bracelet de mineur sans code (28/11/2026) : identifié tout de suite, limité par son plafond
+      if (b.codeHash && body.code == null) { res.status(200).json({ bracelet: { numero, statut: 'actif', avecCode: true, prenom: b.prenom || '' } }); return }
+      braceletLu = b
+      if (b.codeHash) {
       const juste = /^\d{4}$/.test(String(body.code)) && codeJuste(b, body.code)
       const resultat = await db.runTransaction(async (t) => {
         const x = (await t.get(ref)).data() || {}
@@ -492,6 +531,7 @@ module.exports = async (req, res) => {
         }
         throw new Refus(401, `Code incorrect : ${resultat.restants} essai${resultat.restants > 1 ? 's' : ''} restant${resultat.restants > 1 ? 's' : ''}.`, { etat: 'faux', essais: resultat.restants, numero })
       }
+      }
       snap = await evRef.collection('spectateurs').doc(String(b.specDoc)).get()
       if (!snap.exists) throw new Refus(404, 'Compte introuvable.')
     } else {
@@ -500,13 +540,27 @@ module.exports = async (req, res) => {
 
     const spec = snap.data()
     if (spec.billet && spec.billet.annule) throw new Refus(403, 'Ce billet a été annulé : présentez-vous à la billetterie.')
+    // Bracelet limité (mineur ou plafonné) : l'autorisation porte « limite » ; les règles de la base
+    // interdisent alors à la borne de débiter elle-même, le serveur paie (api/borne, commander-bracelet)
+    const limites = braceletLu ? limitesBracelet(braceletLu) : null
     if (caller.type === 'borne') {
       await evRef.collection('autorisations').doc(snap.id).set({
         specId: spec.id, exp: admin.firestore.Timestamp.fromMillis(now + AUTORISATION_MS), par: 'borne',
+        ...(limites ? { limite: { numero: limites.numero } } : {}),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       })
     }
-    res.status(200).json({ compte: { id: spec.id, docId: snap.id, nom: spec.nom || '', solde: Number(spec.solde) || 0, ...(spec.porteMonnaieBenevole ? { benevole: true } : {}) } })
+    let bracelet
+    if (limites) {
+      const txs = await evRef.collection('transactions').where('bracelet', '==', limites.numero).get()
+      const jour = festDay(now)
+      const depense = depenseDuJour(txs.docs.map(d => d.data()), jour, festDay)
+      bracelet = { ...limites, resteJour: resteDuJour(limites, depense) }
+    } else if (braceletLu) bracelet = { numero: braceletLu.numero, prenom: braceletLu.prenom || '' }
+    res.status(200).json({
+      compte: { id: spec.id, docId: snap.id, nom: spec.nom || '', solde: Number(spec.solde) || 0, ...(spec.porteMonnaieBenevole ? { benevole: true } : {}) },
+      ...(bracelet ? { bracelet } : {}),
+    })
   } catch (e) {
     if (e instanceof Refus) { res.status(e.status).json({ error: e.message, ...(e.extra || {}) }); return }
     console.error('qr:', e)

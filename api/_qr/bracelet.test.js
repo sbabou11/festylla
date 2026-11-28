@@ -29,7 +29,7 @@ describe('bracelet de secours', () => {
     expect(codeJuste({ codeHash: h }, '2580')).toBe(true)
     expect(codeJuste({ codeHash: h }, '2581')).toBe(false)
     expect(codeJuste(null, '2580')).toBe(false)
-    expect(vueBracelet({ numero: 'TESTQR26', statut: 'actif', codeHash: h })).toEqual({ numero: 'TESTQR26', statut: 'actif', motif: null })
+    expect(vueBracelet({ numero: 'TESTQR26', statut: 'actif', codeHash: h })).toMatchObject({ numero: 'TESTQR26', statut: 'actif', motif: null, avecCode: true })
   })
   it('affiche et génère des numéros lisibles', () => {
     expect(numeroAffiche('K7Q3PX9M')).toBe('K7Q3 PX9M')
@@ -37,5 +37,28 @@ describe('bracelet de secours', () => {
     const n = nouveauxNumeros(500)
     expect(new Set(n).size).toBe(500)
     for (const x of n) expect(lireBracelet(`FYB-${x}`)).toBe(x)
+  })
+})
+
+describe('plusieurs bracelets par compte : réglages (28/11/2026)', () => {
+  const { reglagesBracelet } = require('./bracelet.js')
+  it('mineur sans code : plafond obligatoire, 30 € par jour au plus', () => {
+    expect(reglagesBracelet({ prenom: '  Léa ', mineur: true, plafondJour: 20 }, { avecCode: false })).toEqual({ reglages: { prenom: 'Léa', mineur: true, plafondJour: 20 } })
+    expect(reglagesBracelet({ mineur: true }, { avecCode: false }).erreur).toMatch(/obligatoire/)
+    expect(reglagesBracelet({ mineur: true, plafondJour: 31 }, { avecCode: false }).erreur).toMatch(/30 €/)
+    expect(reglagesBracelet({ mineur: false, plafondJour: 20 }, { avecCode: false }).erreur).toMatch(/mineur/)
+  })
+  it('avec code : plafond facultatif ; seul le guichet décoche « mineur »', () => {
+    expect(reglagesBracelet({ prenom: 'Moi' })).toEqual({ reglages: { prenom: 'Moi', mineur: false, plafondJour: null } })
+    expect(reglagesBracelet({ mineur: false }, { avant: { mineur: true } }).erreur).toMatch(/billetterie/)
+    expect(reglagesBracelet({ mineur: false }, { avant: { mineur: true }, parGuichet: true }).reglages.mineur).toBe(false)
+    expect(reglagesBracelet({ plafondJour: 'abc' }).erreur).toMatch(/montant/)
+    expect(reglagesBracelet({ plafondJour: '' }, { avant: { plafondJour: 20 } }).reglages.plafondJour).toBeNull()
+  })
+  it('la vue ne montre jamais l’empreinte du code', () => {
+    const { vueBracelet } = require('./bracelet.js')
+    const v = vueBracelet({ numero: 'K7Q3PX9M', statut: 'actif', codeHash: 'secret', prenom: 'Tom', mineur: true, plafondJour: 30 })
+    expect(v).toMatchObject({ avecCode: true, prenom: 'Tom', mineur: true, plafondJour: 30 })
+    expect(JSON.stringify(v)).not.toContain('secret')
   })
 })

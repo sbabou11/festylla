@@ -23,6 +23,8 @@
  *   { action: 'ouvrir', artiste: true, ev, qr }                       QR tournant de l'espace artiste (YA-…)
  *   { action: 'commander', artiste: true, ev, passage, lignes }       commande à la borne
  *   { action: 'commander', ev, code }                                 code d'origine 'artiste'
+ *   { action: 'commander-bracelet', ev, compte, lignes }             bracelet limité (mineur ou plafonné,
+ *     28/11/2026) : le serveur vérifie alcool, 10 € par achat sans code, plafond du jour, puis débite
  * Avantages décomptés à l'impression (consommations artist-consumptions, une par article),
  * stock, commande, transaction « artist-gift », code utilisé. Un ticket par stand de l'article.
  */
@@ -34,6 +36,7 @@ const { restants, standBenevoles, repartirCommande } = require('../_borne/benevo
 const euros = (c) => ((Number(c) || 0) / 100).toFixed(2).replace('.', ',') + ' €'
 const { avantagesDe, dejaPris, restantsArtiste, repartirCommandeArtiste } = require('../_borne/artiste')
 const { lireJetonEspace, jetonEspaceValable, nouveauPassage, passageValable } = require('../_qr/espace')
+const { limitesBracelet, depenseDuJour, resteDuJour, verifierPanier } = require('../_borne/bracelet')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/
@@ -224,6 +227,89 @@ module.exports = async (req, res) => {
   }
 
   try {
+    // ── Bracelet limité (mineur ou plafonné, 28/11/2026) : le serveur paie à la place de la borne ──
+    // { action: 'commander-bracelet', ev, compte, lignes } : compte autorisé par /api/qr après lecture
+    // du bracelet (autorisation avec « limite ») ; alcool, 10 € par achat sans code et plafond du jour
+    // vérifiés dans la même transaction que le débit. L'opération garde le numéro du bracelet.
+    if (body.action === 'commander-bracelet') {
+      const compte = String(body.compte || '')
+      if (!ID.test(compte)) throw new Refus(400, 'Compte manquant.')
+      const lignes = Array.isArray(body.lignes) ? body.lignes.slice(0, 30) : []
+      const auto = await evRef.collection('autorisations').doc(compte).get()
+      const a = auto.exists ? auto.data() : null
+      const exp = a && a.exp && a.exp.toMillis ? a.exp.toMillis() : 0
+      if (!a || exp < now || !a.limite || !a.limite.numero) throw new Refus(401, 'Délai dépassé : présentez de nouveau le bracelet.')
+      const numeroBracelet = String(a.limite.numero)
+      const counterRef = evRef.collection('_counters').doc(`commandes-${parisDay.format(new Date(now))}`)
+      const numero = await db.runTransaction(async (t) => {
+        const s = await t.get(counterRef)
+        const n = s.exists ? (s.data().next || 1) : 1
+        t.set(counterRef, { date: parisDay.format(new Date(now)), next: n + 1 }, { merge: true })
+        return n
+      })
+      const r = await db.runTransaction(async (t) => {
+        const specRef = evRef.collection('spectateurs').doc(compte)
+        const brRef = evRef.collection('bracelets').doc(numeroBracelet)
+        const ids = [...new Set(lignes.map(l => String(l && l.id || '')).filter(x => ID.test(x)))]
+        const [specSnap, brSnap, carteSnap, txSnap, ...menuSnaps] = await Promise.all([
+          t.get(specRef), t.get(brRef), t.get(evRef.collection('settings').doc('carte')),
+          t.get(evRef.collection('transactions').where('bracelet', '==', numeroBracelet)),
+          ...ids.map(x => t.get(evRef.collection('menu').doc(x))),
+        ])
+        const b = brSnap.exists ? brSnap.data() : null
+        if (!b || b.statut !== 'actif' || String(b.specDoc) !== compte) throw new Refus(403, 'Ce bracelet ne permet plus de payer. Demandez à la billetterie.')
+        if (!specSnap.exists) throw new Refus(404, 'Compte introuvable.')
+        const spec = specSnap.data()
+        if (spec.billet && spec.billet.annule) throw new Refus(403, 'Ce billet a été annulé : présentez-vous à la billetterie.')
+        const limites = limitesBracelet(b)
+        const menuById = new Map(menuSnaps.filter(m => m.exists).map(m => [m.id, m.data()]))
+        const stands = (carteSnap.exists && carteSnap.data().stands) || []
+        const depense = depenseDuJour(txSnap.docs.map(d => d.data()), jour, festDay)
+        let panier
+        try { panier = verifierPanier({ lignes, menuById, standById: new Map(stands.map(st => [st.id, st])), limites, depense }) }
+        catch (e) { throw new Refus(409, e.message) }
+        const avant = Number(spec.solde) || 0
+        if (avant < panier.total) throw new Refus(409, `Solde insuffisant : il manque ${euros(panier.total - avant)}. Rechargez le solde sur le téléphone du titulaire ou à la billetterie.`)
+
+        const ts = admin.firestore.FieldValue.serverTimestamp()
+        const inc = admin.firestore.FieldValue.increment
+        const date = parisDate.format(new Date(now)), heure = parisTime.format(new Date(now)), iso = new Date(now).toISOString()
+        const resume = panier.items.map(i => i.nom + (i.qty > 1 ? ` ×${i.qty}` : '')).join(', ')
+        const qui = b.prenom ? ` (${b.prenom})` : ''
+        const cmdRef = evRef.collection('commandes').doc()
+        panier.items.forEach(i => t.update(evRef.collection('menu').doc(i.id), { stock: inc(-i.qty) }))
+        t.update(specRef, { solde: avant - panier.total })
+        t.set(cmdRef, {
+          numero, numeroDay: parisDay.format(new Date(now)), specId: spec.id, specNom: (b.prenom || spec.nom || '—'),
+          items: panier.items, total: panier.total, status: 'collected', paid: true, paidAt: ts, paidBy: 'Borne self-service',
+          createdAt: ts, createdBy: 'Borne self-service', collectedAt: ts, collectedBy: 'Ticket imprimé',
+          readyAt: null, readyBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null, refunded: false,
+          date, timestamp: iso, heure, source: 'borne', code: `BRC-${numero}`,
+          bracelet: numeroBracelet, ...(b.prenom ? { braceletPrenom: b.prenom } : {}),
+        })
+        t.set(evRef.collection('transactions').doc(), {
+          specId: spec.id, specNom: spec.nom || '—', type: 'debit',
+          label: `Commande #${numero} — ${resume}${qui}`,
+          items: panier.items.map(({ nom, qty, prixUnit, total }) => ({ nom, qty, prixUnit, total })),
+          montant: panier.total, staff: 'Borne self-service', soldeBefore: avant, soldeAfter: avant - panier.total,
+          commandeNumero: numero, source: 'borne', bracelet: numeroBracelet, ...(b.prenom ? { braceletPrenom: b.prenom } : {}),
+          date, timestamp: iso, heure, createdAt: ts,
+        })
+        const reste = resteDuJour(limites, depense + panier.total)
+        return { items: panier.items, total: panier.total, solde: avant - panier.total, reste, prenom: b.prenom || '' }
+      })
+      await evRef.collection('audit').add({
+        action: 'COMMANDE_BRACELET_BORNE', bracelet: numeroBracelet, montant: r.total, staff: 'Borne',
+        label: `Commande #${numero} à la borne avec le bracelet n° ${numeroBracelet.slice(0, 4)} ${numeroBracelet.slice(4)}${r.prenom ? ` (${r.prenom})` : ''} — ${euros(r.total)}`,
+        timestamp: new Date(now).toISOString(), createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {})
+      res.status(200).json({
+        numero, total: r.total, solde: r.solde, resteJour: r.reste,
+        items: r.items.map(({ id, nom, qty, prixUnit, standId, standNumero }) => ({ id, nom, qty, prix: prixUnit, standId, standNumero })),
+      })
+      return
+    }
+
     if (body.action === 'ouvrir' && body.artiste) {
       const { id, passage } = await identifier('artiste')
       const etat = await etatArtiste(id)

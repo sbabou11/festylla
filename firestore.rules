@@ -65,6 +65,12 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/events/$(ev)/autorisations/$(compte))
              && get(/databases/$(database)/documents/events/$(ev)/autorisations/$(compte)).data.exp > request.time;
     }
+    // Bracelet limité (mineur ou plafonné, 28/11/2026) : l'autorisation porte « limite » ; le serveur
+    // seul débite alors le solde (plafond du jour, alcool refusé), jamais la borne directement.
+    function debitDirect(ev, compte) {
+      return autorise(ev, compte)
+             && get(/databases/$(database)/documents/events/$(ev)/autorisations/$(compte)).data.get('limite', null) == null;
+    }
 
     // ── Événements ───────────────────────────────────────────────────────────
     match /events/{ev} {
@@ -165,7 +171,7 @@ service cloud.firestore {
         allow delete: if staffIn(ev) || legacy(ev);
         allow update: if staffIn(ev) || legacy(ev)
                       // Borne : paiement d'une commande, sur le compte autorisé ; le solde ne peut que baisser
-                      || (sess('borne', ev) && autorise(ev, doc) && onlyChanges(['solde'])
+                      || (sess('borne', ev) && debitDirect(ev, doc) && onlyChanges(['solde'])
                           && request.resource.data.solde < resource.data.solde && request.resource.data.solde >= 0);
       }
       match /transactions/{id} {
