@@ -23,6 +23,7 @@ const { newKey, cleanName, EV } = require('../_billets/cles')
 const { admin, getDb, requireCaller, writeAudit } = require('../_auth/server')
 const { readBody } = require('../_billets/admin')
 const { refreshEvent } = require('../_em/lecture')
+const { executerAcces, firestoreIoAcces, BASE_DEFAUT } = require('../_em/envoiAcces')
 
 const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null)
 const isoMs = (ms) => (typeof ms === 'number' ? new Date(ms).toISOString() : null)
@@ -35,6 +36,12 @@ const retourView = (r) => (r ? {
   okLe: isoMs(r.okMs), finalLe: isoMs(r.finalMs), clotureLe: isoMs(r.clotureMs),
   echec: r.echec || null, echecDepuis: isoMs(r.echecDepuisMs),
 } : null)
+
+// Accès des bénévoles envoyés par Event Manager (règle v1.3) : jamais le lien, seulement le suivi
+const accesView = (a) => ({
+  actif: !!a?.actif, activeLe: isoMs(a?.activeMs), envoyes: a?.envoyes || 0, attente: a?.attente || 0,
+  dernierEnvoi: isoMs(a?.dernierEnvoiMs), echec: a?.echec ? { detail: a.echec.detail || '', depuis: isoMs(a.echec.depuisMs) } : null,
+})
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ error: 'POST attendu.' }); return }
@@ -63,7 +70,7 @@ module.exports = async (req, res) => {
         cles: list.docs.filter(d => !d.data().supprimee).map(d => ({
           id: d.id, nom: d.data().nom, creeLe: iso(d.data().creeLe), derniereUtilisation: iso(d.data().derniereUtilisation), comptes: d.data().comptes || 0,
         })).sort((a, b) => String(a.creeLe).localeCompare(String(b.creeLe))),
-        em: e && e.cle ? { fin: e.cle.slice(-4), enregistreLe: iso(e.enregistreLe), dernierEnvoiOk: iso(e.dernierEnvoiOk), dernierEchec: e.dernierEchec || null, lecture: lectureView(e.lecture), retour: retourView(e.retour) } : null,
+        em: e && e.cle ? { fin: e.cle.slice(-4), enregistreLe: iso(e.enregistreLe), dernierEnvoiOk: iso(e.dernierEnvoiOk), dernierEchec: e.dernierEchec || null, lecture: lectureView(e.lecture), retour: retourView(e.retour), acces: accesView(e.acces) } : null,
       })
       return
     }
@@ -107,8 +114,30 @@ module.exports = async (req, res) => {
 
     if (body.mode === 'em-retirer') {
       await db.collection('liaisons-em').doc(ev).delete()
+      await db.collection('events').doc(ev).update({ emAcces: { actif: false, echec: null } }).catch(() => {})
       await writeAudit(db, ev, { action: 'CLE_EM_RETIREE', staff: caller.uid, userType: 'admin', label: 'Clé Event Manager retirée' })
       res.status(200).json({ ok: true }); return
+    }
+
+    if (body.mode === 'em-acces') {
+      const ref = db.collection('liaisons-em').doc(ev)
+      const s = await ref.get()
+      if (!s.exists || !s.data().cle) { res.status(400).json({ error: "Enregistrez d'abord la clé Event Manager." }); return }
+      const actif = body.actif === true
+      const acces = actif ? { ...(s.data().acces || {}), actif: true, activeMs: Date.now(), verifMs: null } : { ...(s.data().acces || {}), actif: false }
+      await ref.update({ acces })
+      await db.collection('events').doc(ev).update({ emAcces: { actif, echec: null } })
+      await writeAudit(db, ev, { action: actif ? 'ACCES_EM_ACTIVE' : 'ACCES_EM_DESACTIVE', staff: caller.uid, userType: 'admin',
+        label: actif ? 'Envoi des accès des bénévoles par Event Manager activé' : 'Envoi des accès des bénévoles par Event Manager désactivé' })
+      let a = acces
+      if (actif) {
+        // Premier envoi tout de suite : la fenêtre montre aussitôt le résultat
+        const url = process.env.YLLA_EM_URL || 'https://gestion.maisonylla.com/api/public/billetterie'
+        await executerAcces(firestoreIoAcces(db, ev, { key: s.data().cle, state: acces, url }), { ev, base: process.env.YLLACASH_URL || BASE_DEFAUT, force: true })
+          .catch(e => console.error('accès Event Manager:', e.message))
+        a = (await ref.get()).data().acces
+      }
+      res.status(200).json({ ok: true, acces: accesView(a) }); return
     }
 
     if (body.mode === 'em-actualiser') {

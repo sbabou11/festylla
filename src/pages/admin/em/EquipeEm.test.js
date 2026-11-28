@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../../../firebase/config', () => ({ db: {} }))
 vi.mock('../../../firebase/session', () => ({ apiFetch: vi.fn() }))
 vi.mock('../../../firebase/publicSession', () => ({ linkFor: vi.fn(), renewLinkKey: vi.fn() }))
-import { lignesLecture, resumeChangement } from './EquipeEm.jsx'
+import { lignesLecture, resumeChangement, statutAcces } from './EquipeEm.jsx'
 
 const T = (h, m, j = 28) => new Date(2026, 10, j, h, m).getTime()
 const NOW = T(20, 6)
@@ -34,5 +34,15 @@ describe('en-tête Bénévoles et Artistes', () => {
   })
   it('résumé au pluriel', () => {
     expect(resumeChangement({ ajoutes: 2, retires: 3 }, 'artiste')).toBe('2 artistes ajoutés · 3 retirés')
+  })
+})
+
+describe('statut de l’accès envoyé par Event Manager', () => {
+  const f = { id: 'em-u1', emId: 'u1' }
+  it('non activé, envoyé, en attente, fiche locale', () => {
+    expect(statutAcces(f, { actif: false })).toMatchObject({ tone: 'neutral', label: 'Accès non envoyé' })
+    expect(statutAcces({ ...f, accesEm: { empreinte: 'x', envoyeMs: T(14, 12) } }, { actif: true }).label).toBe('Accès envoyé le 28 nov.')
+    expect(statutAcces(f, { actif: true, echec: { status: 403 } })).toMatchObject({ tone: 'warning', label: 'Accès en attente', aide: 'En attendant, lien à donner à la main.' })
+    expect(statutAcces({ id: 'b-local' }, { actif: true })).toBeNull()
   })
 })

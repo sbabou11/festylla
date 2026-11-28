@@ -203,12 +203,28 @@ function RoleDialog({ ev, fiche, staff, onClose, live }) {
   )
 }
 
-function Ligne({ nom, badge, detail, onQr, docLabel, onDoc, onRenew, onRole }) {
+/**
+ * Statut de l'accès envoyé par Event Manager (règle v1.3, maquette du 28/11/2026). Jamais le lien.
+ * emAcces : events/{ev}.emAcces { actif, echec } ; fiche.accesEm { envoyeMs, empreinte }
+ */
+export function statutAcces(fiche, emAcces) {
+  if (!fiche?.emId) return null
+  if (!emAcces?.actif) return { tone: 'neutral', label: 'Accès non envoyé', aide: 'Lien à donner à la main (QR ou fiche).' }
+  const a = fiche.accesEm
+  if (a?.empreinte && a.envoyeMs) return {
+    tone: 'brand', label: `Accès envoyé le ${new Date(a.envoyeMs).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`,
+    aide: "Renouveler le lien coupe l'ancien et renvoie le nouveau dans les 5 minutes : le bénévole reçoit un e-mail.",
+  }
+  return { tone: 'warning', label: 'Accès en attente', aide: emAcces.echec ? 'En attendant, lien à donner à la main.' : '' }
+}
+
+function Ligne({ nom, badge, detail, onQr, docLabel, onDoc, onRenew, onRole, acces }) {
   return (
     <div style={{ ...box, display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontWeight: 700, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>{nom}{badge}</div>
         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Aujourd'hui : {detail}</div>
+        {acces?.aide && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{acces.aide}</div>}
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {onRole && <Button size="sm" variant="secondary" icon={UserCog} onClick={onRole}>Rôle</Button>}
@@ -285,7 +301,9 @@ export function BenevolesEm() {
               badge={<>
                 {(b.controleBillets || []).includes(jour) && <Badge tone="brand">Entrée aujourd'hui</Badge>}
                 {b.roleEquipe && <Badge tone="coral">{labelRoleEquipe(b.roleEquipe)}</Badge>}
+                {statutAcces(b, event?.emAcces) && <Badge tone={statutAcces(b, event?.emAcces).tone}>{statutAcces(b, event?.emAcces).label}</Badge>}
               </>}
+              acces={statutAcces(b, event?.emAcces)}
               onRole={roleAdmin ? () => setFicheRole(b) : undefined}
               detail={resume(b.droitsJours?.[jour], b.consoJours?.[jour])}
               onQr={() => ouvrirLien(ev, 'benevole', b.id, b.prenom, setLien)}

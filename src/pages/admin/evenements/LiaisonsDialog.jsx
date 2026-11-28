@@ -81,6 +81,51 @@ function RetourStatus({ retour }) {
   )
 }
 
+/**
+ * Accès des bénévoles (règle v1.3, maquette validée le 28/11/2026) : Event Manager envoie à chaque
+ * bénévole son lien YllaCash par e-mail. Désactivé au départ ; l'activer demande un appui maintenu,
+ * car tous les bénévoles de l'événement reçoivent alors un e-mail. Le lien n'est jamais affiché ici.
+ */
+function AccesBenevoles({ acces, nbBenevoles, busy, onChange }) {
+  const [confirmer, setConfirmer] = useState(false)
+  const actif = !!acces?.actif
+  const basculer = () => { if (actif) onChange(false); else setConfirmer(c => !c) }
+  return (
+    <div className={s.lectureLine}>
+      <span className={s.accesTete}>
+        <span><strong>Accès des bénévoles</strong>{' '}
+          {actif && (acces.echec
+            ? <span className={`${s.lectureBadge} ${s.lectureRefus}`}>Refusé</span>
+            : <span className={`${s.lectureBadge} ${s.lectureOk}`}>À jour</span>)}
+        </span>
+        <button type="button" role="switch" aria-checked={actif} className={s.switch} disabled={busy}
+          onClick={basculer} aria-label={actif ? "Désactiver l'envoi des accès des bénévoles" : "Activer l'envoi des accès des bénévoles"}/>
+      </span>
+      {!actif && (
+        <span className={s.dialogHint}>
+          Désactivé. Une fois activé, YllaCash envoie à Event Manager le lien personnel de chaque bénévole, qui le reçoit par e-mail.
+          {nbBenevoles > 0 ? ` ${plural(nbBenevoles, 'bénévole recevra', 'bénévoles recevront')} leur accès.` : ''}
+        </span>
+      )}
+      {!actif && confirmer && (
+        <span className={s.liaisonActions}>
+          <HoldButton disabled={busy} onConfirm={() => { setConfirmer(false); onChange(true) }}>Maintenir : activer et envoyer les e-mails</HoldButton>
+          <Button size="sm" variant="secondary" onClick={() => setConfirmer(false)}>Annuler</Button>
+        </span>
+      )}
+      {actif && (
+        <span className={s.dialogHint}>
+          Activé le {fmtDate(acces.activeLe) || '—'}. Les nouveaux bénévoles reçoivent leur accès dans les 5 minutes.
+          {' '}{plural(acces.envoyes, 'envoyé', 'envoyés')} · {acces.attente} en attente
+          {acces.dernierEnvoi ? ` · dernier envoi le ${fmtDate(acces.dernierEnvoi)}` : ''}
+          {acces.echec ? `. Event Manager refuse depuis ${fmtHour(acces.echec.depuis) || '—'} (${acces.echec.detail}) : vérifiez la clé. Nouvel essai toutes les 5 minutes.` : ''}
+        </span>
+      )}
+      <span className={s.dialogHint}>Le lien n'est jamais montré ici : Event Manager l'envoie par e-mail au bénévole et l'affiche dans son espace.</span>
+    </div>
+  )
+}
+
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null
 
 export default function LiaisonsDialog({ event, onClose }) {
@@ -174,6 +219,8 @@ export default function LiaisonsDialog({ event, onClose }) {
               </div>
               <LectureStatus lecture={data.em.lecture}/>
               <RetourStatus retour={data.em.retour}/>
+              <AccesBenevoles acces={data.em.acces} nbBenevoles={event?.emEquipe?.benevoles || 0} busy={busy}
+                onChange={(actif) => act({ mode: 'em-acces', actif }, () => toast.success(actif ? 'Envoi des accès activé' : 'Envoi des accès désactivé'))}/>
               <div className={s.liaisonActions}>
                 <Button size="sm" variant="secondary" icon={RefreshCw} disabled={busy}
                   onClick={() => act({ mode: 'em-actualiser' }, (r) => { if (r?.lecture && !r.lecture.echec) toast.success('Event Manager relu') })}>

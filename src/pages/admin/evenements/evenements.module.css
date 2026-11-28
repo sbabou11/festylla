@@ -273,3 +273,19 @@
 .lectureOk { background: var(--green-light, #e6f4ea); color: var(--green-dark, #2d6a2d); }
 .lecturePanne { background: var(--gold-light, #fdf3dc); color: var(--gold-dark, #7a5200); }
 .lectureRefus { background: var(--red-light, #fcebeb); color: var(--red-dark, #a32d2d); }
+
+/* Accès des bénévoles envoyés par Event Manager (règle v1.3, maquette du 28/11/2026) */
+.accesTete { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.switch {
+  position: relative; flex-shrink: 0; width: 44px; height: 26px; min-height: 0; padding: 0;
+  border: none; border-radius: 13px; background: var(--border2); cursor: pointer;
+  transition: background var(--dur-base) var(--ease);
+}
+.switch::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; box-shadow: var(--shadow-sm); transition: transform var(--dur-base) var(--ease);
+}
+.switch[aria-checked='true'] { background: var(--brand); }
+.switch[aria-checked='true']::after { transform: translateX(18px); }
+.switch:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.switch:disabled { cursor: progress; opacity: .7; }

@@ -21,6 +21,7 @@ const { prepareEntrees, nextAttempt, isSettingError, newMessageId } = require('.
 const { getDb } = require('../_billets/admin')
 const { refreshEvent } = require('../_em/lecture')
 const { executerRetour, firestoreIo } = require('../_em/envoiRetour')
+const { executerAcces, firestoreIoAcces, BASE_DEFAUT } = require('../_em/envoiAcces')
 
 const TIMEOUT_MS = 10_000
 
@@ -78,6 +79,13 @@ module.exports = async (req, res) => {
         const r = await executerRetour(firestoreIo(db, ev.id, { key, state: emSnap.data().retour }))
         if (r.envoye) { summary.retours = (summary.retours || 0) + 1; if (r.echecs.length) summary.echecs.push({ event: ev.id, retour: r.echecs }) }
       } catch (e) { console.error('retour Event Manager:', ev.id, e) }
+      // Accès des bénévoles (règle v1.3), seulement si l'organisateur l'a activé dans Liaisons
+      if (emSnap.data().acces?.actif) {
+        try {
+          const r = await executerAcces(firestoreIoAcces(db, ev.id, { key, state: emSnap.data().acces, url }), { ev: ev.id, base: process.env.YLLACASH_URL || BASE_DEFAUT })
+          if (r.echec) summary.echecs.push({ event: ev.id, acces: r.echec.detail })
+        } catch (e) { console.error('accès Event Manager:', ev.id, e.message) }
+      }
     }
     const col = db.collection('events').doc(ev.id).collection('entrees')
     const snap = await col.where('envoi.statut', '==', 'attente').get()
