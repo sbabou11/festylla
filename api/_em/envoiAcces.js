@@ -63,8 +63,14 @@ async function executerAcces(io, { now = Date.now(), base = BASE_DEFAUT, ev, new
   if (!force && typeof state.verifMs === 'number' && now - state.verifMs < INTERVALLE_MS) return { envoye: false }
   const fiches = await io.fiches()
   const cles = await io.cles()
-  const p = preparerAcces(fiches, (id) => cles[id] || null, { base, ev })
-  if (p.aCreer.length) await io.creerCles(p.aCreer)
+  let p = preparerAcces(fiches, (id) => cles[id] || null, { base, ev })
+  if (p.aCreer.length) {
+    // 28/11/2026 : deux tours simultanés (activation et tâche planifiée) pouvaient créer chacun leur clé,
+    // et Event Manager garder un lien déjà refusé. creerCles ne crée que si la clé n'existe pas encore,
+    // et renvoie la clé réellement retenue ; les liens sont recalculés avec elle.
+    Object.assign(cles, await io.creerCles(p.aCreer))
+    p = preparerAcces(fiches, (id) => cles[id] || null, { base, ev, creer: () => { throw new Error('clé manquante') } })
+  }
   let { envoyes, attente } = p.comptes
   const next = { ...state, envoyes, attente, verifMs: now }
   let echec = null
@@ -101,9 +107,17 @@ function firestoreIoAcces(db, ev, { key, state, url, fetchImpl }) {
     },
     creerCles: async (list) => {
       const { FieldValue } = require('firebase-admin').firestore
+      const retenues = {}
       for (const { ficheId, cle } of list) {
-        await evRef.collection('liens').doc(`benevole-${ficheId}`).set({ cle, kind: 'benevole', id: ficheId, creeLe: FieldValue.serverTimestamp(), creePar: 'event-manager' })
+        const ref = evRef.collection('liens').doc(`benevole-${ficheId}`)
+        retenues[ficheId] = await db.runTransaction(async (t) => {
+          const cur = await t.get(ref)
+          if (cur.exists && cur.data().cle) return cur.data().cle   // créée entre-temps : on la garde
+          t.set(ref, { cle, kind: 'benevole', id: ficheId, creeLe: FieldValue.serverTimestamp(), creePar: 'event-manager' })
+          return cle
+        })
       }
+      return retenues
     },
     post: (body) => postEm(url, key, body, fetchImpl),
     marquer: (ficheId, accesEm) => evRef.collection('benevoles').doc(ficheId).set({ accesEm }, { merge: true }),

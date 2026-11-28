@@ -4,13 +4,13 @@ const { preparerAcces, executerAcces, empreinteLien, lienBenevole } = require('.
 const BASE = 'https://festishop.festylla.com'
 const ok = { ok: true, status: 200, text: '' }
 
-function io({ fiches, cles = {}, state = { actif: true }, reponse = ok }) {
+function io({ fiches, cles = {}, state = { actif: true }, reponse = ok, gardees = {} }) {
   const posts = [], marques = {}, creees = []
   const o = {
     state,
     fiches: async () => fiches,
     cles: async () => cles,
-    creerCles: async (l) => { creees.push(...l) },
+    creerCles: async (l) => { creees.push(...l); return Object.fromEntries(l.map(x => [x.ficheId, gardees[x.ficheId] || x.cle])) },
     post: async (b) => { posts.push(b); return reponse },
     marquer: async (id, a) => { marques[id] = a },
     save: async (n) => { o.saved = n },
@@ -69,5 +69,12 @@ describe('accès des bénévoles vers Event Manager (règle 1.3)', () => {
     const t = io({ fiches })
     await executerAcces(t.o, { ev: 'ev1', base: BASE })
     expect(t.posts.map(p => p.acces.length)).toEqual([500, 1])
+  })
+  it('clé créée entre-temps par un autre tour : le lien envoyé utilise celle-là', async () => {
+    const autre = 'e'.repeat(32)
+    const t = io({ fiches: [{ id: 'em-u1', emId: 'u1', actif: true }], gardees: { 'em-u1': autre } })
+    await executerAcces(t.o, { ev: 'ev1', base: BASE, now: 1000 })
+    expect(t.posts[0].acces[0].lien).toBe(lienBenevole(BASE, 'ev1', 'em-u1', autre))
+    expect(t.marques['em-u1'].empreinte).toBe(empreinteLien(lienBenevole(BASE, 'ev1', 'em-u1', autre)))
   })
 })
