@@ -8,7 +8,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react'
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { Info, QrCode as QrIcon, FileText, RefreshCw, Search, Copy, UserCog } from 'lucide-react'
+import { Info, QrCode as QrIcon, FileText, RefreshCw, Search, Copy, UserCog, AlertTriangle } from 'lucide-react'
 import useAuthStore, { setRoleBenevole } from '../../../store/useAuthStore'
 import useAppStore from '../../../store/useAppStore'
 import RoleEquipeBloc, { etatRoleEquipe } from '../../../components/RoleEquipeBloc'
@@ -26,6 +26,7 @@ import { festDay } from '../../../em/jour'
 import { adaptArtisteEm } from '../../../em/artiste'
 import generateBenevrolePDF from '../benevoles/pdf'
 import printArtisteSheet from '../planning/printArtisteSheet'
+import css from './EnTeteEm.module.css'
 
 const LABEL = { repas: 'Repas', boisson: 'Boissons', eau: 'Eau' }
 const TONE = { repas: 'coral', boisson: 'warning', eau: 'brand' }
@@ -55,7 +56,52 @@ export function useEquipeEm() {
 /** Événement relié à Event Manager (équipe ou programme) */
 const estRelie = (event) => !!(event?.emEquipe || event?.emProgramme)
 
-function EnTete({ titre, ev, event, quoi }) {
+/** « 20:05 » aujourd'hui, sinon « le 27 nov. à 00:32 » */
+export function heureOuDate(ms, now = Date.now()) {
+  const d = new Date(ms)
+  const h = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === new Date(now).toDateString()) return `à ${h}`
+  return `le ${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à ${h}`
+}
+
+/** « 1 bénévole ajouté · 2 retirés », ou '' */
+export function resumeChangement(c, nom) {
+  if (!c) return ''
+  const parts = []
+  if (c.ajoutes) parts.push(`${c.ajoutes} ${nom}${c.ajoutes > 1 ? 's' : ''} ajouté${c.ajoutes > 1 ? 's' : ''}`)
+  if (c.retires) parts.push(`${c.retires} retiré${c.retires > 1 ? 's' : ''}`)
+  return parts.join(' · ')
+}
+
+/**
+ * Les deux heures de l'en-tête (maquette validée le 28/11/2026) :
+ *  - « Vérifié dans Event Manager » : dernière lecture réussie (toutes les 5 minutes) ;
+ *  - « Dernier changement » : dernière fois qu'Event Manager a envoyé du nouveau.
+ * En panne : « Event Manager injoignable depuis… » et l'heure de la liste gardée.
+ */
+export function lignesLecture(event, type, now = Date.now()) {
+  const l = event?.emLecture, eq = event?.emEquipe
+  const maj = eq?.majMs
+  if (l?.echec) {
+    const depuis = heureOuDate(l.echec.depuisMs, now).replace(/^à /, '')
+    const copie = l.copieMs ? heureOuDate(l.copieMs, now) : ''
+    return [
+      { ton: 'echec', texte: `${l.echec.type === 'refus' ? 'Clé refusée par Event Manager' : 'Event Manager injoignable'} depuis ${depuis}` },
+      copie ? { ton: 'attenue', texte: `${copie.startsWith('à ') ? `Liste de ${copie.slice(2)}` : `Liste du ${copie.slice(3)}`}, en attendant` } : null,
+    ].filter(Boolean)
+  }
+  if (!l?.verifieMs) return maj ? [{ ton: '', texte: `Lu dans Event Manager ${heureOuDate(maj, now)}` }] : []
+  const lignes = [{ ton: '', texte: `Vérifié dans Event Manager ${heureOuDate(l.verifieMs, now)}` }]
+  if (maj && maj >= l.verifieMs) {
+    const detail = resumeChangement(eq?.changement?.[type], type === 'artistes' ? 'artiste' : 'bénévole')
+    lignes.push({ ton: 'change', texte: `Changé ${heureOuDate(maj, now)}${detail ? ` · ${detail}` : ''}` })
+  } else if (maj) {
+    lignes.push({ ton: 'attenue', texte: `Dernier changement ${heureOuDate(maj, now)}` })
+  }
+  return lignes
+}
+
+function EnTete({ titre, ev, event, quoi, type }) {
   const [busy, setBusy] = useState(false)
   // 25/11/2026 : version Event Manager sur tous les événements ; non relié = liste en lecture
   if (!estRelie(event)) return (
@@ -67,7 +113,7 @@ function EnTete({ titre, ev, event, quoi }) {
       </div>
     </>
   )
-  const maj = event?.emEquipe?.majMs
+  const lignes = lignesLecture(event, type)
   const actualiser = async () => {
     setBusy(true)
     try { await apiFetch('/api/liaisons', { body: { ev, mode: 'em-actualiser' } }); toast.success('Event Manager relu') }
@@ -76,10 +122,18 @@ function EnTete({ titre, ev, event, quoi }) {
   }
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0, fontSize: 22 }}>{titre}</h1>
-        <span style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-          {maj ? `Lu dans Event Manager à ${new Date(maj).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+      <div className={css.tete}>
+        <h1 className={css.titre}>{titre}</h1>
+        {lignes.length > 0 && (
+          <div className={css.lignes} aria-live="polite">
+            {lignes.map((l, i) => (
+              <div key={i} className={css[l.ton] || undefined}>
+                {l.ton === 'echec' && <AlertTriangle size={14} aria-hidden="true"/>}{l.texte}
+              </div>
+            ))}
+          </div>
+        )}
+        <span className={css.bouton}>
           <Button size="sm" variant="secondary" icon={RefreshCw} onClick={actualiser} disabled={busy}>{busy ? 'Lecture…' : 'Actualiser'}</Button>
         </span>
       </div>
@@ -214,7 +268,7 @@ export function BenevolesEm() {
 
   return (
     <div style={{ maxWidth: 980, margin: '0 auto', padding: 16, display: 'grid', gap: 12 }}>
-      <EnTete titre="Bénévoles" ev={ev} event={event}
+      <EnTete titre="Bénévoles" type="benevoles" ev={ev} event={event}
         quoi="Pour ajouter un bénévole ou changer ses droits et ses jours de contrôle : Event Manager."/>
       {/* Écran 13 (24/11/2026) : offert et acheté à part, soldes des bénévoles */}
       <BilanBenevoles />
@@ -288,7 +342,7 @@ export function ArtistesEm() {
 
   return (
     <div style={{ maxWidth: 980, margin: '0 auto', padding: 16, display: 'grid', gap: 12 }}>
-      <EnTete titre="Artistes" ev={ev} event={event} quoi="Pour ajouter un artiste ou changer ses avantages : Event Manager."/>
+      <EnTete titre="Artistes" type="artistes" ev={ev} event={event} quoi="Pour ajouter un artiste ou changer ses avantages : Event Manager."/>
       <div style={box}>
         <b>Articles offerts aux artistes</b>
         <p style={{ margin: '4px 0 10px', fontSize: 13, color: 'var(--text-muted)' }}>

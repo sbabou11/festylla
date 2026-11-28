@@ -17,7 +17,8 @@
  *                                       les consommations du jour (consoJours) écrites par l'appli sont gardées
  *   events/{événement}/benevoles-annuaire/em-…   prénom et nom, pour l'espace bénévole
  *   events/{événement}/artistes/em-…    fiches des artistes (avantages par jour)
- *   events/{événement}.emEquipe          { majMs, benevoles, artistes } : les pages Bénévoles et Artistes passent en lecture
+ *   events/{événement}.emEquipe          { majMs, benevoles, artistes, changement } : les pages Bénévoles et Artistes passent en lecture
+ *   events/{événement}.emLecture         { verifieMs, copieMs, echec } : heure de vérification affichée en tête de ces pages
  * Si Event Manager ne répond pas, la copie précédente reste : le festival continue.
  * YLLA_EM_LECTURE_URL (facultatif) remplace l'adresse, pour un essai.
  */
@@ -59,7 +60,7 @@ async function syncProgramme(db, ev, programme, { now, toDate }) {
 async function syncFiches(col, wanted, { now, toDate, annuaire }) {
   const existing = await col.where('source', '==', 'event-manager').get()
   const byId = new Map(existing.docs.map(d => [d.id, d]))
-  let n = 0
+  let n = 0, ajoutes = 0, retires = 0
   for (const { docId, data } of wanted) {
     const cur = byId.get(docId)
     byId.delete(docId)
@@ -68,26 +69,44 @@ async function syncFiches(col, wanted, { now, toDate, annuaire }) {
       const c = cur.data()
       const same = Object.keys(next).every(k => stable(c[k]) === stable(next[k]))
       if (!same) { await cur.ref.set({ ...next, majMs: now }, { merge: true }); n++ }
+      if (c.actif === false) ajoutes++   // revenu dans Event Manager
     } else {
-      await col.doc(docId).set({ ...next, majMs: now, createdAt: toDate(now) }, { merge: true }); n++
+      await col.doc(docId).set({ ...next, majMs: now, createdAt: toDate(now) }, { merge: true }); n++; ajoutes++
     }
     if (annuaire && (!cur || cur.data().prenom !== data.prenom || cur.data().nom !== data.nom)) {
       await annuaire.doc(docId).set({ prenom: data.prenom, nom: data.nom, poste: '' })
     }
   }
   for (const [id, d] of byId) {
-    if (d.data().actif !== false) { await d.ref.set({ actif: false, majMs: now }, { merge: true }); n++ }
+    if (d.data().actif !== false) { await d.ref.set({ actif: false, majMs: now }, { merge: true }); n++; retires++ }
     if (annuaire) await annuaire.doc(id).delete()
   }
-  return n
+  return { n, ajoutes, retires }
 }
 
 async function syncEquipe(db, ev, data, { now, toDate }) {
   const evRef = db.collection('events').doc(ev)
   const { benevoles, artistes } = equipeDocs(data)
-  await syncFiches(evRef.collection('benevoles'), benevoles, { now, toDate, annuaire: evRef.collection('benevoles-annuaire') })
-  await syncFiches(evRef.collection('artistes'), artistes, { now, toDate })
-  await evRef.update({ emEquipe: { majMs: now, benevoles: benevoles.length, artistes: artistes.length } })
+  const b = await syncFiches(evRef.collection('benevoles'), benevoles, { now, toDate, annuaire: evRef.collection('benevoles-annuaire') })
+  const a = await syncFiches(evRef.collection('artistes'), artistes, { now, toDate })
+  await evRef.update({ emEquipe: {
+    majMs: now, benevoles: benevoles.length, artistes: artistes.length,
+    // 28/11/2026 : résumé du dernier changement, pour l'en-tête des pages Bénévoles et Artistes
+    changement: { benevoles: { ajoutes: b.ajoutes, retires: b.retires }, artistes: { ajoutes: a.ajoutes, retires: a.retires } },
+  } })
+}
+
+/**
+ * État de la lecture lisible par l'équipe (28/11/2026) : liaisons-em est réservé au serveur.
+ * events/{événement}.emLecture { verifieMs, copieMs, echec: { type, depuisMs } | null }
+ * Écrit à chaque lecture, même sans changement : l'en-tête montre que la liaison vit.
+ */
+function emLectureVue(lecture) {
+  return {
+    verifieMs: lecture.echec ? null : lecture.essaiMs,
+    copieMs: lecture.okMs ?? null,
+    echec: lecture.echec ? { type: lecture.echec.type, depuisMs: lecture.echec.depuisMs } : null,
+  }
 }
 
 const defaultToDate = (ms) => require('firebase-admin').firestore.Timestamp.fromMillis(ms)
@@ -158,7 +177,10 @@ async function refreshEvent(db, ev, { force = false, now = Date.now(), fetchImpl
 
   const lecture = nextLecture(prev, result, now)
   await emRef.update({ lecture })
+  const evRef = db.collection('events').doc(ev)
+  const evSnap = await evRef.get()
+  if (evSnap.exists) await evRef.update({ emLecture: emLectureVue(lecture) })
   return { lu: true, lecture }
 }
 
-module.exports = { refreshEvent, fetchSnapshot, syncProgramme, syncEquipe, EM_LECTURE_URL }
+module.exports = { refreshEvent, fetchSnapshot, syncProgramme, syncEquipe, emLectureVue, EM_LECTURE_URL }

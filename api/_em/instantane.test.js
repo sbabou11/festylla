@@ -153,6 +153,9 @@ describe('refreshEvent', () => {
     const r2 = await refreshEvent(db, 'ev1', { now: 2000, force: true, toDate: (ms) => ms, fetchImpl: reply(304, '') })
     expect(reply.last.headers['If-None-Match']).toBe(`"${V}"`)
     expect(r2.lecture).toMatchObject({ okMs: 2000, echec: null })
+    // En-tête des pages : vérifié à chaque lecture, changement seulement quand Event Manager envoie du nouveau
+    expect(db.docs.get('events/ev1').emLecture).toEqual({ verifieMs: 2000, copieMs: 2000, echec: null })
+    expect(db.docs.get('events/ev1').emEquipe).toMatchObject({ majMs: 1000, changement: { benevoles: { ajoutes: 1, retires: 0 }, artistes: { ajoutes: 1, retires: 0 } } })
   })
   it('en panne ou clé refusée : la copie précédente reste', async () => {
     await refreshEvent(db, 'ev1', { now: 1000, toDate: (ms) => ms, fetchImpl: reply(200, sample()) })
@@ -163,6 +166,7 @@ describe('refreshEvent', () => {
     const down = async () => { throw new Error('fetch failed') }
     const r2 = await refreshEvent(db, 'ev1', { now: 3000, force: true, fetchImpl: down })
     expect(r2.lecture.echec).toMatchObject({ type: 'panne', depuisMs: 3000, detail: 'fetch failed' })
+    expect(db.docs.get('events/ev1').emLecture).toEqual({ verifieMs: null, copieMs: 1000, echec: { type: 'panne', depuisMs: 3000 } })
   })
   it('réponse illisible : rien n’est remplacé', async () => {
     const r = await refreshEvent(db, 'ev1', { now: 1000, toDate: (ms) => ms, fetchImpl: reply(200, '<html>') })
@@ -200,7 +204,7 @@ describe('refreshEvent', () => {
     })
     expect(db.docs.get('events/ev1/benevoles-annuaire/em-u31')).toEqual({ prenom: 'Malik', nom: 'Exemple', poste: '' })
     expect(db.docs.get('events/ev1/artistes/em-a7')).toMatchObject({ nom: 'Awa Exemple', avantagesJours: { '2027-05-15': { repas: 2, boisson: 4, eau: 4 } } })
-    expect(db.docs.get('events/ev1').emEquipe).toEqual({ majMs: 1000, benevoles: 1, artistes: 1 })
+    expect(db.docs.get('events/ev1').emEquipe).toMatchObject({ majMs: 1000, benevoles: 1, artistes: 1 })
 
     // L'appli a noté une consommation ; Event Manager change les droits puis retire Malik
     db.docs.set('events/ev1/benevoles/em-u31', { ...db.docs.get('events/ev1/benevoles/em-u31'), consoJours: { '2027-05-15': { repas: 1 } } })
@@ -208,9 +212,11 @@ describe('refreshEvent', () => {
     const next = sample(); next.version = 'f'.repeat(32); next.benevoles[0].droits[0].repas = 2
     await refreshEvent(db, 'ev1', { now: 2000, force: true, toDate: (ms) => ms, fetchImpl: reply(200, next) })
     expect(db.docs.get('events/ev1/benevoles/em-u31')).toMatchObject({ consoJours: { '2027-05-15': { repas: 1 } }, droitsJours: { '2027-05-15': { repas: 2 } } })
+    expect(db.docs.get('events/ev1').emEquipe.changement.benevoles).toEqual({ ajoutes: 0, retires: 0 })   // modifié seulement
     next.version = 'e'.repeat(32); next.benevoles = []
     await refreshEvent(db, 'ev1', { now: 3000, force: true, toDate: (ms) => ms, fetchImpl: reply(200, next) })
     expect(db.docs.get('events/ev1/benevoles/em-u31')).toMatchObject({ actif: false, consoJours: { '2027-05-15': { repas: 1 } } })
+    expect(db.docs.get('events/ev1').emEquipe.changement.benevoles).toEqual({ ajoutes: 0, retires: 1 })
     expect(db.docs.has('events/ev1/benevoles-annuaire/em-u31')).toBe(false)
     expect(db.docs.get('events/ev1/benevoles/b-local')).toEqual({ prenom: 'Saisi dans YllaCash' })
   })

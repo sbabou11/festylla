@@ -1,0 +1,13 @@
+/* En-tête des pages Bénévoles et Artistes reliées à Event Manager (maquette validée le 28/11/2026) */
+.tete { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.titre { margin: 0; font-size: 22px; flex: 1 1 auto; }
+.lignes { font-size: 13px; line-height: 1.4; text-align: right; color: var(--text); }
+.bouton { flex: none; }
+.attenue { color: var(--text-muted); }
+.change { color: var(--brand); }
+.echec { color: var(--coral); display: inline-flex; gap: 4px; align-items: center; }
+
+/* Téléphone : titre et bouton sur une ligne, les deux heures en dessous */
+@media (max-width: 640px) {
+  .lignes { order: 3; flex-basis: 100%; text-align: left; }
+}
