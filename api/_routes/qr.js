@@ -144,7 +144,14 @@ async function braceletGuichet(req, res, { db, evRef, ev, caller, body, now }) {
     const d = s.data()
     return { docId: s.id, id: d.id, nom: d.nom || '', solde: Number(d.solde) || 0, annule: !!(d.billet && d.billet.annule) }
   }
-  const vue = (b) => b ? { numero: b.numero, statut: b.statut, motif: b.bloqueMotif || null, relieMs: b.relieMs || null, bloqueMs: b.bloqueMs || null } : null
+  const vue = (b) => vueBracelet(b)
+  // Plusieurs bracelets par compte (28/11/2026) : tous ceux du compte, actifs d'abord
+  const braceletsDe = async (docId) => {
+    const q = await col.where('specDoc', '==', String(docId)).get()
+    const vus = q.docs.map((d) => d.data()).filter((b) => b.statut === 'actif' || b.statut === 'bloque')
+    vus.sort((a, b) => (b.statut === 'actif') - (a.statut === 'actif') || (a.relieMs || 0) - (b.relieMs || 0))
+    return vus.map(vue)
+  }
   const audit = (action, numero, spec, label) => writeAudit(db, ev, { action, bracelet: numero, specId: spec ? spec.id : '', specNom: spec ? spec.nom : '', staff, userType: 'staff', label })
   const numeroLu = () => {
     const n = lireBracelet(body.bracelet)
@@ -157,16 +164,14 @@ async function braceletGuichet(req, res, { db, evRef, ev, caller, body, now }) {
       if (!ID.test(String(body.docId))) throw new Refus(400, 'Compte manquant.')
       const compte = await compteDe(body.docId)
       if (!compte) throw new Refus(404, 'Compte introuvable.')
-      const q = await col.where('specDoc', '==', compte.docId).get()
-      const vus = q.docs.map((d) => d.data()).filter((b) => b.statut === 'actif' || b.statut === 'bloque')
-      vus.sort((a, b) => (b.statut === 'actif') - (a.statut === 'actif') || (b.relieMs || 0) - (a.relieMs || 0))
-      res.status(200).json({ compte, bracelet: vue(vus[0] || null) }); return
+      const bracelets = await braceletsDe(compte.docId)
+      res.status(200).json({ compte, bracelets, bracelet: bracelets[0] || null }); return
     }
     const numero = numeroLu()
     const d = await col.doc(numero).get()
     const b = d.exists ? d.data() : null
     if (!b || b.statut === 'remplace') { res.status(200).json({ bracelet: { numero, statut: 'libre' }, compte: null }); return }
-    res.status(200).json({ bracelet: vue(b), compte: await compteDe(b.specDoc) }); return
+    res.status(200).json({ bracelet: vue(b), compte: await compteDe(b.specDoc), bracelets: await braceletsDe(b.specDoc) }); return
   }
 
   if (body.identite !== true) throw new Refus(400, "Vérifiez d'abord une pièce d'identité au nom du spectateur.")
@@ -174,15 +179,19 @@ async function braceletGuichet(req, res, { db, evRef, ev, caller, body, now }) {
 
   if (body.action === 'bracelet-guichet-relier') {
     if (!ID.test(String(body.docId || ''))) throw new Refus(400, 'Spectateur manquant.')
-    const err = erreurCode(body.code)
-    if (err) throw new Refus(400, err)
+    // 28/11/2026 : réglages du bracelet (prénom, mineur, plafond) ; code null = mineur sans code
+    const avecCode = body.code !== null
+    if (avecCode) { const err = erreurCode(body.code); if (err) throw new Refus(400, err) }
+    const rg = reglagesBracelet(body, { avecCode, parGuichet: true })
+    if (rg.erreur) throw new Refus(400, rg.erreur)
     const compte = await compteDe(body.docId)
     if (!compte) throw new Refus(404, 'Compte introuvable.')
     if (compte.annule) throw new Refus(403, 'Ce billet a été annulé : pas de bracelet possible.')
-    const refus = await relierBracelet(db, col, { numero, specDoc: compte.docId, specId: compte.id, code: body.code, par: staff || 'guichet', now })
+    const refus = await relierBracelet(db, col, { numero, specDoc: compte.docId, specId: compte.id, code: avecCode ? body.code : null, reglages: rg.reglages, par: staff || 'guichet', now })
     if (refus) throw new Refus(409, refus)
-    await audit('BRACELET_RELIE', numero, compte, `Bracelet n° ${numeroAffiche(numero)} relié à ${compte.nom || compte.id} au guichet (identité vérifiée), code tapé par le spectateur`)
-    res.status(200).json({ bracelet: { numero, statut: 'actif' }, compte }); return
+    const g = rg.reglages
+    await audit('BRACELET_RELIE', numero, compte, `Bracelet n° ${numeroAffiche(numero)}${g.prenom ? ` (${g.prenom})` : ''} relié à ${compte.nom || compte.id} au guichet (identité vérifiée), ${avecCode ? 'code tapé par le spectateur' : 'sans code'}${g.mineur ? ', mineur' : ''}${g.plafondJour ? `, plafond ${g.plafondJour} €/jour` : ''}`)
+    res.status(200).json({ bracelet: vue({ numero, statut: 'actif', codeHash: avecCode ? 'x' : null, ...g }), compte, bracelets: await braceletsDe(compte.docId) }); return
   }
 
   const ref = col.doc(numero)
@@ -199,6 +208,23 @@ async function braceletGuichet(req, res, { db, evRef, ev, caller, body, now }) {
     await audit(etaitBloque ? 'BRACELET_DEBLOQUE' : 'BRACELET_CODE_CHANGE', numero, compte,
       `Nouveau code pour le bracelet n° ${numeroAffiche(numero)} de ${compte ? (compte.nom || compte.id) : '?'} au guichet (identité vérifiée)${etaitBloque ? ' : bracelet débloqué' : ''}`)
     res.status(200).json({ bracelet: { numero, statut: 'actif' }, compte }); return
+  }
+
+  // Décocher « mineur » (28/11/2026) : pièce d'identité du PORTEUR, majeur ; un bracelet sans code
+  // en reçoit un (tapé par le porteur), car un bracelet d'adulte a toujours un code
+  if (body.action === 'bracelet-guichet-majeur') {
+    if (body.porteurMajeur !== true) throw new Refus(400, "Vérifiez d'abord une pièce d'identité : le porteur doit être majeur.")
+    if (b.statut !== 'actif') throw new Refus(409, "Ce bracelet est bloqué : donnez-lui d'abord un nouveau code.")
+    if (!b.mineur) { res.status(200).json({ bracelet: vue(b), compte, bracelets: await braceletsDe(b.specDoc) }); return }
+    const maj = { mineur: false }
+    if (!b.codeHash) {
+      const err = erreurCode(body.code)
+      if (err) throw new Refus(400, body.code == null ? "Sans code, il faut en choisir un : un bracelet d'adulte a toujours un code." : err)
+      Object.assign(maj, { codeHash: empreinteCode(String(body.code)), essais: 0, codeLe: FV.serverTimestamp() })
+    }
+    await ref.update(maj)
+    await audit('BRACELET_MAJEUR', numero, compte, `Case « mineur » décochée au guichet pour le bracelet n° ${numeroAffiche(numero)}${b.prenom ? ` (${b.prenom})` : ''} de ${compte ? (compte.nom || compte.id) : '?'} : porteur majeur, pièce d'identité vérifiée${maj.codeHash ? ', code choisi par le porteur' : ''}`)
+    res.status(200).json({ bracelet: vue({ ...b, ...maj }), compte, bracelets: await braceletsDe(b.specDoc) }); return
   }
 
   if (body.action === 'bracelet-guichet-bloquer') {
