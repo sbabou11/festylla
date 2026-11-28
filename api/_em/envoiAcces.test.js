@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 const { preparerAcces, executerAcces, empreinteLien, lienBenevole } = require('./envoiAcces.js')
 
-const BASE = 'https://festylla.vercel.app'
+const BASE = 'https://festishop.festylla.com'
 const ok = { ok: true, status: 200, text: '' }
 
 function io({ fiches, cles = {}, state = { actif: true }, reponse = ok }) {

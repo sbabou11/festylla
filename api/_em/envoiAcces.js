@@ -19,7 +19,8 @@ const { postEm } = require('./envoiRetour')
 const MAX_PAR_MESSAGE = 500
 // Vérification toutes les 5 minutes (comme la lecture) : chaque tour relit les fiches et les clés
 const INTERVALLE_MS = 5 * 60_000
-const BASE_DEFAUT = 'https://festylla.vercel.app'
+// 28/11/2026 : domaine public de l'appli, choisi par l'organisateur (YLLACASH_URL le remplace)
+const BASE_DEFAUT = 'https://festishop.festylla.com'
 
 const empreinteLien = (lien) => crypto.createHash('sha256').update(lien).digest('hex').slice(0, 24)
 const nouvelleCle = () => crypto.randomBytes(16).toString('hex')   // même format que publicSession.js
