@@ -28,7 +28,8 @@ function limitesBracelet(b) {
 /** Ce que ce bracelet a payé le jour donné (centimes) ; jourDe(ms|iso) → 'AAAA-MM-JJ' */
 function depenseDuJour(transactions, jour, jourDe) {
   return transactions
-    .filter((t) => t && t.type === 'debit' && !t.annule && jourDe(t.timestamp) === jour)
+    // horsPlafond : commande passée par le titulaire pour ce bracelet (« Pour qui ? »), retirée à la borne
+    .filter((t) => t && t.type === 'debit' && !t.annule && !t.horsPlafond && jourDe(t.timestamp) === jour)
     .reduce((s, t) => s + (Number(t.montant) || 0), 0)
 }
 

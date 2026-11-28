@@ -25,6 +25,8 @@
  *   { action: 'commander', ev, code }                                 code d'origine 'artiste'
  *   { action: 'commander-bracelet', ev, compte, lignes }             bracelet limité (mineur ou plafonné,
  *     28/11/2026) : le serveur vérifie alcool, 10 € par achat sans code, plafond du jour, puis débite
+ *   { action: 'retirer-bracelet', ev, bracelet, code }                commande en ligne faite pour ce bracelet :
+ *     retirée sans code, débitée au retrait, hors plafond ; alcool refusé à un mineur
  * Avantages décomptés à l'impression (consommations artist-consumptions, une par article),
  * stock, commande, transaction « artist-gift », code utilisé. Un ticket par stand de l'article.
  */
@@ -37,6 +39,7 @@ const euros = (c) => ((Number(c) || 0) / 100).toFixed(2).replace('.', ',') + ' �
 const { avantagesDe, dejaPris, restantsArtiste, repartirCommandeArtiste } = require('../_borne/artiste')
 const { lireJetonEspace, jetonEspaceValable, nouveauPassage, passageValable } = require('../_qr/espace')
 const { limitesBracelet, depenseDuJour, resteDuJour, verifierPanier } = require('../_borne/bracelet')
+const { lireBracelet } = require('../_qr/bracelet')
 
 const ID = /^[\w-]{1,128}$/
 const CODE = /^\d{6}$/
@@ -231,6 +234,85 @@ module.exports = async (req, res) => {
     // { action: 'commander-bracelet', ev, compte, lignes } : compte autorisé par /api/qr après lecture
     // du bracelet (autorisation avec « limite ») ; alcool, 10 € par achat sans code et plafond du jour
     // vérifiés dans la même transaction que le débit. L'opération garde le numéro du bracelet.
+    // ── Commande passée en ligne « pour » un bracelet (28/11/2026) : retirée avec ce bracelet, sans code ──
+    // { action: 'retirer-bracelet', ev, bracelet, code } : la commande doit être faite pour ce bracelet,
+    // sur le même compte. Débit au retrait, au prix du moment, comme le code à 6 chiffres ; hors plafond
+    // de l'enfant (c'est le titulaire qui a commandé), mais l'alcool reste refusé à un mineur.
+    if (body.action === 'retirer-bracelet') {
+      const numeroBracelet = lireBracelet(body.bracelet)
+      const code = String(body.code || '')
+      if (!numeroBracelet || !CODE.test(code)) throw new Refus(400, 'Bracelet ou commande manquant.')
+      const counterRef = evRef.collection('_counters').doc(`commandes-${parisDay.format(new Date(now))}`)
+      const numero = await db.runTransaction(async (t) => {
+        const s = await t.get(counterRef)
+        const n = s.exists ? (s.data().next || 1) : 1
+        t.set(counterRef, { date: parisDay.format(new Date(now)), next: n + 1 }, { merge: true })
+        return n
+      })
+      const r = await db.runTransaction(async (t) => {
+        const codeRef = evRef.collection('codes').doc(code)
+        const brRef = evRef.collection('bracelets').doc(numeroBracelet)
+        const [codeSnap, brSnap, carteSnap] = await Promise.all([t.get(codeRef), t.get(brRef), t.get(evRef.collection('settings').doc('carte'))])
+        const c = codeSnap.exists ? codeSnap.data() : null
+        const b = brSnap.exists ? brSnap.data() : null
+        if (!b || b.statut !== 'actif') throw new Refus(403, 'Ce bracelet ne permet plus de retirer de commande. Demandez à la billetterie.')
+        if (!c || c.origine !== 'en-ligne' || c.pourNumero !== numeroBracelet || String(c.specDocId || '') !== String(b.specDoc)) throw new Refus(404, "Cette commande n'est pas pour ce bracelet.")
+        if (c.statut === 'annule') throw new Refus(409, 'Cette commande a été annulée.')
+        if (c.statut !== 'en_attente') throw new Refus(409, 'Cette commande a déjà été retirée.')
+        const specRef = evRef.collection('spectateurs').doc(String(b.specDoc))
+        const ids = [...new Set((c.items || []).map(i => String(i.id || '')).filter(x => ID.test(x)))]
+        const [specSnap, ...menuSnaps] = await Promise.all([t.get(specRef), ...ids.map(x => t.get(evRef.collection('menu').doc(x)))])
+        if (!specSnap.exists) throw new Refus(404, 'Compte introuvable.')
+        const spec = specSnap.data()
+        if (spec.billet && spec.billet.annule) throw new Refus(403, 'Ce billet a été annulé : présentez-vous à la billetterie.')
+        const menuById = new Map(menuSnaps.filter(m => m.exists && m.data().actif !== false).map(m => [m.id, m.data()]))
+        const stands = (carteSnap.exists && carteSnap.data().stands) || []
+        // Seulement l'alcool et le stock : ni plafond ni limite par achat pour une commande du titulaire
+        const lim = limitesBracelet(b)
+        let panier
+        try { panier = verifierPanier({ lignes: c.items || [], menuById, standById: new Map(stands.map(st => [st.id, st])), limites: lim ? { ...lim, achatMax: null, plafondJour: null } : null }) }
+        catch (e) { throw new Refus(409, e.message) }
+        const avant = Number(spec.solde) || 0
+        if (avant < panier.total) throw new Refus(409, `Solde insuffisant : il manque ${euros(panier.total - avant)}. Le titulaire peut recharger sur son téléphone ou à la billetterie.`)
+
+        const ts = admin.firestore.FieldValue.serverTimestamp()
+        const inc = admin.firestore.FieldValue.increment
+        const date = parisDate.format(new Date(now)), heure = parisTime.format(new Date(now)), iso = new Date(now).toISOString()
+        const resume = panier.items.map(i => i.nom + (i.qty > 1 ? ` ×${i.qty}` : '')).join(', ')
+        const prenom = c.pourPrenom || b.prenom || ''
+        const cmdRef = evRef.collection('commandes').doc()
+        panier.items.forEach(i => t.update(evRef.collection('menu').doc(i.id), { stock: inc(-i.qty) }))
+        t.update(specRef, { solde: avant - panier.total })
+        t.set(cmdRef, {
+          numero, numeroDay: parisDay.format(new Date(now)), specId: spec.id, specNom: prenom || spec.nom || '—',
+          items: panier.items, total: panier.total, status: 'collected', paid: true, paidAt: ts, paidBy: 'Borne (commande en ligne, bracelet)',
+          createdAt: ts, createdBy: 'Borne (code)', collectedAt: ts, collectedBy: 'Ticket imprimé',
+          readyAt: null, readyBy: null, cancelledAt: null, cancelledBy: null, cancelReason: null, refunded: false,
+          date, timestamp: iso, heure, source: 'borne', code, bracelet: numeroBracelet, ...(prenom ? { pourPrenom: prenom } : {}),
+        })
+        t.set(evRef.collection('transactions').doc(), {
+          specId: spec.id, specNom: spec.nom || '—', type: 'debit',
+          label: `Commande #${numero} (code ${code}) — ${resume}${prenom ? ` (pour ${prenom})` : ''}`,
+          items: panier.items.map(({ nom, qty, prixUnit, total }) => ({ nom, qty, prixUnit, total })),
+          montant: panier.total, staff: 'Borne', soldeBefore: avant, soldeAfter: avant - panier.total,
+          code, commandeNumero: numero, bracelet: numeroBracelet, ...(prenom ? { braceletPrenom: prenom } : {}), horsPlafond: true,
+          date, timestamp: iso, heure, createdAt: ts,
+        })
+        t.update(codeRef, { statut: 'utilise', utiliseLe: ts, commandeId: cmdRef.id, commandeNumero: numero })
+        return { items: panier.items, total: panier.total, prenom }
+      })
+      await evRef.collection('audit').add({
+        action: 'COMMANDE_RETIREE_BRACELET', bracelet: numeroBracelet, montant: r.total, staff: 'Borne',
+        label: `Commande en ligne ${code} retirée à la borne avec le bracelet n° ${numeroBracelet.slice(0, 4)} ${numeroBracelet.slice(4)}${r.prenom ? ` (${r.prenom})` : ''} — ${euros(r.total)}`,
+        timestamp: new Date(now).toISOString(), createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {})
+      res.status(200).json({
+        numero, code, total: r.total, pour: r.prenom || null,
+        items: r.items.map(({ id, nom, qty, prixUnit, standId, standNumero }) => ({ id, nom, qty, prix: prixUnit, standId, standNumero })),
+      })
+      return
+    }
+
     if (body.action === 'commander-bracelet') {
       const compte = String(body.compte || '')
       if (!ID.test(compte)) throw new Refus(400, 'Compte manquant.')

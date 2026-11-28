@@ -43,6 +43,8 @@ describe('bracelet limité à la borne (28/11/2026)', () => {
       { type: 'recharge', montant: 1000, timestamp: '2027-05-15T12:00:00Z' },
     ]
     expect(depenseDuJour(txs, '2027-05-15', jourDe)).toBe(400)
+    // Commande du titulaire retirée avec le bracelet (« Pour qui ? ») : hors plafond
+    expect(depenseDuJour([...txs, { type: 'debit', montant: 900, horsPlafond: true, timestamp: '2027-05-15T13:00:00Z' }], '2027-05-15', jourDe)).toBe(400)
     expect(resteDuJour(lea, 400)).toBe(1600)
     expect(resteDuJour(lea, 2500)).toBe(0)
   })

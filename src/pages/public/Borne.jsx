@@ -60,6 +60,8 @@ const STEP = {
   CODE:           'code',
   // Bracelet de secours (écran 3, 24/11/2026) : bracelet lu, code à 4 chiffres
   BRACELET:       'bracelet',
+  // Commande passée en ligne pour ce bracelet (« Pour qui ? », 28/11/2026) : retrait sans code
+  RETRAIT:        'retrait',
 }
 
 // ─── Helpers couleur ────────────────────────────────────────────────────
@@ -262,11 +264,41 @@ export default function Borne() {
   // code ouvre le compte 10 minutes, comme le QR de l'espace. Le code ne se choisit jamais ici.
   // bracelet : { numero, etat: 'verif' | 'code' | 'libre' | 'bloque', motif, err }
   const [bracelet, setBracelet] = useState(null)
+  // retrait : { numero, prenom, commandes, compte, bracelet } — commandes en ligne faites pour ce bracelet
+  const [retrait, setRetrait] = useState(null)
+  const retirer = useCallback(async (code) => {
+    const ev = new URLSearchParams(window.location.search).get('ev')
+    const r = await apiFetch('/api/borne', { body: { action: 'retirer-bracelet', ev, bracelet: retrait?.numero, code } })
+    setLastResa({ numero: r.numero, code: r.code, items: r.items, total: r.total, pour: r.pour || null })
+    setRetrait(null)
+    setStep(STEP.TICKET)
+  }, [retrait?.numero])
+  // Après le retrait (ou sans retirer) : commander autre chose avec ce bracelet
+  const apresRetrait = useCallback(async () => {
+    const rt = retrait
+    if (!rt) return
+    if (rt.compte) {
+      const ev = new URLSearchParams(window.location.search).get('ev')
+      const snap = await getDoc(doc(db, 'events', ev, 'spectateurs', rt.compte.docId))
+      if (snap.exists()) {
+        setSpec({ ...snap.data(), _docId: snap.id, _bracelet: rt.bracelet && rt.bracelet.achatMax !== undefined ? rt.bracelet : null })
+        setRetrait(null); setBracelet(null); setStep(STEP.MENU); return
+      }
+    }
+    setRetrait(null); setStep(STEP.BRACELET)
+  }, [retrait])
   const ouvrirBracelet = useCallback(async (numero) => {
     setError(''); setStep(STEP.BRACELET); setBracelet({ numero, etat: 'verif' }); setLoading(true)
     try {
       const ev = new URLSearchParams(window.location.search).get('ev')
       const r = await apiFetch('/api/qr', { body: { action: 'identifier', ev, bracelet: numero } })
+      if ((r.commandes || []).length) {
+        // Commandes faites pour ce bracelet : retrait sans code ; ensuite, commander comme d'habitude
+        setRetrait({ numero, prenom: r.bracelet?.prenom || '', commandes: r.commandes, compte: r.compte || null, bracelet: r.bracelet || null })
+        setBracelet({ numero, etat: 'code', prenom: r.bracelet?.prenom || '' })
+        setStep(STEP.RETRAIT)
+        return
+      }
       if (r.compte) {
         // Bracelet de mineur sans code (28/11/2026) : ouvert tout de suite, limité par son plafond
         const snap = await getDoc(doc(db, 'events', ev, 'spectateurs', r.compte.docId))
@@ -436,6 +468,7 @@ export default function Borne() {
     setLastResa(null)
     setError('')
     setBracelet(null)
+    setRetrait(null)
     setStep(STEP.ACCUEIL)
   }, [])
 
@@ -476,6 +509,8 @@ export default function Borne() {
           onTimeout={resetSession}
           onOccupe={setValidationEnfant}
           onConfirmed={(resa) => { setLastResa(resa); setStep(STEP.TICKET) }}/>
+      ) : step === STEP.RETRAIT && retrait ? (
+        <RetraitBracelet retrait={retrait} onRetirer={retirer} onAutre={apresRetrait} onCancel={resetSession}/>
       ) : step === STEP.BRACELET && bracelet ? (
         <BraceletCode lu={bracelet} loading={loading} onCode={validerBracelet} onCancel={resetSession}/>
       ) : step === STEP.IDENTIFICATION ? (
@@ -892,6 +927,65 @@ function Identification({ onValidated, onCancel, loading, error, secours = false
 }
 
 // ════════════════════════════════════════════════════════════════════
+// Commande passée en ligne pour ce bracelet (« Pour qui ? », 28/11/2026) : retrait sans code,
+// solde du titulaire débité au retrait. Ensuite : commander autre chose, ou terminer.
+function RetraitBracelet({ retrait, onRetirer, onAutre, onCancel }) {
+  const [busy, setBusy] = useState('')
+  const [err, setErr] = useState('')
+  const [reste, setReste] = useState(BRACELET_INACTIF_S)
+  const touche = useRef(Date.now())
+  useEffect(() => {
+    const t = setInterval(() => {
+      const r = BRACELET_INACTIF_S - Math.floor((Date.now() - touche.current) / 1000)
+      setReste(Math.max(0, r))
+      if (r <= 0 && !busy) onCancel()
+    }, 1000)
+    return () => clearInterval(t)
+  }, [busy, onCancel])
+  const imprimer = async (code) => {
+    touche.current = Date.now(); setBusy(code); setErr('')
+    try { await onRetirer(code) }
+    catch (e) { setErr(e.message || 'Impression impossible. Réessayez.'); setBusy('') }
+  }
+  const euros = (c) => `${((Number(c) || 0) / 100).toFixed(2).replace('.', ',')} €`
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 'clamp(12px, 2vh, 24px)', background: COLORS.bg, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexShrink: 0 }}>
+        <button onClick={onCancel} disabled={!!busy} style={{ background: 'transparent', border: 'none', color: COLORS.muted, fontSize: 14, padding: '8px 12px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+          <ArrowLeft size={16}/> Terminer
+        </button>
+        <div style={{ fontSize: 12, color: reste <= 10 ? COLORS.red : COLORS.muted, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Clock size={13}/> {reste}s
+        </div>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'grid', alignContent: 'start', justifyItems: 'center', gap: 14 }}>
+        <div style={{ fontSize: 'clamp(24px, 4vh, 32px)', fontWeight: 800, color: COLORS.marine, textAlign: 'center' }}>
+          Bonjour{retrait.prenom ? ` ${retrait.prenom}` : ''}
+        </div>
+        {retrait.commandes.map(c => (
+          <div key={c.code} style={{ width: '100%', maxWidth: 620, background: '#fff', borderRadius: 20, border: `0.5px solid ${COLORS.border}`, padding: '18px 20px', display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: COLORS.marine }}>Commande pour {retrait.prenom ? 'toi' : 'ce bracelet'}</div>
+            <div style={{ fontSize: 15, color: COLORS.muted }}>
+              {(c.items || []).map(i => `${i.qty > 1 ? `${i.qty} × ` : ''}${i.nom}`).join(' · ')} · environ {euros(c.total)}
+            </div>
+            <button onClick={() => imprimer(c.code)} disabled={!!busy}
+              style={{ background: COLORS.teal, color: '#fff', border: 'none', borderRadius: 18, minHeight: 60, fontSize: 19, fontWeight: 800, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: busy && busy !== c.code ? 0.5 : 1 }}>
+              {busy === c.code ? 'Impression…' : 'Imprimer mes tickets'}
+            </button>
+          </div>
+        ))}
+        {err && <div role="alert" style={{ maxWidth: 620, width: '100%', background: '#FBE1DF', color: '#8E211C', borderRadius: 14, padding: '12px 14px', fontSize: 15, fontWeight: 600 }}>{err}</div>}
+        <div style={{ fontSize: 14, color: COLORS.muted, maxWidth: 620, textAlign: 'center', lineHeight: 1.5 }}>
+          Aucun code demandé : la commande a été passée par le titulaire du compte, son solde est débité maintenant, au prix du jour.
+        </div>
+        <button onClick={onAutre} disabled={!!busy} style={{ background: 'transparent', color: COLORS.marine, border: `1px solid ${COLORS.border}`, borderRadius: 18, minHeight: 54, padding: '0 28px', fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          Commander autre chose
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Limites d'un bracelet de mineur ou plafonné (28/11/2026), sous le solde dans l'en-tête du menu
 function LimitesBracelet({ b }) {
   const parts = []
@@ -2022,7 +2116,7 @@ function Panier({ spec, cart, setCart, onTimeout, onBack, onTerminate, onConfirm
         const ev = new URLSearchParams(window.location.search).get('ev')
         const r = await apiFetch('/api/borne', { body: { action: 'commander-bracelet', ev, compte: spec._docId, lignes: cartItems.map(i => ({ id: i.id, qty: i.qty })) } })
         setCart({})
-        onConfirmed({ id: null, numero: r.numero, code: `BRC-${r.numero}`, items: r.items, total: r.total })
+        onConfirmed({ id: null, numero: r.numero, code: `BRC-${r.numero}`, items: r.items, total: r.total, pour: brl.prenom || null })
         return
       }
       // createCommande attend des items avec { id, nom, prixUnit, qty }
@@ -2462,7 +2556,10 @@ function Ticket({ resa, onDone, logoUrl, stands = [], festival = '' }) {
       ? { mention: `ARTISTE · ${resa.artiste}`, offert: 'Avantages artiste' }
       : resa?.benevoleMixte
         ? { mention: `BENEVOLE · ${String(resa.nom || '').split(/\s+/)[0]}`, paiement: 'Avantages bénévole + solde' }
-        : { paiement: resa?.origine === 'billetterie' ? 'Payé à la billetterie' : 'Payé avec le solde' }),
+        : resa?.pour
+          // Bracelet (28/11/2026) : le stand sait à qui remettre la commande
+          ? { mention: `POUR : ${String(resa.pour).toUpperCase()}`, paiement: 'Payé avec le solde' }
+          : { paiement: resa?.origine === 'billetterie' ? 'Payé à la billetterie' : 'Payé avec le solde' }),
   }), [])   // eslint-disable-line react-hooks/exhaustive-deps
   const { phase, progres, reessayer } = useImpressionTickets(papier)
   const secondsLeft = useRetourAuto(phase, onDone)
@@ -2543,6 +2640,11 @@ function Ticket({ resa, onDone, logoUrl, stands = [], festival = '' }) {
             {resa?.artiste && (
               <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 800, color: COLORS.marine, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Artiste · {resa.artiste}
+              </div>
+            )}
+            {resa?.pour && (
+              <div style={{ textAlign: 'center', fontSize: 20, fontWeight: 800, color: COLORS.marine, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Pour : {resa.pour}
               </div>
             )}
             {t.stand ? (

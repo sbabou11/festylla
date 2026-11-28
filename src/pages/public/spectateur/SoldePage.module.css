@@ -18,6 +18,7 @@
 .wrap:not(:global(.nv-under-tabbar)) { padding-bottom: 32px; }
 /* Le panier flottant prend de la place au-dessus de la barre d'onglets */
 .wrap.avecPanier { padding-bottom: calc(190px + env(safe-area-inset-bottom, 0px)); }
+.wrap.avecPanier.avecPour { padding-bottom: calc(330px + env(safe-area-inset-bottom, 0px)); }
 .screen { min-width: 0; }
 .stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }  /* une ligne trop longue ne doit pas élargir la colonne */
 .footer { display: grid; justify-items: center; gap: 6px; text-align: center; font-size: 12px; color: var(--nv-mu); padding-top: 28px; }
@@ -373,3 +374,8 @@
 .plSheet .plSheetBtns .plFavOn svg { fill: currentColor; }
 /* Titre d'onglet dans la barre du haut : il rétrécit sur petit écran, les boutons ronds gardent 44 px */
 .topTitle:global(.nv-title) { font-size: clamp(24px, 7.5vw, 32px); }
+
+/* « Pour qui ? » au-dessus du bouton de commande (28/11/2026) */
+.pourCard { display: grid; gap: 8px; box-shadow: var(--nv-tab-shadow); }
+.pourLab { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+.pourSelect { height: 46px; border-radius: 12px; border: 1.5px solid var(--border2); background: var(--surface, var(--bg)); color: var(--text); padding: 0 12px; font: inherit; font-size: 16px; }

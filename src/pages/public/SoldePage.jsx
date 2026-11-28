@@ -44,7 +44,7 @@ import { effetSolde, signeDe, destinationRemboursement, totauxCompte } from '../
 import { montantDon, limiteRemboursement, delaiDepasse, DON_MIN } from '../../utils/dons'
 import PlanningSpec from './spectateur/PlanningSpec'
 import SoldeChart from './spectateur/SoldeChart'
-import MesBracelets, { useBracelets, CarteBraceletsAccueil } from './spectateur/MesBracelets'
+import MesBracelets, { useBracelets, CarteBraceletsAccueil, nomBracelet } from './spectateur/MesBracelets'
 import QuoiDeNeuf from '../../components/QuoiDeNeuf'
 import sp from './spectateur/SoldePage.module.css'
 import { APP_FULL_LABEL } from '../../utils/buildInfo'
@@ -401,8 +401,17 @@ export default function SoldePage({ demo = null }) {
   const closeQr = useCallback(() => setQrOpen(false), [])
 
   const changeQty = (id, d) => setQtys(q => ({ ...q, [id]: Math.max(0,(q[id]||0)+d) }))
+  // Plusieurs bracelets par compte (28/11/2026) : partagés entre la carte de l'accueil et « Mes bracelets »
+  const braceletsEtat = useBracelets(eventId, !!demo, spec?.id || '')
   const cartItems = Object.entries(qtys).filter(([,q])=>q>0).map(([id,qty])=>({ ...menu.find(x=>x.id===id), qty }))
   const cartTotal = cartItems.reduce((a,i) => a+(i.prix||0)*i.qty, 0)
+  // « Pour qui ? » (28/11/2026) : la commande se retire à la borne avec le bracelet choisi, sans code ;
+  // un panier avec de l'alcool n'est jamais proposé à un bracelet « mineur »
+  const panierAlcool = cartItems.some(i => i.alcool === true)
+  const pourOptions = (braceletsEtat.bracelets || []).filter(b => b.statut === 'actif' && !(panierAlcool && b.mineur))
+  const [pourChoix, setPourChoix] = useState('')
+  const pourNumero = pourOptions.some(b => b.numero === pourChoix) ? pourChoix : (pourOptions[0]?.numero || '')
+  const pourBracelet = pourOptions.find(b => b.numero === pourNumero) || null
 
   const org = organiserCarte({ menu, categories, rayons: carte.rayons, stands: carte.stands })
   const rayon = org.rayons.find(r => r.id === rayonId) || org.rayons[0] || null
@@ -416,14 +425,15 @@ export default function SoldePage({ demo = null }) {
     if ((spec.solde || 0) < cartTotal) { setResaErr(`Solde insuffisant : il vous manque ${fmt(cartTotal - (spec.solde || 0))} (solde ${fmt(spec.solde || 0)}).`); return }
     if (demo) {
       const code = String(Math.floor(Math.random() * 1e6)).padStart(6, '0')
-      setCodes(c => [...c, { code, origine: 'en-ligne', statut: 'en_attente', items: cartItems.map(i => ({ nom: i.nom, qty: i.qty, prixUnit: i.prix })), total: cartTotal, timestamp: new Date().toISOString() }])
-      setResaDone({ code, total: cartTotal }); setQtys({}); return
+      setCodes(c => [...c, { code, origine: 'en-ligne', statut: 'en_attente', items: cartItems.map(i => ({ nom: i.nom, qty: i.qty, prixUnit: i.prix })), total: cartTotal, timestamp: new Date().toISOString(), ...(pourBracelet ? { pourNumero: pourBracelet.numero, pourPrenom: pourBracelet.prenom || '' } : {}) }])
+      setResaDone({ code, total: cartTotal, pourPrenom: pourBracelet?.prenom || '' }); setQtys({}); return
     }
     setResaLoading(true); setResaErr('')
     try {
       const r = await creerCodeEnLigne({
         specId: spec.id, specNom: spec.nom, specDocId,
         items: cartItems.map(i => ({ id: i.id, nom: i.nom, qty: i.qty, prixUnit: i.prix || 0, standId: i.standId })),
+        pour: pourBracelet ? { numero: pourBracelet.numero, prenom: pourBracelet.prenom || '' } : null,
       }, eventId)
       setResaDone(r); setQtys({})
     } catch (e) { setResaErr(friendlyError(e, "La commande n'a pas été enregistrée.")) }
@@ -623,8 +633,6 @@ export default function SoldePage({ demo = null }) {
   }, [qrOpen])
 
   // 24/11/2026 : l'onglet où l'on est déjà ramène en haut ; en revenant sur un écran, on retrouve sa place
-  // Plusieurs bracelets par compte (28/11/2026) : partagés entre la carte de l'accueil et « Mes bracelets »
-  const braceletsEtat = useBracelets(eventId, !!demo, spec?.id || '')
   const go = (t) => {
     if (t === tab) { remonter(); return }
     garderPlace('sp-' + tab); setTab(t); setDonFait(null)
@@ -819,7 +827,7 @@ export default function SoldePage({ demo = null }) {
 
   return (
     <div className={clsx('nv', sp.page, fondGrad ? 'nv-grad' : 'nv-list')} style={{ '--brand': themeColor }}>
-      <main className={clsx(sp.wrap, spec && 'nv-under-tabbar', spec && tab === 'reserver' && cartItems.length > 0 && !resaDone && sp.avecPanier)}>
+      <main className={clsx(sp.wrap, spec && 'nv-under-tabbar', spec && tab === 'reserver' && cartItems.length > 0 && !resaDone && sp.avecPanier, spec && tab === 'reserver' && cartItems.length > 0 && !resaDone && pourOptions.length > 1 && sp.avecPour)}>
         {/* ── Identification ── */}
         {!spec && (<>
           <header className={sp.top}>
@@ -1240,7 +1248,9 @@ export default function SoldePage({ demo = null }) {
                 <b className={clsx('nv-big', sp.codeBig)} aria-label={`Code ${String(resaDone.code).split('').join(' ')}`}>
                   {String(resaDone.code).slice(0, 3)} {String(resaDone.code).slice(3)}
                 </b>
-                <p>Tapez ce code sur la borne, touche « J'ai un code ». Elle imprime vos tickets.</p>
+                <p>{resaDone.pourPrenom
+                  ? `Pour ${resaDone.pourPrenom} : à la borne, il suffit de présenter son bracelet, sans code. Ce code à 6 chiffres marche aussi (touche « J'ai un code »).`
+                  : "Tapez ce code sur la borne, touche « J'ai un code ». Elle imprime vos tickets."}</p>
                 <p className="nv-mu">
                   {fmt(resaDone.total)} seront débités de votre solde à la borne, au prix affiché ce jour-là.
                   Annulable sans frais avant, depuis « Mes résas ».
@@ -1443,6 +1453,28 @@ export default function SoldePage({ demo = null }) {
                 <button type="button" className="nv-btn nv-press" onClick={rechargerLeManque}><CreditCard size={18} aria-hidden="true" /> Recharger mon solde</button>
                 <span className="nv-mu">Votre panier est conservé. Vous pouvez aussi recharger à la billetterie.</span>
               </>)}
+            </div>
+          )}
+          {pourOptions.length > 1 && (
+            <div className={clsx('nv-card nv-pad', sp.pourCard)}>
+              <span className={sp.pourLab} id="pour-qui">Pour qui ?</span>
+              {pourOptions.length > 3 ? (
+                <select className={sp.pourSelect} aria-labelledby="pour-qui" value={pourNumero} onChange={e => setPourChoix(e.target.value)}>
+                  {pourOptions.map(b => <option key={b.numero} value={b.numero}>{nomBracelet(b)}</option>)}
+                </select>
+              ) : (
+                <div className="nv-pills" role="group" aria-labelledby="pour-qui">
+                  {pourOptions.map(b => (
+                    <button key={b.numero} type="button" className="nv-pill nv-press" aria-pressed={b.numero === pourNumero} onClick={() => setPourChoix(b.numero)}>{nomBracelet(b)}</button>
+                  ))}
+                </div>
+              )}
+              <span className="nv-mu">{pourBracelet && /^moi$/i.test(pourBracelet.prenom || '')
+                ? 'Vous pourrez la retirer à la borne avec votre bracelet, sans code.'
+                : `${pourBracelet?.prenom || 'Ce bracelet'} pourra la retirer à la borne avec son bracelet, sans code.${pourBracelet?.mineur ? ' Elle ne compte pas dans son plafond.' : ''}`}</span>
+              {panierAlcool && (braceletsEtat.bracelets || []).some(b => b.statut === 'actif' && b.mineur) && (
+                <span className="nv-mu">Le panier contient de l'alcool : les bracelets « mineur » ne sont pas proposés.</span>
+              )}
             </div>
           )}
           <button type="button" className={clsx('nv-btn nv-press', sp.cartBtn)} onClick={doResa} disabled={resaLoading} aria-busy={resaLoading}

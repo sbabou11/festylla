@@ -2462,7 +2462,9 @@ export const creerCommandeSurPlace = async ({ items, moyen, staff, compte = null
  * Le solde sera débité à la borne, au prix de la carte du moment (utiliserCode).
  * Un code déjà pris refuse l'écriture (règles) : on en tire un autre.
  */
-export const creerCodeEnLigne = async ({ specId, specNom, specDocId, items }, evId) => {
+// pour (28/11/2026) : { numero, prenom } du bracelet choisi à « Pour qui ? » ; la commande se retire alors
+// à la borne avec ce bracelet, sans code (api/borne, retirer-bracelet)
+export const creerCodeEnLigne = async ({ specId, specNom, specDocId, items, pour = null }, evId) => {
   if (!evId) throw new Error('Aucun événement courant')
   if (!Array.isArray(items) || items.length === 0) throw new Error('Aucun article dans la commande')
   const lignes = items.map(it => ({
@@ -2480,8 +2482,9 @@ export const creerCodeEnLigne = async ({ specId, specNom, specDocId, items }, ev
         items: lignes, total, statut: 'en_attente',
         createdAt: serverTimestamp(), timestamp: new Date().toISOString(),
         utiliseLe: null, commandeId: null, commandeNumero: null,
+        ...(pour && pour.numero ? { pourNumero: String(pour.numero), pourPrenom: String(pour.prenom || '').slice(0, 30) } : {}),
       })
-      return { code, total }
+      return { code, total, pourPrenom: pour?.prenom || '' }
     } catch (e) {
       last = e
       if (e?.code !== 'permission-denied') throw e

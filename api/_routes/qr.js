@@ -456,6 +456,7 @@ module.exports = async (req, res) => {
 
     let snap = null
     let braceletLu = null   // bracelet présenté (28/11/2026) : limites éventuelles pour l'autorisation
+    let commandesBracelet = null
     // Écran 13 (24/11/2026) : QR de l'espace d'un bénévole → son porte-monnaie (créé s'il n'existe pas)
     const luB = body.qr != null && !lireJeton(body.qr) ? lireJetonEspace(String(body.qr).slice(0, 400)) : null
     if (luB && luB.kind === 'benevole') {
@@ -503,8 +504,13 @@ module.exports = async (req, res) => {
       const b = d.exists ? d.data() : null
       if (!b || b.statut === 'remplace') throw new Refus(404, "Ce bracelet n'est relié à aucun compte. Reliez-le dans votre espace YllaCash ou à la billetterie.", { etat: 'libre', numero })
       if (b.statut === 'bloque') throw new Refus(403, b.bloqueMotif === 'perdu' ? 'Ce bracelet a été déclaré perdu : il ne permet plus de payer.' : '3 codes incorrects : le bracelet est bloqué pour protéger votre solde.', { etat: 'bloque', motif: b.bloqueMotif || null, numero })
+      // Commandes passées en ligne pour ce bracelet (« Pour qui ? », 28/11/2026) : retirées sans code
+      const cmdSnap = await evRef.collection('codes').where('pourNumero', '==', numero).get()
+      commandesBracelet = cmdSnap.docs.map(d => d.data())
+        .filter(c => c.origine === 'en-ligne' && c.statut === 'en_attente' && String(c.specDocId || '') === String(b.specDoc))
+        .map(c => ({ code: c.code, items: (c.items || []).map(i => ({ id: i.id, nom: i.nom, qty: i.qty, prixUnit: i.prixUnit })), total: c.total || 0, timestamp: c.timestamp || null }))
       // Bracelet de mineur sans code (28/11/2026) : identifié tout de suite, limité par son plafond
-      if (b.codeHash && body.code == null) { res.status(200).json({ bracelet: { numero, statut: 'actif', avecCode: true, prenom: b.prenom || '' } }); return }
+      if (b.codeHash && body.code == null) { res.status(200).json({ bracelet: { numero, statut: 'actif', avecCode: true, prenom: b.prenom || '', mineur: !!b.mineur }, commandes: commandesBracelet }); return }
       braceletLu = b
       if (b.codeHash) {
       const juste = /^\d{4}$/.test(String(body.code)) && codeJuste(b, body.code)
@@ -560,6 +566,7 @@ module.exports = async (req, res) => {
     res.status(200).json({
       compte: { id: spec.id, docId: snap.id, nom: spec.nom || '', solde: Number(spec.solde) || 0, ...(spec.porteMonnaieBenevole ? { benevole: true } : {}) },
       ...(bracelet ? { bracelet } : {}),
+      ...(commandesBracelet ? { commandes: commandesBracelet } : {}),
     })
   } catch (e) {
     if (e instanceof Refus) { res.status(e.status).json({ error: e.message, ...(e.extra || {}) }); return }
