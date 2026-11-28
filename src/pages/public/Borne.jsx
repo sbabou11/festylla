@@ -35,6 +35,7 @@ import { db } from '../../firebase/config'
 import { collection, doc, getDoc, onSnapshot } from 'firebase/firestore'
 import { watchCarte } from '../../menu/carte'
 import { organiserCarte, ticketsParStand } from '../../menu/organiser'
+import { etapeDeArticle, prochaineSuggestion, categorieSuggeree } from '../../menu/etapes'
 import { getIcon } from '../../menu/icons'
 import { parseBenevoleQr, parseArtisteQr } from '../../utils/benevoleQr'
 import { parseSecours } from '../../utils/qrTournant'
@@ -976,7 +977,7 @@ function RetraitBracelet({ retrait, onRetirer, onAutre, onCancel }) {
         ))}
         {err && <div role="alert" style={{ maxWidth: 620, width: '100%', background: '#FBE1DF', color: '#8E211C', borderRadius: 14, padding: '12px 14px', fontSize: 15, fontWeight: 600 }}>{err}</div>}
         <div style={{ fontSize: 14, color: COLORS.muted, maxWidth: 620, textAlign: 'center', lineHeight: 1.5 }}>
-          Aucun code demandé : la commande a été passée par le titulaire du compte, son solde est débité maintenant, au prix du jour.
+          Aucun code demandé : la commande a été passée par le titulaire du compte. Son solde est débité quand le ticket sort, au prix du jour. Présentez ensuite le ticket au stand.
         </div>
         <button onClick={onAutre} disabled={!!busy} style={{ background: 'transparent', color: COLORS.marine, border: `1px solid ${COLORS.border}`, borderRadius: 18, minHeight: 54, padding: '0 28px', fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
           Commander autre chose
@@ -1528,7 +1529,25 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
   const rayon = org.rayons.find(r => r.id === activeRayon) || org.rayons[0] || null
   const cat = rayon ? (rayon.cats.find(c => c.key === activeCat) || rayon.cats[0]) : null
   const showRayons = org.rayons.length > 1 || !!org.rayons[0]?.nom
-  const chooseRayon = (id) => { setActiveRayon(id); setActiveCat(null) }
+  const chooseRayon = (id) => { setActiveRayon(id); setActiveCat(null); setSugEtape(null) }
+  // Commande par étapes (maquette validée le 28/11/2026) : rayons = étapes ; après un ajout, suggestion
+  // de la prochaine étape encore vide, jamais vers l'alcool (menu/etapes.js)
+  const etapes = org.rayons
+  const avecEtapes = etapes.length > 1
+  const etapeIdx = Math.max(0, etapes.findIndex(r => r.id === rayon?.id))
+  const [sugEtape, setSugEtape] = useState(null)
+  const [refusEtapes, setRefusEtapes] = useState({})
+  // La suggestion s'efface d'elle-même après 6 secondes : la ligne d'étape revient
+  useEffect(() => {
+    if (sugEtape == null) return
+    const t = setTimeout(() => setSugEtape(null), 6000)
+    return () => clearTimeout(t)
+  }, [sugEtape])
+  const allerEtape = (i, suggestion = false) => {
+    const r = etapes[i]
+    if (!r) return
+    setActiveRayon(r.id); setActiveCat(suggestion ? categorieSuggeree(r) : null); setSugEtape(null)
+  }
 
   // ─── Helpers panier ─────────────────────────────────────────────────
   const updateQty = (itemId, delta) => {
@@ -1542,6 +1561,15 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
       else next[itemId] = newQty
       return next
     })
+  }
+
+  // Ajout d'un article (carte ou fiche) : puis suggestion de l'étape suivante
+  const ajouter = (itemId) => {
+    const m = menuVu.find(x => x.id === itemId)
+    const refuse = (benev && libres(m?.typeConsommation) <= 0) || (spec?._bracelet?.mineur && m?.alcool === true)
+    updateQty(itemId, +1)
+    if (refuse || !avecEtapes) return
+    setSugEtape(prochaineSuggestion(etapes, { courante: Math.max(0, etapeDeArticle(etapes, itemId)), qtys: { ...cart, [itemId]: (cart[itemId] || 0) + 1 }, refus: refusEtapes }))
   }
 
   // Total du panier en centimes
@@ -1654,8 +1682,8 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
       )}
 
       {/* ─── Colonne catégories + grille des articles ─────────────────── */}
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: rayon && rayon.cats.length > 1 ? '176px minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
-        {rayon && rayon.cats.length > 1 && (
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: rayon && rayon.cats.length > 1 && rayon.cats.length <= 3 ? '176px minmax(0, 1fr)' : 'minmax(0, 1fr)' }}>
+        {rayon && rayon.cats.length > 1 && rayon.cats.length <= 3 && (
           <nav aria-label="Catégories" style={{
             overflowY: 'auto', background: '#fff',
             borderRight: `0.5px solid ${COLORS.border}`,
@@ -1690,6 +1718,16 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
         )}
 
         <div style={{ overflowY: 'auto', padding: '16px 24px' }}>
+          {/* Au-delà de 3 catégories : liste déroulante (règle du 28/11/2026) */}
+          {rayon && rayon.cats.length > 3 && (
+            <label style={{ display: 'grid', gap: 6, marginBottom: 14, maxWidth: 420 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Catégorie</span>
+              <select value={cat?.key ?? ''} onChange={e => setActiveCat(e.target.value)}
+                style={{ height: 54, borderRadius: 16, border: `1.5px solid ${COLORS.border}`, background: '#fff', color: COLORS.marine, padding: '0 16px', fontSize: 18, fontWeight: 700, fontFamily: 'inherit' }}>
+                {rayon.cats.map(c => <option key={c.key} value={c.key}>{c.nom}</option>)}
+              </select>
+            </label>
+          )}
           {!cat ? (
             <div style={{ textAlign: 'center', padding: 60, color: COLORS.muted }}>
               {menu.length === 0 ? 'Chargement du menu…' : 'Aucun article disponible pour le moment.'}
@@ -1710,7 +1748,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
                     benevole={!!benev}
                     interdit={!!spec?._bracelet?.mineur && item.alcool === true}
                     qty={cart[item.id] || 0}
-                    onAdd={() => updateQty(item.id, +1)}
+                    onAdd={() => ajouter(item.id)}
                     onRemove={() => updateQty(item.id, -1)}
                     onShowInfo={() => setSelectedItem(item)}/>
                 ))}
@@ -1720,8 +1758,35 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
         </div>
       </div>
 
-      {/* ─── Barre panier en bas (visible quand panier non vide) ──────── */}
-      {cartCount > 0 && (
+      {/* ─── Étapes (rayons), au-dessus du panier ; la suggestion prend la place de cette ligne
+             (version compacte validée le 28/11/2026 ; rien n'est ajouté tout seul) ─────────── */}
+      {avecEtapes && (sugEtape != null && etapes[sugEtape] ? (
+        <div role="status" style={{ background: COLORS.marine, color: '#fff', padding: '12px 24px 0', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <b style={{ flex: 1, fontSize: 17, background: '#22343F', borderRadius: 14, padding: '12px 16px' }}>✓ Ajouté. {etapes[sugEtape].nom ? `Et avec ça, côté ${etapes[sugEtape].nom.toLowerCase()} ?` : 'Autre chose avec ça ?'}</b>
+          <button onClick={() => allerEtape(sugEtape, true)} style={{ border: 'none', borderRadius: 14, background: '#2CC4C0', color: '#03263A', padding: '12px 20px', fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            Voir {etapes[sugEtape].nom ? `les ${etapes[sugEtape].nom.toLowerCase()}` : 'la suite'}
+          </button>
+          <button onClick={() => { setRefusEtapes(r => ({ ...r, [sugEtape]: true })); setSugEtape(null) }} style={{ border: 'none', borderRadius: 14, background: 'rgba(255,255,255,.14)', color: '#fff', padding: '12px 18px', fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            Pas intéressé
+          </button>
+        </div>
+      ) : (
+        <div style={{ background: COLORS.marine, color: '#fff', padding: '12px 24px 0', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <b style={{ fontSize: 16, whiteSpace: 'nowrap' }}>{etapes[etapeIdx]?.nom || 'Autres'}</b>
+          <span role="group" aria-label="Étapes" style={{ flex: 1, display: 'flex', gap: 6 }}>
+            {etapes.map((r, i) => {
+              const fait = i !== etapeIdx && (r.cats || []).some(c => (c.items || []).some(m => (cart[m.id] || 0) > 0))
+              return <button key={r.id || 'autres'} onClick={() => allerEtape(i)} aria-label={`Étape ${r.nom || 'Autres'}`} aria-current={i === etapeIdx ? 'step' : undefined}
+                style={{ flex: 1, height: 8, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: i === etapeIdx ? '#2CC4C0' : fait ? '#7FC9C1' : 'rgba(255,255,255,.2)' }} />
+            })}
+          </span>
+          <button onClick={() => allerEtape((etapeIdx + 1) % etapes.length)} style={{ border: '1.5px solid rgba(255,255,255,.35)', background: 'transparent', color: '#fff', borderRadius: 14, padding: '10px 16px', fontSize: 16, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            {etapes[(etapeIdx + 1) % etapes.length]?.nom || 'Autres'} →
+          </button>
+        </div>
+      ))}
+      {/* ─── Barre panier en bas (visible quand panier non vide, ou avec les étapes) ──────── */}
+      {(cartCount > 0 || avecEtapes) && (
         <div style={{
           background: COLORS.marine, color: '#fff',
           padding: '16px 24px',
@@ -1743,12 +1808,12 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
           <button onClick={benev
               ? () => onBenevoleCommande(Object.entries(cart).map(([id, qty]) => ({ id, qty })))
               : onGoToCart}
-            disabled={benevBusy}
+            disabled={benevBusy || cartCount === 0}
             style={{
               background: COLORS.coral, color: '#fff',
               border: 'none', borderRadius: 14,
               padding: '14px 28px', fontSize: 16, fontWeight: 700,
-              cursor: benevBusy ? 'wait' : 'pointer', fontFamily: 'inherit', opacity: benevBusy ? .7 : 1,
+              cursor: benevBusy ? 'wait' : cartCount === 0 ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: benevBusy ? .7 : cartCount === 0 ? .45 : 1,
             }}>
             {benev ? (benevBusy ? 'Impression…' : 'Imprimer mon ticket →') : 'Ma commande →'}
           </button>
@@ -1765,7 +1830,7 @@ function Menu({ spec, cart, setCart, onTimeout, onGoToCart, onTerminate, carte, 
         <ArticleInfoModal
           item={selectedItem}
           qty={cart[selectedItem.id] || 0}
-          onAdd={() => updateQty(selectedItem.id, +1)}
+          onAdd={() => ajouter(selectedItem.id)}
           onClose={() => setSelectedItem(null)}
         />
       )}

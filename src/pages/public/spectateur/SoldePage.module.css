@@ -381,3 +381,28 @@
 .pourSelect { height: 46px; border-radius: 12px; border: 1.5px solid var(--border2); background: var(--surface, var(--bg)); color: var(--text); padding: 0 12px; font: inherit; font-size: 16px; }
 /* Filtre par bracelet de l'historique (28/11/2026) */
 .filtreBr { display: grid; gap: 6px; }
+
+/* Commande par étapes (maquette validée le 28/11/2026) */
+.wrap.avecEtapes { padding-bottom: calc(160px + env(safe-area-inset-bottom, 0px)); }
+.wrap.avecEtapes.avecPanier { padding-bottom: calc(230px + env(safe-area-inset-bottom, 0px)); }
+.wrap.avecEtapes.avecPanier.avecPour { padding-bottom: calc(390px + env(safe-area-inset-bottom, 0px)); }
+.etapeCarte { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 18px; background: var(--surface, #fff); color: var(--text); box-shadow: var(--nv-tab-shadow); font-size: 14px; }
+.etapeCarte > b { white-space: nowrap; }
+.etapeTraits { flex: 1; display: flex; gap: 4px; min-width: 40px; }
+.etapeTraits button { flex: 1; height: 6px; min-height: 0; padding: 0; border: none; border-radius: 3px; background: var(--border2); cursor: pointer; }
+.etapeTraits button.traitOn { background: var(--brand); }
+.etapeTraits button.traitFait { background: color-mix(in srgb, var(--brand) 45%, transparent); }
+.etapeSuivant { flex: none; border: 1.5px solid var(--border2); background: transparent; color: var(--text); border-radius: 12px; padding: 7px 10px; font: inherit; font-size: 13px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.sugEtape { display: grid; gap: 8px; padding: 12px 14px; border-radius: 18px; background: #22343F; color: #fff; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); font-size: 14px; }
+.sugBtns { display: flex; gap: 8px; }
+.sugGo, .sugNo { flex: 1; border: none; border-radius: 12px; padding: 10px; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
+.sugGo { background: #2CC4C0; color: #03263A; }
+.sugNo { background: rgba(255, 255, 255, .14); color: #fff; }
+
+/* Bas de l'écran Commander, version compacte (28/11/2026) : une seule barre */
+.zoneBas { display: grid; gap: 8px; padding: 8px; border-radius: 22px; background: var(--surface, #fff); box-shadow: var(--nv-tab-shadow); }
+.zoneBas .etapeCarte { box-shadow: none; padding: 4px 4px 4px 8px; min-height: 40px; }
+.sugLigne { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 4px 4px 4px 12px; border-radius: 14px; background: #22343F; color: #fff; font-size: 13px; font-weight: 700; }
+.sugLigne > span { flex: 1; min-width: 0; }
+.sugLigne .sugGo { flex: none; padding: 8px 14px; border-radius: 10px; font-size: 13px; }
+.sugLigne .sugNo { flex: none; width: 32px; height: 32px; padding: 0; border-radius: 10px; display: grid; place-items: center; }

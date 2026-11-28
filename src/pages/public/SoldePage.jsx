@@ -27,6 +27,7 @@ import ArticleInfoModal from '../../components/ArticleInfoModal'
 import CommandeDetail from '../../components/CommandeDetail'
 import DetailSheet from '../../components/DetailSheet'
 import { organiserCarte } from '../../menu/organiser'
+import { etapeDeArticle, etapeRemplie, prochaineSuggestion, categorieSuggeree } from '../../menu/etapes'
 import { getIcon } from '../../menu/icons'
 import {
   collection, query, where, getDocs, addDoc, onSnapshot,
@@ -417,6 +418,32 @@ export default function SoldePage({ demo = null }) {
   const rayon = org.rayons.find(r => r.id === rayonId) || org.rayons[0] || null
   const cat = rayon ? (rayon.cats.find(c => c.key === catKey) || rayon.cats[0]) : null
   const showRayons = org.rayons.length > 1 || !!org.rayons[0]?.nom
+  // Commande par étapes (maquette validée le 28/11/2026) : les rayons sont les étapes ; après un ajout,
+  // on suggère la prochaine étape encore vide (jamais une étape qui n'a que de l'alcool)
+  const etapes = org.rayons
+  const avecEtapes = etapes.length > 1
+  const etapeIdx = Math.max(0, etapes.findIndex(r => r.id === rayon?.id))
+  const [sugEtape, setSugEtape] = useState(null)
+  const [refusEtapes, setRefusEtapes] = useState({})
+  const [pourOuvert, setPourOuvert] = useState(false)
+  // La suggestion s'efface d'elle-même après 6 secondes : la ligne d'étape revient
+  useEffect(() => {
+    if (sugEtape == null) return
+    const t = setTimeout(() => setSugEtape(null), 6000)
+    return () => clearTimeout(t)
+  }, [sugEtape])
+  const ajouterArticle = (id, n = 1) => {
+    changeQty(id, n)
+    if (n > 0 && avecEtapes) {
+      setSugEtape(prochaineSuggestion(etapes, { courante: Math.max(0, etapeDeArticle(etapes, id)), qtys: { ...qtys, [id]: (qtys[id] || 0) + n }, refus: refusEtapes }))
+    }
+  }
+  const allerEtape = (i, suggestion = false) => {
+    const r = etapes[i]
+    if (!r) return
+    setRayonId(r.id); setCatKey(suggestion ? categorieSuggeree(r) : null); setSugEtape(null)
+    window.scrollTo(0, 0)
+  }
 
   // Commande en ligne (lot 4) : donne un code à taper sur la borne. Rien n'est débité ici :
   // le solde l'est à la borne, au prix de la carte, quand les tickets sortent.
@@ -816,7 +843,7 @@ export default function SoldePage({ demo = null }) {
 
   return (
     <div className={clsx('nv', sp.page, fondGrad ? 'nv-grad' : 'nv-list')} style={{ '--brand': themeColor }}>
-      <main className={clsx(sp.wrap, spec && 'nv-under-tabbar', spec && tab === 'reserver' && cartItems.length > 0 && !resaDone && sp.avecPanier, spec && tab === 'reserver' && cartItems.length > 0 && !resaDone && pourOptions.length > 1 && sp.avecPour)}>
+      <main className={clsx(sp.wrap, spec && 'nv-under-tabbar', spec && tab === 'reserver' && cartItems.length > 0 && !resaDone && sp.avecPanier, spec && tab === 'reserver' && !resaDone && avecEtapes && sp.avecEtapes)}>
         {/* ── Identification ── */}
         {!spec && (<>
           <header className={sp.top}>
@@ -1249,7 +1276,7 @@ export default function SoldePage({ demo = null }) {
                   {String(resaDone.code).slice(0, 3)} {String(resaDone.code).slice(3)}
                 </b>
                 <p>{resaDone.pourPrenom
-                  ? `Pour ${resaDone.pourPrenom} : à la borne, il suffit de présenter son bracelet, sans code. Ce code à 6 chiffres marche aussi (touche « J'ai un code »).`
+                  ? `Pour ${resaDone.pourPrenom} : à la borne, son bracelet donne le ticket de commande, sans code ; la commande se retire ensuite au stand. Ce code à 6 chiffres marche aussi (touche « J'ai un code »).`
                   : "Tapez ce code sur la borne, touche « J'ai un code ». Elle imprime vos tickets."}</p>
                 <p className="nv-mu">
                   {fmt(resaDone.total)} seront débités de votre solde à la borne, au prix affiché ce jour-là.
@@ -1262,7 +1289,7 @@ export default function SoldePage({ demo = null }) {
               </section>
             ) : (<>
               <p className={clsx('nv-mu', sp.lead)}>Commandez ici, puis tapez votre code sur la borne : elle imprime vos tickets et débite votre solde.</p>
-              {showRayons && (
+              {showRayons && !avecEtapes && (
                 <div className={clsx('nv-pills', sp.pillsWrap)} role="tablist" aria-label="Rayons">
                   {org.rayons.map(r => {
                     const Icon = getIcon(r.icon)
@@ -1276,7 +1303,16 @@ export default function SoldePage({ demo = null }) {
                   })}
                 </div>
               )}
-              {rayon && rayon.cats.length > 1 && (
+              {/* Au-delà de 3 catégories : liste déroulante (règle du 28/11/2026) */}
+              {rayon && rayon.cats.length > 3 && (
+                <label className={sp.filtreBr}>
+                  <span className={sp.pourLab}>Catégorie</span>
+                  <select className={sp.pourSelect} value={cat?.key ?? ''} onChange={e => setCatKey(e.target.value)}>
+                    {rayon.cats.map(c => <option key={c.key} value={c.key}>{c.nom}</option>)}
+                  </select>
+                </label>
+              )}
+              {rayon && rayon.cats.length > 1 && rayon.cats.length <= 3 && (
                 <div className={clsx('nv-pills', sp.pillsWrap)} role="group" aria-label="Catégories">
                   {rayon.cats.map(c => {
                     const Icon = getIcon(c.icon)
@@ -1324,7 +1360,7 @@ export default function SoldePage({ demo = null }) {
                             <button type="button" className={clsx(sp.mBtn, sp.mBtnMoins, 'nv-press')} onClick={() => changeQty(m.id, -1)} aria-label={`Retirer un ${m.nom}`}><Minus size={18} aria-hidden="true" /></button>
                             <b className={sp.mQ} aria-live="polite">{q}</b>
                           </>}
-                          <button type="button" className={clsx(sp.mBtn, 'nv-press')} onClick={() => changeQty(m.id, 1)} disabled={stock === 0 || q >= stock} aria-label={`Ajouter un ${m.nom}`}><Plus size={18} aria-hidden="true" /></button>
+                          <button type="button" className={clsx(sp.mBtn, 'nv-press')} onClick={() => ajouterArticle(m.id, 1)} disabled={stock === 0 || q >= stock} aria-label={`Ajouter un ${m.nom}`}><Plus size={18} aria-hidden="true" /></button>
                         </div>
                       </div>
                     )
@@ -1439,13 +1475,14 @@ export default function SoldePage({ demo = null }) {
         <ArticleInfoModal item={fiche} qty={qtys[fiche.id] || 0} onClose={() => setFiche(null)}
           maxAdd={Math.max(0, (fiche.stock || 0) - (qtys[fiche.id] || 0))}
           raisonBloque={(fiche.stock || 0) === 0 ? 'Épuisé' : 'Stock atteint'}
-          onAddQty={(n) => changeQty(fiche.id, n)} />
+          onAddQty={(n) => ajouterArticle(fiche.id, n)} />
       )}
 
-      {/* Panier de commande : pilule pleine flottante au-dessus des onglets */}
-      {spec && tab === 'reserver' && !resaDone && cartItems.length > 0 && (
+      {/* Bas de l'écran Commander (version compacte validée le 28/11/2026) : une seule barre ;
+          la suggestion prend la place de la ligne d'étape, « Pour qui ? » s'ouvre avec « Obtenir mon code » */}
+      {spec && tab === 'reserver' && !resaDone && (cartItems.length > 0 || avecEtapes) && (
         <div className={clsx(sp.cartFloat, 'nv-up')}>
-          {resaErr && (
+          {cartItems.length > 0 && resaErr && (
             <div className={clsx('nv-card nv-pad', sp.cartErrCard)}>
               <p className={sp.cartErr} role="alert">{resaErr}</p>
               {/* Solde insuffisant (20/11/2026) : recharge en un geste, le panier est conservé */}
@@ -1455,32 +1492,67 @@ export default function SoldePage({ demo = null }) {
               </>)}
             </div>
           )}
-          {pourOptions.length > 1 && (
-            <div className={clsx('nv-card nv-pad', sp.pourCard)}>
-              <span className={sp.pourLab} id="pour-qui">Pour qui ?</span>
-              {pourOptions.length > 3 ? (
-                <select className={sp.pourSelect} aria-labelledby="pour-qui" value={pourNumero} onChange={e => setPourChoix(e.target.value)}>
-                  {pourOptions.map(b => <option key={b.numero} value={b.numero}>{nomBracelet(b)}</option>)}
-                </select>
-              ) : (
-                <div className="nv-pills" role="group" aria-labelledby="pour-qui">
-                  {pourOptions.map(b => (
-                    <button key={b.numero} type="button" className="nv-pill nv-press" aria-pressed={b.numero === pourNumero} onClick={() => setPourChoix(b.numero)}>{nomBracelet(b)}</button>
+          <div className={sp.zoneBas}>
+            {sugEtape != null && etapes[sugEtape] ? (
+              <div className={sp.sugLigne} role="status">
+                <span>✓ Ajouté. {etapes[sugEtape].nom ? `Et avec ça, côté ${etapes[sugEtape].nom.toLowerCase()} ?` : 'Autre chose avec ça ?'}</span>
+                <button type="button" className={clsx('nv-press', sp.sugGo)} onClick={() => allerEtape(sugEtape, true)}>Voir</button>
+                <button type="button" className={clsx('nv-press', sp.sugNo)} aria-label="Pas intéressé" onClick={() => { setRefusEtapes(r => ({ ...r, [sugEtape]: true })); setSugEtape(null) }}><X size={16} aria-hidden="true" /></button>
+              </div>
+            ) : avecEtapes && (
+              <div className={sp.etapeCarte}>
+                {(() => { const Icon = getIcon(etapes[etapeIdx]?.icon); return <Icon size={18} aria-hidden="true" /> })()}
+                <b>{etapes[etapeIdx]?.nom || 'Autres'}</b>
+                <span className={sp.etapeTraits} role="group" aria-label="Étapes">
+                  {etapes.map((r, i) => (
+                    <button key={r.id || 'autres'} type="button" aria-label={`Étape ${r.nom || 'Autres'}`} aria-current={i === etapeIdx ? 'step' : undefined}
+                      className={clsx(i === etapeIdx && sp.traitOn, i !== etapeIdx && etapeRemplie(r, qtys) && sp.traitFait)} onClick={() => allerEtape(i)} />
                   ))}
-                </div>
-              )}
-              <span className="nv-mu">{pourBracelet && /^moi$/i.test(pourBracelet.prenom || '')
-                ? 'Vous pourrez la retirer à la borne avec votre bracelet, sans code.'
-                : `${pourBracelet?.prenom || 'Ce bracelet'} pourra la retirer à la borne avec son bracelet, sans code.${pourBracelet?.mineur ? ' Elle ne compte pas dans son plafond.' : ''}`}</span>
-              {panierAlcool && (braceletsEtat.bracelets || []).some(b => b.statut === 'actif' && b.mineur) && (
-                <span className="nv-mu">Le panier contient de l'alcool : les bracelets « mineur » ne sont pas proposés.</span>
-              )}
-            </div>
-          )}
-          <button type="button" className={clsx('nv-btn nv-press', sp.cartBtn)} onClick={doResa} disabled={resaLoading} aria-busy={resaLoading}
-            aria-label={`Obtenir mon code, ${cartItems.reduce((a, i) => a + i.qty, 0)} article(s), ${fmt(cartTotal)}`}>
-            {resaLoading ? 'Création du code…' : <>Obtenir mon code · {fmt(cartTotal)}</>}
-          </button>
+                </span>
+                <button type="button" className={clsx('nv-press', sp.etapeSuivant)} onClick={() => allerEtape((etapeIdx + 1) % etapes.length)}>
+                  {etapes[(etapeIdx + 1) % etapes.length]?.nom || 'Autres'} →
+                </button>
+              </div>
+            )}
+            {cartItems.length > 0 && <button type="button" className={clsx('nv-btn nv-press', sp.cartBtn)}
+              onClick={() => { if (pourOptions.length > 1) { setResaErr(''); setPourOuvert(true) } else doResa() }} disabled={resaLoading} aria-busy={resaLoading}
+              aria-label={`Obtenir mon code, ${cartItems.reduce((a, i) => a + i.qty, 0)} article(s), ${fmt(cartTotal)}`}>
+              {resaLoading ? 'Création du code…' : <>Obtenir mon code · {cartItems.reduce((a, i) => a + i.qty, 0) > 1 ? `${cartItems.reduce((a, i) => a + i.qty, 0)} articles · ` : ''}{fmt(cartTotal)}</>}
+            </button>}
+          </div>
+        </div>
+      )}
+
+      {/* « Pour qui ? » (bracelets) : fenêtre ouverte par « Obtenir mon code », dès deux bracelets */}
+      {pourOuvert && spec && tab === 'reserver' && cartItems.length > 0 && (
+        <div className={sp.scrim} onMouseDown={e => { if (e.target === e.currentTarget && !resaLoading) setPourOuvert(false) }}>
+          <div className={clsx(sp.sheet, 'nv-up')} role="dialog" aria-modal="true" aria-labelledby="pour-qui">
+            <span className={sp.grab} aria-hidden="true" />
+            <h2 id="pour-qui" className={sp.sheetTitle}>Pour qui ?</h2>
+            {pourOptions.length > 3 ? (
+              <select className={sp.pourSelect} aria-labelledby="pour-qui" value={pourNumero} onChange={e => setPourChoix(e.target.value)}>
+                {pourOptions.map(b => <option key={b.numero} value={b.numero}>{nomBracelet(b)}</option>)}
+              </select>
+            ) : (
+              <div className="nv-pills" role="group" aria-labelledby="pour-qui">
+                {pourOptions.map(b => (
+                  <button key={b.numero} type="button" className="nv-pill nv-press" aria-pressed={b.numero === pourNumero} onClick={() => setPourChoix(b.numero)}>{nomBracelet(b)}</button>
+                ))}
+              </div>
+            )}
+            <p className="nv-mu">{pourBracelet && /^moi$/i.test(pourBracelet.prenom || '')
+              ? 'À la borne, votre bracelet donne le ticket, sans code ; la commande se retire ensuite au stand.'
+              : `À la borne, le bracelet de ${pourBracelet?.prenom || 'ce porteur'} donne le ticket, sans code ; la commande se retire ensuite au stand.${pourBracelet?.mineur ? ' Elle ne compte pas dans son plafond.' : ''}`}</p>
+            {panierAlcool && (braceletsEtat.bracelets || []).some(b => b.statut === 'actif' && b.mineur) && (
+              <p className="nv-mu">Le panier contient de l'alcool : les bracelets « mineur » ne sont pas proposés.</p>
+            )}
+            {resaErr && <p className={sp.cartErr} role="alert">{resaErr}</p>}
+            <button type="button" className={clsx('nv-btn nv-press', sp.cartBtn)} disabled={resaLoading} aria-busy={resaLoading}
+              onClick={async () => { await doResa(); setPourOuvert(false) }}>
+              {resaLoading ? 'Création du code…' : <>Obtenir mon code · {fmt(cartTotal)}</>}
+            </button>
+            <button type="button" className={clsx('nv-btn-sec nv-press', sp.mt12)} disabled={resaLoading} onClick={() => setPourOuvert(false)}>Annuler</button>
+          </div>
         </div>
       )}
 

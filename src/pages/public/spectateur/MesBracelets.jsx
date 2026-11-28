@@ -12,7 +12,7 @@
  * useBracelets() sert aussi à la carte de l'accueil (accès rapide).
  */
 import React, { useCallback, useEffect, useState } from 'react'
-import { ShieldCheck, Lock, Watch, ChevronRight, Plus } from 'lucide-react'
+import { ShieldCheck, Lock, Watch, ChevronRight, Plus, ExternalLink } from 'lucide-react'
 import QrScanner from '../../../components/QrScanner'
 import { Badge, Button, CodeInput, toast } from '../../../ui'
 import { apiFetch } from '../../../firebase/session'
@@ -22,6 +22,7 @@ import s from './BraceletSecours.module.css'
 export const MAX_BRACELETS = 6
 export const PLAFOND_SANS_CODE_MAX = 30
 export const ACHAT_SANS_CODE_MAX = 10
+const CONDITIONS_BRACELETS = 'https://festylla.com/conditions-yllacash/#bracelets'
 
 const DEMO = [
   { numero: 'K7Q3PX9M', statut: 'actif', prenom: 'Moi', mineur: false, avecCode: true, plafondJour: null, relieMs: 1 },
@@ -294,6 +295,12 @@ export default function MesBracelets({ solde, etat }) {
         : <p className="nv-mu">{MAX_BRACELETS} bracelets au plus : bloquez-en un pour en relier un autre.</p>}
       {(bracelets || []).length > 0 && (
         <p className={`nv-mu ${s.petit}`}>Vous répondez des paiements faits avec vos bracelets : avec un code, s'il a été donné ; sans code, jusqu'au plafond du jour, tant que le bracelet n'est pas bloqué ici.</p>
+      )}
+      {(bracelets || []).length > 0 && (
+        // Conditions générales, article « Les bracelets » (validé le 28/11/2026, site Fest'Ylla)
+        <a className={s.lienConditions} href={CONDITIONS_BRACELETS} target="_blank" rel="noopener noreferrer">
+          Conditions des bracelets <ExternalLink size={14} aria-hidden="true" />
+        </a>
       )}
     </>)
   }
